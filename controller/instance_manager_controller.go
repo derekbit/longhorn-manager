@@ -1112,6 +1112,10 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			Name:      "proc",
 		},
 		{
+			MountPath: "/host/var/lib/longhorn/uds",
+			Name:      "uds",
+		},
+		{
 			MountPath:        types.EngineBinaryDirectoryInContainer,
 			Name:             "engine-binaries",
 			MountPropagation: &hostToContainer,
@@ -1135,6 +1139,14 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/proc",
+				},
+			},
+		},
+		{
+			Name: "uds",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/var/lib/longhorn/uds",
 				},
 			},
 		},
