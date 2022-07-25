@@ -852,6 +852,10 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			MountPath: "/lib/modules",
 			ReadOnly:  true,
 		},
+		{
+			Name:      "recovery-root",
+			MountPath: "/mnt/nfs",
+		},
 	}
 
 	podSpec.Spec.Volumes = []v1.Volume{
@@ -884,6 +888,14 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/lib/modules",
+				},
+			},
+		},
+		{
+			Name: "recovery-root",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/mnt/nfs",
 				},
 			},
 		},
