@@ -427,7 +427,12 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 	defer c.Close()
 
-	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, e.Spec.EngineImage, frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested)
+	volumeSize := e.Status.CurrentSize
+	if volumeSize == 0 {
+		volumeSize = e.Spec.VolumeSize
+	}
+
+	return c.EngineProcessCreate(e.Name, e.Spec.VolumeName, volumeSize, e.Spec.EngineImage, frontend, e.Status.CurrentReplicaAddressMap, e.Spec.RevisionCounterDisabled, e.Spec.SalvageRequested)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
