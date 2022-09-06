@@ -97,7 +97,7 @@ require (
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/longhorn/longhorn-engine v1.3.0-preview1 // indirect
+	github.com/longhorn/longhorn-engine v1.3.1-0.20220808083255-7310e09cd663 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -137,3 +137,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
+
+replace github.com/longhorn/longhorn-instance-manager v0.0.0-20220801100457-421c284a3b85 => github.com/derekbit/longhorn-instance-manager v0.0.0-20220906075140-5ff0c9b5d635
+
+replace github.com/longhorn/longhorn-engine v1.3.1-0.20220808083255-7310e09cd663 => github.com/derekbit/longhorn-engine v1.2.1-0.20220906072306-abd4f458b4a1
