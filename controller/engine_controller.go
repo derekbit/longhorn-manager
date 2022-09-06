@@ -225,7 +225,7 @@ func (ec *EngineController) getEngineClientProxy(e *longhorn.Engine, image strin
 
 func (ec *EngineController) syncEngine(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to sync engine for %v", key)
+		err = errors.Wrapf(err, "failed to sync engine for %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -714,7 +714,7 @@ func (m *EngineMonitor) sync() bool {
 				m.logger.Info("stop monitoring because the engine no longer exists")
 				return true
 			}
-			utilruntime.HandleError(errors.Wrapf(err, "fail to get engine %v for monitoring", m.Name))
+			utilruntime.HandleError(errors.Wrapf(err, "failed to get engine %v for monitoring", m.Name))
 			return false
 		}
 
@@ -770,6 +770,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
+	logrus.Infof("Debug ------> addressReplicaMap=%+v", addressReplicaMap)
+	logrus.Infof("Debug ------> replicaURLModeMap=%+v", replicaURLModeMap)
+
 	currentReplicaModeMap := map[string]longhorn.ReplicaMode{}
 	for url, r := range replicaURLModeMap {
 		addr := engineapi.GetAddressFromBackendReplicaURL(url)
@@ -803,6 +806,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 	}
+
+	logrus.Infof("Debug ------> addressReplicaMap with unknown=%+v", currentReplicaModeMap)
+
 	engine.Status.ReplicaModeMap = currentReplicaModeMap
 
 	snapshots, err := engineClientProxy.SnapshotList(engine)
@@ -1387,6 +1393,8 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 		return nil
 	}
 
+	logrus.Infof("Debug ------> removeUnknownReplica unknownReplicaMap=%+v", unknownReplicaMap)
+
 	for url := range unknownReplicaMap {
 		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 		if err != nil {
@@ -1425,6 +1433,7 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	for replica, addr := range e.Status.CurrentReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
+			logrus.Infof("Debug ------> startRebuilding replica=%v  addr=%v", replica, addr)
 			return ec.startRebuilding(e, replica, addr)
 		}
 	}
@@ -1449,7 +1458,7 @@ func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy
 
 func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "fail to start rebuild for %v of %v", replica, e.Name)
+		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replica, e.Name)
 	}()
 
 	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
@@ -1542,6 +1551,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, EventReasonRebuilding, "Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
+			logrus.Infof("Debug ------> ReplicaAdd replicaURL=%v", replicaURL)
 			err = engineClientProxy.ReplicaAdd(e, replicaURL, false)
 		}
 		if err != nil {

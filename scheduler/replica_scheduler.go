@@ -467,7 +467,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		}
 	}
 	if reusedReplica == nil {
-		logrus.Infof("Cannot find a reusable failed replicas")
+		logrus.Infof("Cannot find a reusable failed replica for volume %v", volume.Name)
 		return nil, nil
 	}
 
