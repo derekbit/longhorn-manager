@@ -333,7 +333,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	if engine.Status.CurrentState == longhorn.InstanceStateRunning {
-		// we allow across monitoring temporaily due to migration case
+		// we allow across monitoring temporarily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
 		} else if engine.Status.ReplicaModeMap != nil {

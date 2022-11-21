@@ -646,7 +646,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 			// Migrate local replica when Data Locality is on
 			// We turn off data locality while doing auto-attaching or restoring (e.g. frontend is disabled)
 			if v.Status.State == longhorn.VolumeStateAttached && !v.Status.FrontendDisabled &&
-				!isDataLocalityDisabled(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+				isDataLocalityBestEffort(v) && !hasLocalReplicaOnSameNodeAsEngine(e, rs) {
 				if err := vc.replenishReplicas(v, e, rs, e.Spec.NodeID); err != nil {
 					return err
 				}
@@ -1023,6 +1023,20 @@ func (vc *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (
 	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
 
+func (vc *VolumeController) updateReplicaLogRequested(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+	needReplicaLogs := false
+	for _, r := range rs {
+		if r.Spec.LogRequested && r.Status.LogFetched {
+			r.Spec.LogRequested = false
+		}
+		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
+		rs[r.Name] = r
+	}
+	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
+		e.Spec.LogRequested = false
+	}
+}
+
 // ReconcileVolumeState handles the attaching and detaching of volume
 func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
@@ -1110,7 +1124,8 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	if len(e.Status.Snapshots) > VolumeSnapshotsWarningThreshold {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
-			longhorn.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v", len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
+			longhorn.VolumeConditionReasonTooManySnapshots, fmt.Sprintf("Snapshots count is %v over the warning threshold %v",
+				len(e.Status.Snapshots), VolumeSnapshotsWarningThreshold))
 	} else {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusFalse,
@@ -1124,17 +1139,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	needReplicaLogs := false
-	for _, r := range rs {
-		if r.Spec.LogRequested && r.Status.LogFetched {
-			r.Spec.LogRequested = false
-		}
-		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
-		rs[r.Name] = r
-	}
-	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
-		e.Spec.LogRequested = false
-	}
+	vc.updateReplicaLogRequested(e, rs)
 
 	scheduled := true
 	aggregatedReplicaScheduledError := util.NewMultiError()
@@ -1143,6 +1148,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if r.Spec.NodeID != "" {
 			continue
 		}
+		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+			if v.Spec.NodeID == "" {
+				continue
+			}
+
+			r.Spec.HardNodeAffinity = v.Spec.NodeID
+		}
+
 		scheduledReplica, multiError, err := vc.scheduler.ScheduleReplica(r, rs, v)
 		if err != nil {
 			return err
@@ -1209,7 +1222,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	}
 
 	if err := vc.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-		log.Warnf("Cannot update PV annotation for volume %v", v.Name)
+		log.WithError(err).Warnf("Cannot update PV annotation for volume %v", v.Name)
 	}
 
 	if err := vc.reconcileVolumeSize(v, e, rs); err != nil {
@@ -1675,6 +1688,14 @@ func findValueWithBiggestLength(m map[string][]string) []string {
 	return m[targetKey]
 }
 
+func isDataLocalityBestEffort(v *longhorn.Volume) bool {
+	return v.Spec.DataLocality == longhorn.DataLocalityBestEffort
+}
+
+func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
+	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
+}
+
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
 }
@@ -1767,7 +1788,11 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 			vc.enqueueVolumeAfter(v, vc.backoff.Get(reusableFailedReplica.Name))
 		}
 		if checkBackDuration := vc.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
-			if err := vc.createReplica(v, e, rs, hardNodeAffinity, !newVolume); err != nil {
+			dataPathProtocol := longhorn.DataPathProtocolTcpSocket
+			if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+				dataPathProtocol = longhorn.DataPathProtocolUnixSocket
+			}
+			if err := vc.createReplica(v, e, rs, hardNodeAffinity, !newVolume, dataPathProtocol); err != nil {
 				return err
 			}
 		} else {
@@ -2127,7 +2152,7 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 	usableCount := 0
 	for _, r := range rs {
 		// The failed to schedule local replica shouldn't be counted
-		if !isDataLocalityDisabled(v) && r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == "" &&
+		if isDataLocalityBestEffort(v) && r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == "" &&
 			v.Status.CurrentNodeID != "" && r.Spec.HardNodeAffinity == v.Status.CurrentNodeID {
 			continue
 		}
@@ -2917,7 +2942,8 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (
 	return vc.ds.CreateEngine(engine)
 }
 
-func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string, isRebuildingReplica bool) error {
+func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica,
+	hardNodeAffinity string, isRebuildingReplica bool, dataPathProtocol longhorn.DataPathProtocol) error {
 	log := getLoggerForVolume(vc.logger, v)
 
 	replica := &longhorn.Replica{
@@ -2937,6 +2963,7 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 			BackingImage:            v.Spec.BackingImage,
 			HardNodeAffinity:        hardNodeAffinity,
 			RevisionCounterDisabled: v.Spec.RevisionCounterDisabled,
+			DataPathProtocol:        dataPathProtocol,
 		},
 	}
 	if isRebuildingReplica {
