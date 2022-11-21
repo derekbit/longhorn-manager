@@ -2,6 +2,13 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+type DataPathProtocol string
+
+const (
+	DataPathProtocolTcpSocket  = DataPathProtocol("tcp")
+	DataPathProtocolUnixSocket = DataPathProtocol("unix")
+)
+
 // ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
 	InstanceSpec `json:""`
@@ -27,6 +34,9 @@ type ReplicaSpec struct {
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
 	RebuildRetryCount int `json:"rebuildRetryCount"`
+	// +kubebuilder:validation:Enum=tcp;unix
+	// +optional
+	DataPathProtocol DataPathProtocol `json:"dataPathProtocol"`
 	// Deprecated
 	// +optional
 	DataPath string `json:"dataPath"`

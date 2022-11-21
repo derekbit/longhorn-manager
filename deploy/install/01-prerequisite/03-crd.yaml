@@ -2324,6 +2324,11 @@ spec:
               dataPath:
                 description: Deprecated
                 type: string
+              dataPathProtocol:
+                enum:
+                - tcp
+                - unix
+                type: string
               desireState:
                 type: string
               diskID:
@@ -2845,6 +2850,7 @@ spec:
                 enum:
                 - disabled
                 - best-effort
+                - strict-local
                 type: string
               dataSource:
                 type: string
