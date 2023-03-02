@@ -1678,6 +1678,7 @@ spec:
                 type: string
               type:
                 enum:
+                - aio
                 - engine
                 - replica
                 type: string
@@ -1691,6 +1692,70 @@ spec:
                 type: integer
               currentState:
                 type: string
+              instanceEngines:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        listen:
+                          type: string
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                  type: object
+                type: object
+              instanceReplicas:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        listen:
+                          type: string
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                  type: object
+                type: object
               instances:
                 additionalProperties:
                   properties:
@@ -1722,7 +1787,7 @@ spec:
                           type: string
                       type: object
                   type: object
-                nullable: true
+                description: 'Deprecated: Replaced by InstanceEngines and InstanceReplicas'
                 type: object
               ip:
                 type: string

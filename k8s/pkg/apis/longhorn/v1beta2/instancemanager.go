@@ -19,10 +19,12 @@ const (
 	InstanceManagerStateUnknown  = InstanceManagerState("unknown")
 )
 
-// +kubebuilder:validation:Enum=engine;replica
+// +kubebuilder:validation:Enum=aio;engine;replica
 type InstanceManagerType string
 
 const (
+	InstanceManagerTypeAllInOne = InstanceManagerType("aio")
+	// Deprecate
 	InstanceManagerTypeEngine  = InstanceManagerType("engine")
 	InstanceManagerTypeReplica = InstanceManagerType("replica")
 )
@@ -141,8 +143,9 @@ type InstanceManagerStatus struct {
 	// +optional
 	CurrentState InstanceManagerState `json:"currentState"`
 	// +optional
-	// +nullable
-	Instances map[string]InstanceProcess `json:"instances"`
+	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`
+	// +optional
+	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
 	// +optional
 	IP string `json:"ip"`
 	// +optional
@@ -153,6 +156,10 @@ type InstanceManagerStatus struct {
 	ProxyAPIMinVersion int `json:"proxyApiMinVersion"`
 	// +optional
 	ProxyAPIVersion int `json:"proxyApiVersion"`
+
+	// Deprecated: Replaced by InstanceEngines and InstanceReplicas
+	// +optional
+	Instances map[string]InstanceProcess `json:"instances,omitempty"`
 }
 
 // +genclient
