@@ -96,6 +96,8 @@ type NodeSpec struct {
 	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
 	// +optional
 	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
+	// +optional
+	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node
