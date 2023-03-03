@@ -274,17 +274,18 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name                     string                        `json:"name"`
-	Address                  string                        `json:"address"`
-	AllowScheduling          bool                          `json:"allowScheduling"`
-	EvictionRequested        bool                          `json:"evictionRequested"`
-	Disks                    map[string]DiskInfo           `json:"disks"`
-	Conditions               map[string]longhorn.Condition `json:"conditions"`
-	Tags                     []string                      `json:"tags"`
-	Region                   string                        `json:"region"`
-	Zone                     string                        `json:"zone"`
-	EngineManagerCPURequest  int                           `json:"engineManagerCPURequest"`
-	ReplicaManagerCPURequest int                           `json:"replicaManagerCPURequest"`
+	Name                      string                        `json:"name"`
+	Address                   string                        `json:"address"`
+	AllowScheduling           bool                          `json:"allowScheduling"`
+	EvictionRequested         bool                          `json:"evictionRequested"`
+	Disks                     map[string]DiskInfo           `json:"disks"`
+	Conditions                map[string]longhorn.Condition `json:"conditions"`
+	Tags                      []string                      `json:"tags"`
+	Region                    string                        `json:"region"`
+	Zone                      string                        `json:"zone"`
+	EngineManagerCPURequest   int                           `json:"engineManagerCPURequest"`
+	ReplicaManagerCPURequest  int                           `json:"replicaManagerCPURequest"`
+	InstanceManagerCPURequest int                           `json:"instanceManagerCPURequest"`
 }
 
 type DiskStatus struct {
@@ -1585,16 +1586,17 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                     node.Name,
-		Address:                  address,
-		AllowScheduling:          node.Spec.AllowScheduling,
-		EvictionRequested:        node.Spec.EvictionRequested,
-		Conditions:               sliceToMap(node.Status.Conditions),
-		Tags:                     node.Spec.Tags,
-		Region:                   node.Status.Region,
-		Zone:                     node.Status.Zone,
-		EngineManagerCPURequest:  node.Spec.EngineManagerCPURequest,
-		ReplicaManagerCPURequest: node.Spec.ReplicaManagerCPURequest,
+		Name:                      node.Name,
+		Address:                   address,
+		AllowScheduling:           node.Spec.AllowScheduling,
+		EvictionRequested:         node.Spec.EvictionRequested,
+		Conditions:                sliceToMap(node.Status.Conditions),
+		Tags:                      node.Spec.Tags,
+		Region:                    node.Status.Region,
+		Zone:                      node.Status.Zone,
+		EngineManagerCPURequest:   node.Spec.EngineManagerCPURequest,
+		ReplicaManagerCPURequest:  node.Spec.ReplicaManagerCPURequest,
+		InstanceManagerCPURequest: node.Spec.InstanceManagerCPURequest,
 	}
 
 	disks := map[string]DiskInfo{}
