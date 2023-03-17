@@ -917,6 +917,16 @@ func BackupStoreRequireCredential(backupType string) bool {
 	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
 }
 
+func ConsolidateInstances(typeInstances ...map[string]longhorn.InstanceProcess) map[string]longhorn.InstanceProcess {
+	consolidated := make(map[string]longhorn.InstanceProcess)
+	for _, instances := range typeInstances {
+		for name, instance := range instances {
+			consolidated[name] = instance
+		}
+	}
+	return consolidated
+}
+
 func ConsolidateInstanceManagers(typeInstanceManagers ...map[string]*longhorn.InstanceManager) map[string]*longhorn.InstanceManager {
 	consolidated := make(map[string]*longhorn.InstanceManager)
 	for _, instanceManagers := range typeInstanceManagers {
