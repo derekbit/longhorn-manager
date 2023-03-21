@@ -920,7 +920,7 @@ func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
 
 	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep %s%s | awk '{print $2}'", deviceDir, volumeName)})
 	if err != nil {
-		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}
 
 	mountList := strings.Split(strings.TrimSpace(mountOutput), "\n")
@@ -933,15 +933,15 @@ func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
 			break
 		}
 
-		logrus.WithError(err).Warnf("failed to get volume %v mountpoint %v info", volumeName, m)
+		logrus.WithError(err).Warnf("Failed to get volume %v mount point %v info", volumeName, m)
 	}
 	if mountpoint == "" {
-		return fmt.Errorf("cannot find a valid mountpoint for volume %v", volumeName)
+		return fmt.Errorf("cannot find a valid mount point for volume %v", volumeName)
 	}
 
 	_, err = nsExec.Execute("fstrim", []string{mountpoint})
 	if err != nil {
-		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}
 
 	return nil
