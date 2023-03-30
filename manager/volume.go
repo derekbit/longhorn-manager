@@ -128,7 +128,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	defer func() {
 		err = errors.Wrapf(err, "unable to create volume %v", name)
 		if err != nil {
-			logrus.Errorf("manager: unable to create volume %v: %+v: %v", name, spec, err)
+			logrus.WithError(err).Errorf("manager: unable to create volume %v: %+v", name, spec)
 		}
 	}()
 

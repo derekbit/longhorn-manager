@@ -531,7 +531,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 // unpublishVolume sends the actual detach request to the longhorn api and executes the passed waitForResult func
 func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeID string, waitForResult func() error) (*csi.ControllerUnpublishVolumeResponse, error) {
-	logrus.Debugf("requesting Volume %s detachment for %s", volume.Name, nodeID)
+	logrus.Debugf("Requesting Volume %s detachment for %s", volume.Name, nodeID)
 	_, err := cs.apiClient.Volume.ActionDetach(volume, &longhornclient.DetachInput{HostId: nodeID})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -561,7 +561,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 			logrus.Debugf("ControllerServer CreateSnapshot rsp: %v", rsp)
 		}
 		if err != nil {
-			logrus.Errorf("ControllerServer CreateSnapshot: error: %v", err)
+			logrus.WithError(err).Error("ControllerServer CreateSnapshot")
 		}
 	}()
 
@@ -953,7 +953,7 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 			logrus.Debugf("Polling volume %s state for %s at %s", volumeID, stateDescription, time.Now().String())
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
-				logrus.Warnf("waitForVolumeState: error while waiting for volume %s state %s error %s", volumeID, stateDescription, err)
+				logrus.WithError(err).Warnf("waitForVolumeState: error while waiting for volume %s state %s", volumeID, stateDescription)
 				continue
 			}
 			if existVol == nil {

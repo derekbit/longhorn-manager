@@ -262,7 +262,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if im == nil {
 				logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
 			} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
+				logrus.WithError(err).Warnf("Cannot get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
 			}
 			status.LogFetched = true
 		}

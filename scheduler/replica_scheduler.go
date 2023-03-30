@@ -149,13 +149,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	nodeSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
-		logrus.Errorf("error getting replica soft anti-affinity setting: %v", err)
+		logrus.WithError(err).Error("Error getting replica soft anti-affinity setting")
 	}
 
 	zoneSoftAntiAffinity, err :=
 		rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
 	if err != nil {
-		logrus.Errorf("Error getting replica zone soft anti-affinity setting: %v", err)
+		logrus.WithError(err).Error("Error getting replica zone soft anti-affinity setting")
 	}
 
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {
@@ -314,7 +314,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
-				logrus.Errorf("Failed to get settings when scheduling replica: %v", err)
+				logrus.WithError(err).Error("Failed to get settings when scheduling replica")
 				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingSettingsRetrieveFailed))
 				return preferredDisks, multiError
 			}
@@ -510,14 +510,14 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	// Otherwise Longhorn will relay the new replica creation then there is a chance to reuse failed replicas later.
 	settingValue, err := rcs.ds.GetSettingAsInt(types.SettingNameReplicaReplenishmentWaitInterval)
 	if err != nil {
-		logrus.Errorf("Failed to get Setting ReplicaReplenishmentWaitInterval, will directly replenish a new replica: %v", err)
+		logrus.WithError(err).Error("Failed to get Setting ReplicaReplenishmentWaitInterval, will directly replenish a new replica")
 		return 0
 	}
 	waitInterval := time.Duration(settingValue) * time.Second
 	lastDegradedAt, err := util.ParseTime(volume.Status.LastDegradedAt)
 
 	if err != nil {
-		logrus.Errorf("Failed to get parse volume last degraded timestamp %v, will directly replenish a new replica: %v", volume.Status.LastDegradedAt, err)
+		logrus.WithError(err).Errorf("Failed to get parse volume last degraded timestamp %v, will directly replenish a new replica", volume.Status.LastDegradedAt)
 		return 0
 	}
 	now := time.Now()
@@ -571,7 +571,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 			}
 			schedulingInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
-				logrus.Warnf("failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable: %v", diskName, node.Name, r.Name, err)
+				logrus.WithError(err).Warnf("Failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable", diskName, node.Name, r.Name)
 			}
 			if !rcs.isDiskNotFull(schedulingInfo) {
 				continue
@@ -597,7 +597,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 
 	im, err := rcs.ds.GetInstanceManagerByInstance(r)
 	if err != nil {
-		logrus.Errorf("failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
+		logrus.WithError(err).Errorf("Failed to get instance manager when checking replica %v is reusable", r.Name)
 		return false
 	}
 	if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {

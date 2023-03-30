@@ -136,13 +136,13 @@ func (control *RecurringJobController) handleErr(err error, key interface{}) {
 	}
 
 	if control.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn recurring job %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn recurring job %v", key)
 		control.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn recurring job %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn recurring job %v out of the queue", key)
 	control.queue.Forget(key)
 }
 

@@ -244,13 +244,13 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	if imc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn instance manager %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn instance manager %v", key)
 		imc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn instance manager %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn instance manager %v out of the queue", key)
 	imc.queue.Forget(key)
 }
 
@@ -895,10 +895,10 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 	im, err := imc.ds.GetInstanceManager(pod.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logrus.Warnf("Can't find instance manager for pod %v, may be deleted", pod.Name)
+			logrus.WithError(err).Warnf("Can't find instance manager for pod %v, may be deleted", pod.Name)
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
+		utilruntime.HandleError(errors.Wrapf(err, "couldn't get instance manager"))
 		return
 	}
 	imc.enqueueInstanceManager(im)
@@ -1260,7 +1260,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	client, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
-		log.Errorf("failed to initialize im client before monitoring")
+		log.WithError(err).Error("Failed to initialize im client before monitoring")
 		return
 	}
 
@@ -1315,21 +1315,21 @@ func (imc *InstanceManagerController) stopMonitoring(imName string) {
 }
 
 func (m *InstanceManagerMonitor) Run() {
-	m.logger.Debugf("Start monitoring instance manager %v", m.Name)
+	m.logger.Infof("Start monitoring instance manager %v", m.Name)
 
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
 	notifier, err := m.client.ProcessWatch(ctx)
 	if err != nil {
-		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
+		m.logger.WithError(err).Errorf("Failed to get the notifier for monitoring")
 		cancel()
 		close(m.monitorVoluntaryStopCh)
 		return
 	}
 
 	defer func() {
-		m.logger.Debugf("Stop monitoring instance manager %v", m.Name)
+		m.logger.Infof("Stop monitoring instance manager %v", m.Name)
 		cancel()
 		m.StopMonitorWithLock()
 		close(m.monitorVoluntaryStopCh)
@@ -1348,7 +1348,7 @@ func (m *InstanceManagerMonitor) Run() {
 			}
 
 			if _, err := notifier.Recv(); err != nil {
-				m.logger.Errorf("error receiving next item in engine watch: %v", err)
+				m.logger.WithError(err).Error("Error receiving next item in engine watch")
 				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
@@ -1396,7 +1396,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	im, err := m.ds.GetInstanceManager(m.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			m.logger.Info("stop monitoring because the instance manager no longer exists")
+			m.logger.Info("Stop monitoring because the instance manager no longer exists")
 			return true
 		}
 		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
@@ -1404,7 +1404,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	}
 
 	if im.Status.OwnerID != m.controllerID {
-		m.logger.Infof("stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
+		m.logger.Infof("Stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
 		return true
 	}
 

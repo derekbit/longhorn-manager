@@ -118,9 +118,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Check volume attachment status
 	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		logrus.Debugf("Volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
-			logrus.Debugf("failed to unmount error: %v", err)
+			logrus.WithError(err).Debug("Failed to unmount")
 		}
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
@@ -204,7 +204,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	}
 
 	if isMnt {
-		logrus.Debugf("found existing healthy mount point for shared volume %v skipping mount", volumeID)
+		logrus.Debugf("Found existing healthy mount point for shared volume %v skipping mount", volumeID)
 		return nil
 	}
 
@@ -251,7 +251,7 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, targetPath, fsT
 	}
 
 	if isMnt {
-		logrus.Debugf("found existing healthy mount point for volume %v skipping mount", volumeID)
+		logrus.Debugf("Found existing healthy mount point for volume %v skipping mount", volumeID)
 		return nil
 	}
 
@@ -341,9 +341,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	// Check volume attachment status
 	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		logrus.Debugf("Volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
-			logrus.Debugf("failed to unmount error: %v", err)
+			logrus.WithError(err).Debug("Failed to unmount")
 		}
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
@@ -399,7 +399,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem format")
 	}
 
-	logrus.Debugf("volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
+	logrus.Debugf("Volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
@@ -427,7 +427,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		}
 
 		cryptoDevice := crypto.VolumeMapper(volumeID)
-		logrus.Debugf("volume %s requires crypto device %s", volumeID, cryptoDevice)
+		logrus.Debugf("Volume %s requires crypto device %s", volumeID, cryptoDevice)
 
 		if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
@@ -455,12 +455,12 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			logrus.WithError(err).Errorf("mounted volume %v on node %v failed required filesystem resize", volumeID, ns.nodeID)
 			return nil, status.Error(codes.Internal, err.Error())
 		} else if resized {
-			logrus.Infof("mounted volume %v on node %v successfully resized filesystem after mount", volumeID, ns.nodeID)
+			logrus.Infof("Mounted volume %v on node %v successfully resized filesystem after mount", volumeID, ns.nodeID)
 		} else {
-			logrus.Debugf("mounted volume %v on node %v already has correct filesystem size", volumeID, ns.nodeID)
+			logrus.Debugf("Mounted volume %v on node %v already has correct filesystem size", volumeID, ns.nodeID)
 		}
 	} else {
-		logrus.Debugf("mounted volume %v on node %v does not require filesystem resize", volumeID, ns.nodeID)
+		logrus.Debugf("Mounted volume %v on node %v does not require filesystem resize", volumeID, ns.nodeID)
 	}
 
 	logrus.Infof("mounted volume %v on node %v via device %v", volumeID, ns.nodeID, devicePath)
@@ -752,7 +752,7 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 				Exec:      NewForcedParamsExec(cmdParamMapping),
 			}
 		} else {
-			logrus.Warnf("volume %v with unsupported filesystem %v, use default fs creation params", volume.Name, fsType)
+			logrus.Warnf("Volume %v with unsupported filesystem %v, use default fs creation params", volume.Name, fsType)
 		}
 		return mounter, nil
 	}

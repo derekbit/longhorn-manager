@@ -194,13 +194,13 @@ func (c *BackingImageDataSourceController) handleErr(err error, key interface{})
 	}
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn backing image data source %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn backing image data source %v", key)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn backing image data source %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn backing image data source %v out of the queue", key)
 	c.queue.Forget(key)
 }
 
@@ -885,7 +885,7 @@ func (c *BackingImageDataSourceController) enqueueForLonghornNode(obj interface{
 	bidss, err := c.ds.ListBackingImageDataSourcesByNode(node.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			c.logger.WithField("node", node.Name).Warnf("Can't list backing image data sources for a node, may be deleted")
+			c.logger.WithField("node", node.Name).Warn("Can't list backing image data sources for a node, may be deleted")
 			return
 		}
 		utilruntime.HandleError(fmt.Errorf("couldn't get backing image data source: %v", err))

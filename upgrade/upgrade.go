@@ -125,7 +125,7 @@ func upgrade(currentNodeID, namespace string, config *restclient.Config, lhClien
 				defer cancel()
 				defer func() {
 					if err != nil {
-						logrus.Errorf("Upgrade failed: %v", err)
+						logrus.WithError(err).Error("Upgrade failed")
 					} else {
 						logrus.Infof("Finish upgrading")
 					}

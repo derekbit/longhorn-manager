@@ -205,12 +205,12 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("cannot get volume name from snapshot %v", snapshot.Name)
+		logrus.Warnf("Cannot get volume name from snapshot %v", snapshot.Name)
 		return false
 	}
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.Warnf("failed to get volume %v since %v", snapshot.Name, err)
+		logrus.WithError(err).Warnf("Failed to get volume %v", snapshot.Name)
 		return false
 	}
 	if volume.Status.OwnerID != nc.controllerID {
@@ -223,7 +223,7 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 	if err != nil {
-		logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation, err)
+		logrus.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 		return false
 	}
 	if !dataIntegrityImmediateChecking {
@@ -237,7 +237,7 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
 		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
 		if err != nil {
-			logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
+			logrus.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrity)
 			return false
 		}
 
@@ -316,13 +316,13 @@ func (nc *NodeController) handleErr(err error, key interface{}) {
 	}
 
 	if nc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn node %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn node %v", key)
 		nc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn node %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn node %v out of the queue", key)
 	nc.queue.Forget(key)
 }
 
@@ -456,7 +456,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		DisableSchedulingOnCordonedNode, err :=
 			nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
 		if err != nil {
-			logrus.Errorf("error getting disable scheduling on cordoned node setting: %v", err)
+			logrus.WithError(err).Error("Error getting disable scheduling on cordoned node setting")
 			return err
 		}
 
@@ -521,7 +521,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		data, _ := nc.snapshotMonitor.GetCollectedData()
 		status, ok := data.(monitor.SnapshotMonitorStatus)
 		if !ok {
-			logrus.Errorf("failed to assert value from snapshot monitor: %v", data)
+			logrus.Errorf("Failed to assert value from snapshot monitor: %v", data)
 		} else {
 			node.Status.SnapshotCheckStatus.LastPeriodicCheckedAt = status.LastSnapshotPeriodicCheckedAt
 		}
@@ -616,13 +616,13 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 
 	volumeName, ok := currentSnapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("cannot get volume name from snapshot %v", currentSnapshot.Name)
+		logrus.Warnf("Cannot get volume name from snapshot %v", currentSnapshot.Name)
 		return
 	}
 
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.Warnf("failed to get volume %v since %v", currentSnapshot.Name, err)
+		logrus.WithError(err).Warnf("Failed to get volume %v", currentSnapshot.Name)
 		return
 	}
 
@@ -1019,7 +1019,7 @@ func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, ima
 func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error {
 	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
 	if err != nil {
-		logrus.Errorf("failed to get Setting BackingImageCleanupWaitInterval, won't do cleanup for backing images: %v", err)
+		logrus.WithError(err).Error("Failed to get Setting BackingImageCleanupWaitInterval, won't do cleanup for backing images")
 		return nil
 	}
 	waitInterval := time.Duration(settingValue) * time.Minute
@@ -1175,7 +1175,7 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDirectoryNames(diskName
 	// Find out the new/missing orphaned directories by checking with orphan CRs
 	orphans, err := nc.ds.ListOrphansByNode(nc.controllerID)
 	if err != nil {
-		logrus.Errorf("unable to list orphans for node %v since %v", nc.controllerID, err.Error())
+		logrus.WithError(err).Errorf("Unable to list orphans for node %v", nc.controllerID)
 		return map[string]string{}, map[string]string{}
 	}
 
@@ -1343,7 +1343,7 @@ func isReadyDiskFound(diskInfoMap map[string]*monitor.CollectedDiskInfo) bool {
 
 func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.CollectedDiskInfo) bool {
 	if len(node.Spec.Disks) != len(collectedDiskInfo) {
-		logrus.Warnf("number of node disks %v and collected disk info %v are not equal",
+		logrus.Warnf("Number of node disks %v and collected disk info %v are not equal",
 			len(node.Spec.Disks), len(collectedDiskInfo))
 		return false
 	}
@@ -1351,14 +1351,14 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 	for diskName, diskInfo := range collectedDiskInfo {
 		disk, ok := node.Spec.Disks[diskName]
 		if !ok {
-			logrus.Warnf("disk %v is not found in node %v", diskName, node.Name)
+			logrus.Warnf("Disk %v is not found in node %v", diskName, node.Name)
 			return false
 		}
 
 		nodeOrDiskEvicted := node.Spec.EvictionRequested || disk.EvictionRequested
 		if nodeOrDiskEvicted != diskInfo.NodeOrDiskEvicted ||
 			disk.Path != diskInfo.Path {
-			logrus.Warnf("disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
+			logrus.Warnf("Disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
 			return false
 		}
 	}

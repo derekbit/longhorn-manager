@@ -194,7 +194,7 @@ func getPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUID, d
 
 	possibleReplicaDirectoryNames, err := util.GetPossibleReplicaDirectoryNames(diskPath)
 	if err != nil {
-		logrus.Errorf("unable to get possible replica directories in disk %v on node %v since %v", diskPath, node.Name, err.Error())
+		logrus.WithError(err).Errorf("Unable to get possible replica directories in disk %v on node %v", diskPath, node.Name)
 		return map[string]string{}
 	}
 
@@ -240,7 +240,7 @@ func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(node *longhorn.Node, disk
 	// Find out the orphaned directories by checking with replica CRs
 	replicas, err := m.ds.ListReplicasByDiskUUID(diskUUID)
 	if err != nil {
-		logrus.Errorf("unable to list replicas for disk UUID %v since %v", diskUUID, err.Error())
+		logrus.WithError(err).Errorf("Unable to list replicas for disk UUID %v", diskUUID)
 		return map[string]string{}
 	}
 

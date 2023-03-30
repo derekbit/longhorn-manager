@@ -117,7 +117,7 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		return err
 	}
 	if oldPV.Spec.CSI == nil || oldPV.Spec.CSI.Driver != types.DepracatedDriverName {
-		logrus.Infof(" There is no need to migrate PV and PVC for volume %v: the PV is not created by the old Longhorn", volumeName)
+		logrus.Infof("There is no need to migrate PV and PVC for volume %v: the PV is not created by the old Longhorn", volumeName)
 		return nil
 	}
 

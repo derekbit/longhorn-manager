@@ -224,14 +224,14 @@ func (m *SnapshotMonitor) handleErr(err error, key interface{}) {
 	}
 
 	if m.snapshotCheckTaskQueue.NumRequeues(key) < snapshotHashMaxRetries {
-		logrus.Warnf("Error syncing snapshot check task %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing snapshot check task %v", key)
 		m.snapshotCheckTaskQueue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
 
-	logrus.Warnf("Dropping hashing request of snapshot %v: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping hashing request of snapshot %v", key)
 	m.snapshotCheckTaskQueue.Forget(key)
 }
 

@@ -82,7 +82,7 @@ func OpenVolume(volume, devicePath, passphrase string) error {
 	logrus.Debugf("Opening device %s with LUKS on %s", devicePath, volume)
 	_, err := luksOpen(volume, devicePath, passphrase)
 	if err != nil {
-		logrus.Warnf("failed to open LUKS device %s: %s", devicePath, err)
+		logrus.WithError(err).Warnf("Failed to open LUKS device %s", devicePath)
 	}
 	return err
 }

@@ -88,17 +88,17 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			context.TODO(),
 			types.LonghornManagerDaemonSetName, metav1.GetOptions{})
 		if err != nil {
-			logrus.Warningf("couldn't get daemonset: %v", err)
+			logrus.WithError(err).Warning("Couldn't get daemonset")
 			continue
 		}
 		if len(ds.Spec.Template.Spec.Containers) != 1 {
-			logrus.Warningf("found %d containers in manager spec", len(ds.Spec.Template.Spec.Containers))
+			logrus.Warningf("Found %d containers in manager spec", len(ds.Spec.Template.Spec.Containers))
 			continue
 		}
 
 		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
-			logrus.Warningf("couldn't list pods: %v", err)
+			logrus.WithError(err).Warning("Couldn't list pods")
 			continue
 		}
 		complete = true

@@ -3442,7 +3442,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
 		// so that currentEngine becomes the migration engine
 		if v.Status.CurrentNodeID != v.Spec.NodeID {
-			log.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
+			log.Infof("Volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
@@ -3488,7 +3488,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 		currentEngine, err := vc.getCurrentEngineAndCleanupOthers(v, es)
 		if err != nil {
-			log.Errorf("failed to get the current engine and clean up others during the migration revert: %v", err)
+			log.WithError(err).Error("Failed to get the current engine and clean up others during the migration revert")
 			return
 		}
 
@@ -3497,7 +3497,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 				continue
 			}
 			if err := vc.deleteReplica(r, rs); err != nil {
-				log.Errorf("failed to delete the migration replica %v during the migration revert: %v", r.Name, err)
+				log.WithError(err).Errorf("Failed to delete the migration replica %v during the migration revert", r.Name)
 				return
 			}
 		}
@@ -3537,7 +3537,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	invalidMigrationEngine := availableEngines > 0 && migrationEngine == nil
 	if unexpectedEngineCount || invalidMigrationEngine {
 		revertRequired = true
-		log.Errorf("unexpected state for migration, current engine count %v has invalid migration engine %v",
+		log.Errorf("Unexpected state for migration, current engine count %v has invalid migration engine %v",
 			len(es), invalidMigrationEngine)
 		return nil
 	}
@@ -3560,7 +3560,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		return nil
 	}
 
-	log.Info("volume migration engine is ready")
+	log.Info("Volume migration engine is ready")
 	return nil
 }
 
@@ -3606,7 +3606,7 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 			case longhorn.ReplicaModeRW:
 				currentAvailableReplicas[dataPath] = r
 			default:
-				log.Warnf("unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
+				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 				continue
 			}
 		} else if r.Spec.EngineName == migrationEngine.Name {

@@ -3,14 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -130,14 +130,14 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 
 	defer func() {
 		if err := kubeClient.CoreV1().Pods(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
-			logrus.Warnf("failed to delete proc cmdline detection pod %v: %v", name, err)
+			logrus.WithError(err).Warnf("Failed to delete proc cmdline detection pod %v", name)
 		}
 	}()
 
 	completed := false
 	for i := 0; i < DetectPodMaxPolls; i++ {
 		if pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
-			logrus.Warnf("failed to get proc cmdline detection pod %v: %v", name, err)
+			logrus.WithError(err).Warnf("Failed to get proc cmdline detection pod %v", name)
 		} else if pod.Status.Phase == v1.PodSucceeded {
 			completed = true
 			break

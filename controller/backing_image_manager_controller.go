@@ -203,13 +203,13 @@ func (c *BackingImageManagerController) handleErr(err error, key interface{}) {
 	}
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn backing image manager %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn backing image manager %v", key)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn backing image manager %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn backing image manager %v out of the queue", key)
 	c.queue.Forget(key)
 }
 
@@ -1228,7 +1228,7 @@ func (m *BackingImageManagerMonitor) pollAndUpdateBackingImageFileMap() (needSto
 	bim, err := m.ds.GetBackingImageManager(m.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			m.log.Info("stop monitoring because the backing image manager no longer exists")
+			m.log.Info("Stop monitoring because the backing image manager no longer exists")
 			return true
 		}
 		monitorErr = err
@@ -1236,7 +1236,7 @@ func (m *BackingImageManagerMonitor) pollAndUpdateBackingImageFileMap() (needSto
 	}
 
 	if bim.Status.OwnerID != m.controllerID {
-		m.log.Info("stop monitoring because the backing image manager owner ID becomes %v", bim.Status.OwnerID)
+		m.log.Infof("Stop monitoring because the backing image manager owner ID becomes %v", bim.Status.OwnerID)
 		return true
 	}
 

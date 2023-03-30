@@ -100,7 +100,7 @@ func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
 		return errors.Wrapf(err, "failed to get backup '%v' of volume '%v'", input.Name, volName)
 	}
 	if backup == nil {
-		logrus.Warnf("cannot find backup '%v' of volume '%v'", input.Name, volName)
+		logrus.Warnf("Cannot find backup '%v' of volume '%v'", input.Name, volName)
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}

@@ -211,7 +211,7 @@ func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, na
 	isOwnerUnavailable := func(node string) bool {
 		isUnavailable, err := ds.IsNodeDownOrDeletedOrMissingManager(node)
 		if node != "" && err != nil {
-			logrus.Errorf("Error while checking IsNodeDownOrDeletedOrMissingManager for object %v, node %v: %v", name, node, err)
+			logrus.WithError(err).Errorf("Error while checking IsNodeDownOrDeletedOrMissingManager for object %v, node %v", name, node)
 		}
 		return node == "" || isUnavailable
 	}

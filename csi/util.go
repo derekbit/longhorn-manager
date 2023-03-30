@@ -220,7 +220,7 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	logrus.Debugf("trying to ensure mount point %v", targetPath)
+	logrus.Debugf("Trying to ensure mount point %v", targetPath)
 	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(targetPath, 0750)
@@ -228,9 +228,9 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
+		logrus.Debugf("Mount point %v try reading dir to make sure it's healthy", targetPath)
 		if _, err := os.ReadDir(targetPath); err != nil {
-			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
+			logrus.WithError(err).Debugf("Mount point %v was identified as corrupt by ReadDir", targetPath)
 			IsCorruptedMnt = true
 		}
 	}
@@ -277,7 +277,7 @@ func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
 	logrus.Infof("trying to cleanup mount point %v", targetPath)
 	if err := unmount(targetPath, mounter); err != nil {
-		logrus.Debugf("failed to unmount during cleanup error: %v", err)
+		logrus.WithError(err).Debug("Failed to unmount during cleanup")
 		return err
 	}
 

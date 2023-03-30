@@ -139,13 +139,13 @@ func (kc *KubernetesPVController) handleErr(err error, key interface{}) {
 	}
 
 	if kc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn volume kubernetes status %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn volume kubernetes status %v", key)
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Persistent Volume %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Persistent Volume %v out of the queue", key)
 	kc.queue.Forget(key)
 }
 

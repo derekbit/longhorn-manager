@@ -307,7 +307,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
-			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
+			log.Warn("Can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
 			if replica.Spec.Active && dataPath != "" {
 				// prevent accidentally deletion

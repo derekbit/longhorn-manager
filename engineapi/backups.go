@@ -403,7 +403,7 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 	if output, err := e.ExecuteEngineBinaryWithoutTimeout(envs, args...); err != nil {
 		var taskErr TaskError
 		if jsonErr := json.Unmarshal([]byte(output), &taskErr); jsonErr != nil {
-			logrus.Warnf("Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure: %v", jsonErr)
+			logrus.WithError(jsonErr).Warn("Cannot unmarshal the restore error, maybe it's not caused by the replica restore failure")
 			return err
 		}
 		return taskErr

@@ -1395,14 +1395,14 @@ func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettin
 		if definition.Type == SettingTypeBool {
 			result, err := strconv.ParseBool(value)
 			if err != nil {
-				logrus.Errorf("Invalid value %v for the boolean setting %v: %v", value, name, err)
+				logrus.WithError(err).Errorf("Invalid value %v for the boolean setting %v", value, name)
 				defaultSettings = map[string]string{}
 				break
 			}
 			value = strconv.FormatBool(result)
 		}
 		if err := ValidateSetting(name, value); err != nil {
-			logrus.Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, err)
+			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid", name)
 			defaultSettings = map[string]string{}
 			break
 		}
@@ -1418,7 +1418,7 @@ func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettin
 		guaranteedReplicaManagerCPU = defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)]
 	}
 	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU); err != nil {
-		logrus.Errorf("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them: %v", err)
+		logrus.WithError(err).Error("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them")
 		defaultSettings = map[string]string{}
 	}
 
@@ -1429,8 +1429,8 @@ func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string
 	defaultSettings := map[string]string{}
 
 	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {
-		logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v",
-			string(defaultSettingYAMLData), err)
+		logrus.WithError(err).Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them",
+			string(defaultSettingYAMLData))
 		defaultSettings = map[string]string{}
 	}
 

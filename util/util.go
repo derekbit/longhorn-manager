@@ -238,7 +238,7 @@ func ExecuteWithTimeout(timeout time.Duration, envs []string, binary string, arg
 	case <-time.After(timeout):
 		if cmd.Process != nil {
 			if err := cmd.Process.Kill(); err != nil {
-				logrus.Warnf("Problem killing process pid=%v: %s", cmd.Process.Pid, err)
+				logrus.WithError(err).Warnf("Problem killing process pid=%v", cmd.Process.Pid)
 			}
 
 		}
@@ -506,7 +506,7 @@ func RemoveHostDirectoryContent(directory string) (err error) {
 	}
 	// check if the directory already deleted
 	if _, err := nsExec.Execute("ls", []string{dir}); err != nil {
-		logrus.Warnf("cannot find host directory %v for removal", dir)
+		logrus.WithError(err).Warnf("Cannot find host directory %v for removal", dir)
 		return nil
 	}
 	if _, err := nsExec.Execute("rm", []string{"-rf", dir}); err != nil {

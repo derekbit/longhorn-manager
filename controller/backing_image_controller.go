@@ -145,13 +145,13 @@ func (bic *BackingImageController) handleErr(err error, key interface{}) {
 	}
 
 	if bic.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn backing image %v: %v", key, err)
+		logrus.WithError(err).Warnf("Error syncing Longhorn backing image %v", key)
 		bic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn backing image %v out of the queue: %v", key, err)
+	logrus.WithError(err).Warnf("Dropping Longhorn backing image %v out of the queue", key)
 	bic.queue.Forget(key)
 }
 
@@ -289,7 +289,7 @@ func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.
 	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Warn("can not get backing image data source, return cleaned so the controller won't wait until bids become failed-and-cleanup")
+			log.Warn("Cannot get backing image data source, return cleaned so the controller won't wait until bids become failed-and-cleanup")
 			return true, nil
 		}
 		return false, err
