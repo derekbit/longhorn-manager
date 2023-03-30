@@ -139,6 +139,7 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 			ErrorMsg:  p.ProcessStatus.ErrorMsg,
 			PortStart: p.ProcessStatus.PortStart,
 			PortEnd:   p.ProcessStatus.PortEnd,
+			UUID:      p.ProcessStatus.UUID,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Type:     "",
