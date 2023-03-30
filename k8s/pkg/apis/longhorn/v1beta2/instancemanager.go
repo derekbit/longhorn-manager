@@ -104,6 +104,8 @@ type InstanceStatus struct {
 
 type InstanceProcessStatus struct {
 	// +optional
+	UUID string `json:"uuid"`
+	// +optional
 	Endpoint string `json:"endpoint"`
 	// +optional
 	ErrorMsg string `json:"errorMsg"`
