@@ -121,6 +121,8 @@ type InstanceProcessStatus struct {
 	Type InstanceType `json:"type"`
 	// +optional
 	ResourceVersion int64 `json:"resourceVersion"`
+	// +optional
+	DeletionFailedAt string `json:"deletionFailedAt"`
 }
 
 // InstanceManagerSpec defines the desired state of the Longhorn instancer manager
