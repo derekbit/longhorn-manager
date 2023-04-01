@@ -544,6 +544,16 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
 			// problematic engine process and block device. The next reattachment then will succeed.
+			if instance, ok := im.Status.Instances[e.Name]; ok {
+				instance.Status.DeletionFailedAt = util.Now()
+				im.Status.Instances[e.Name] = instance
+				_, err = ec.ds.UpdateInstanceManagerStatus(im)
+				if err != nil && !apierrors.IsNotFound(errors.Cause(err)) {
+					logrus.WithError(err).Errorf("Failed to update instance manager %v status", im.Name)
+					return
+				}
+			}
+
 			logrus.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
 			err = nil
 		}

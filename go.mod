@@ -47,6 +47,7 @@ require (
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
+	github.com/r3labs/diff/v3 v3.0.1
 	github.com/rancher/dynamiclistener v0.3.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler v1.0.0
@@ -78,6 +79,8 @@ require (
 	github.com/felixge/httpsnoop v1.0.1 // indirect
 	github.com/google/fscrypt v0.3.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 )

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/r3labs/diff/v3"
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
@@ -1414,10 +1416,37 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return false
 	}
 
-	if reflect.DeepEqual(im.Status.Instances, resp) {
+	instanceChanges, err := diff.Diff(im.Status.Instances, resp, diff.DisableStructValues())
+	if err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to diff im.Status.Instances and processes from instance manager"))
 		return false
 	}
-	im.Status.Instances = resp
+
+	for _, instanceChange := range instanceChanges {
+		instanceName := instanceChange.Path[0]
+		switch instanceChange.Type {
+		case diff.CREATE:
+			if im.Status.Instances == nil {
+				im.Status.Instances = map[string]longhorn.InstanceProcess{}
+			}
+			instance := resp[instanceName]
+			im.Status.Instances[instanceName] = instance
+		case diff.DELETE:
+			delete(im.Status.Instances, instanceName)
+		case diff.UPDATE:
+			changes, err := diff.Diff(resp[instanceName], im.Status.Instances[instanceName])
+			if err != nil {
+				utilruntime.HandleError(errors.Wrapf(err, "failed to diff instance %v and process from instance manager", instanceName))
+				return false
+			}
+			if (len(changes) == 1 && !strings.EqualFold(changes[0].Path[0], "deletionFailedAt")) ||
+				len(changes) > 1 {
+				instance := resp[instanceName]
+				im.Status.Instances[instanceName] = instance
+			}
+		}
+	}
+
 	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update instance map for instance manager %v", m.Name))
 		return false
