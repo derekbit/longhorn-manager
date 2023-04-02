@@ -102,6 +102,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}
 
 	instance, exists := im.Status.Instances[instanceName]
+	logrus.Infof("Debug ===> instanceName=%v, exists=%v, instance.Status.State=%v", instanceName, exists, instance.Status.State)
 	if !exists {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
@@ -289,7 +290,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
-		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
+		i, exists := im.Status.Instances[instanceName]
+		logrus.Infof("Debug =====> instanceName=%v, im.Name=%v, spec.DesireState=%v, exists=%v, i.Status.State=%v, i.Status.UUID=%v, i.Status.DeletionFailedAt=%v, Status.State=%v",
+			instanceName, im.Name, spec.DesireState, exists, i.Status.State, i.Status.UUID, i.Status.DeletionFailedAt, status.CurrentState)
+		if exists && i.Status.State == longhorn.InstanceStateRunning {
 			status.Started = true
 			break
 		}

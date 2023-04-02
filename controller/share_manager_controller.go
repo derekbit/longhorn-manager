@@ -583,11 +583,11 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	log := getLoggerForShareManager(c.logger, sm)
 	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
 	if err != nil && !apierrors.IsNotFound(err) {
-		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
+		log.WithError(err).Error("Failed to retrieve pod for share manager from datastore")
 		return err
 	} else if pod == nil {
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
-			log.Debug("Share Manager pod is gone, transitioning to stopped state for share manager stopped, before starting")
+			log.Info("Share Manager pod is gone, transitioning to stopped state for share manager stopped, before starting")
 			sm.Status.State = longhorn.ShareManagerStateStopped
 			return nil
 		}
@@ -595,13 +595,13 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		// there should only ever be no pod if we are in pending state
 		// if there is no pod in any other state transition to error so we start over
 		if sm.Status.State != longhorn.ShareManagerStateStarting {
-			log.Debug("Share Manager has no pod but is not in starting state, requires cleanup with remount")
+			log.Info("Share Manager has no pod but is not in starting state, requires cleanup with remount")
 			sm.Status.State = longhorn.ShareManagerStateError
 			return nil
 		}
 
 		if pod, err = c.createShareManagerPod(sm); err != nil {
-			log.WithError(err).Error("failed to create pod for share manager")
+			log.WithError(err).Error("Failed to create pod for share manager")
 			return err
 		}
 	}
@@ -618,12 +618,12 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
-			log.Debug("Share Manager is waiting for pod deletion before transitioning to stopped state")
+			log.Info("Share Manager is waiting for pod deletion before transitioning to stopped state")
 			return nil
 		}
 
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
-			log.Debug("Share Manager pod requires cleanup with remount")
+			log.Info("Share Manager pod requires cleanup with remount")
 			sm.Status.State = longhorn.ShareManagerStateError
 		}
 
@@ -633,7 +633,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	// if we have an deleted pod but are supposed to be stopping
 	// we don't modify the share-manager state
 	if sm.Status.State == longhorn.ShareManagerStateStopping {
-		log.Debug("Share Manager is waiting for pod deletion before transitioning to stopped state")
+		log.Info("Share Manager is waiting for pod deletion before transitioning to stopped state")
 		return nil
 	}
 
@@ -653,10 +653,16 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 		if !allContainersReady {
 			c.enqueueShareManager(sm)
-		} else if sm.Status.State == longhorn.ShareManagerStateStarting {
-			sm.Status.State = longhorn.ShareManagerStateRunning
-		} else if sm.Status.State != longhorn.ShareManagerStateRunning {
-			sm.Status.State = longhorn.ShareManagerStateError
+		} else {
+			switch sm.Status.State {
+			case longhorn.ShareManagerStateStarting:
+				sm.Status.State = longhorn.ShareManagerStateRunning
+			case longhorn.ShareManagerStateRunning:
+				// Get Mount Status
+
+			default:
+				sm.Status.State = longhorn.ShareManagerStateError
+			}
 		}
 	default:
 		sm.Status.State = longhorn.ShareManagerStateError
