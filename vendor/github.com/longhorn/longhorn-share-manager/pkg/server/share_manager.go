@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,7 +14,6 @@ import (
 	"github.com/longhorn/longhorn-share-manager/pkg/crypto"
 	"github.com/longhorn/longhorn-share-manager/pkg/server/nfs"
 	"github.com/longhorn/longhorn-share-manager/pkg/types"
-	"github.com/longhorn/longhorn-share-manager/pkg/util"
 	"github.com/longhorn/longhorn-share-manager/pkg/volume"
 )
 
@@ -23,14 +23,13 @@ const configPath = "/tmp/vfs.conf"
 type ShareManager struct {
 	logger logrus.FieldLogger
 
-	Volume volume.Volume
+	volume      volume.Volume
+	mountStatus MountStatus
 
 	context  context.Context
 	shutdown context.CancelFunc
 
 	nfsServer *nfs.Server
-
-	MountStatus MountStatus
 }
 
 type MountStatus struct {
@@ -38,11 +37,17 @@ type MountStatus struct {
 	Error string
 }
 
+// NewShareManager creates a new ShareManager
 func NewShareManager(logger logrus.FieldLogger, volume volume.Volume) (*ShareManager, error) {
 	m := &ShareManager{
-		Volume: volume,
+		volume: volume,
 		logger: logger.WithField("volume", volume.Name).WithField("encrypted", volume.IsEncrypted()),
+		mountStatus: MountStatus{
+			State: types.ProgressStatePending,
+			Error: "",
+		},
 	}
+
 	m.context, m.shutdown = context.WithCancel(context.Background())
 
 	nfsServer, err := nfs.NewServer(logger, configPath, types.ExportPath, volume.Name)
@@ -53,20 +58,25 @@ func NewShareManager(logger logrus.FieldLogger, volume volume.Volume) (*ShareMan
 	return m, nil
 }
 
+// GetVolumeName returns the name of the volume
+func (m *ShareManager) GetVolumeName() string {
+	return m.volume.Name
+}
+
+// SetMountStatus sets the mount status
 func (m *ShareManager) SetMountStatus(state types.ProgressState, err string) {
-	m.MountStatus.State = state
-	m.MountStatus.Error = err
+	m.mountStatus.State = state
+	m.mountStatus.Error = err
 }
 
+// GetMountStatus returns the mount status
 func (m *ShareManager) GetMountStatus() (types.ProgressState, string) {
-	return m.MountStatus.State, m.MountStatus.Error
+	return m.mountStatus.State, m.mountStatus.Error
 }
 
+// Run checks if the volume is valid, mounts it, and exports it by reloading the NFS server
 func (m *ShareManager) Run() error {
 	var err error
-	vol := m.Volume
-
-	m.SetMountStatus(types.ProgressStateStarting, "")
 
 	defer func() {
 		if err != nil {
@@ -74,6 +84,9 @@ func (m *ShareManager) Run() error {
 		}
 	}()
 
+	m.SetMountStatus(types.ProgressStateStarting, "")
+
+	vol := m.volume
 	err = m.nfsServer.CreateExport(vol.Name)
 	if err != nil {
 		m.logger.WithError(err).Error("Failed to create NFS export")
@@ -101,7 +114,7 @@ func (m *ShareManager) Run() error {
 			return
 		}
 
-		m.logger.Infof("Setting up volume %v", vol.Name)
+		m.logger.Infof("Setting up volume")
 		devicePath, err = setupDevice(m.logger, vol, devicePath)
 		if err != nil {
 			return
@@ -125,9 +138,10 @@ func (m *ShareManager) Run() error {
 			return
 		}
 
-		err = util.KillProcessByName("ganesha.nfsd", "HUP")
+		// Reload the config to pick up the new export
+		err = m.nfsServer.ReloadExports()
 		if err != nil {
-			m.logger.WithError(err).Error("Failed to reload export config")
+			m.logger.WithError(err).Error("Failed to reload NFS exports")
 			return
 		}
 
@@ -137,13 +151,49 @@ func (m *ShareManager) Run() error {
 	return nil
 }
 
-func (m *ShareManager) StartNFSServer() error {
+// StartNfsServer starts the NFS server and blocks until it exits.
+func (m *ShareManager) StartNfsServer() error {
 	m.logger.Info("Starting NFS server")
+
+	defer func() {
+		mountPath := types.GetMountPath(m.GetVolumeName())
+
+		m.logger.Info("Unmounting volume")
+		if err := volume.UnmountVolume(mountPath); err != nil {
+			m.logger.WithError(err).Error("Failed to unmount volume")
+		}
+
+		m.logger.Info("Tearing down device")
+		if err := tearDownDevice(m.logger, m.volume); err != nil {
+			m.logger.WithError(err).Error("Failed to tear down device")
+		}
+	}()
 
 	err := m.nfsServer.Run(m.context)
 	if err != nil {
 		m.logger.WithError(err).Error("NFS server exited with error")
 	}
+	return err
+}
+
+// StopNfsServer stops the NFS server.
+func (m *ShareManager) StopNfsServer() error {
+	m.logger.Info("Stopping NFS server")
+
+	cmd := m.nfsServer.GetCommand()
+	if cmd == nil {
+		return nil
+	}
+
+	m.logger.Info("Sending SIGTERM to NFS server")
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		m.logger.WithError(err).Error("Failed to send SIGTERM to NFS server, sending SIGKILL instead")
+		if err := cmd.Process.Kill(); err != nil {
+			m.logger.WithError(err).Error("Failed to send SIGKILL to NFS server")
+		}
+	}
+
+	_, err := cmd.Process.Wait()
 	return err
 }
 
@@ -153,7 +203,7 @@ func (m *ShareManager) StartNFSServer() error {
 func setupDevice(logger logrus.FieldLogger, vol volume.Volume, devicePath string) (string, error) {
 	diskFormat, err := volume.GetDiskFormat(devicePath)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to determine filesystem format of volume error")
+		return "", errors.Wrap(err, "failed to determine filesystem format")
 	}
 	logger.Infof("Volume %v device %v contains filesystem of format %v", vol.Name, devicePath, diskFormat)
 
@@ -242,7 +292,7 @@ func (m *ShareManager) runHealthCheck() {
 	for {
 		select {
 		case <-m.context.Done():
-			m.logger.Info("NFS server is shutting down")
+			m.logger.Info("Stopping health check since NFS server is shut down")
 			return
 		case <-ticker.C:
 			if !m.hasHealthyVolume() {
@@ -255,11 +305,18 @@ func (m *ShareManager) runHealthCheck() {
 }
 
 func (m *ShareManager) hasHealthyVolume() bool {
-	mountPath := types.GetMountPath(m.Volume.Name)
+	mountPath := types.GetMountPath(m.GetVolumeName())
 	err := exec.CommandContext(m.context, "ls", mountPath).Run()
 	return err == nil
 }
 
+// Shutdown shuts down the NFS server and cancels the share manager context.
 func (m *ShareManager) Shutdown() {
+	m.logger.Info("Gracefully shutting down NFS server")
+	if err := m.StopNfsServer(); err != nil {
+		m.logger.WithError(err).Error("Failed to stop NFS server")
+	}
+
+	m.logger.Info("Canceling share manager context")
 	m.shutdown()
 }

@@ -179,8 +179,8 @@ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd/go.mod h1:dv4zxwHi5C/8AeI+4gX4dCWOIvNi7I6JCSX0HvlKPgE=
 github.com/derekbit/longhorn-instance-manager v0.0.0-20230330023108-0c32c900b416 h1:scyW9lKvUEmwVRvfAFvd8KSo/nUvIYSPQ8chpcj+5I8=
 github.com/derekbit/longhorn-instance-manager v0.0.0-20230330023108-0c32c900b416/go.mod h1:HvO09770ZROMe5lLlGFfgOg0wFw4dS+ZvUTo4kxwGTU=
-github.com/derekbit/longhorn-share-manager v0.0.0-20230401165619-fd2fbc2aa64a h1:LoozFGFAmedMGTfKbZaZBITjLMXGEjeZJz62PNxw0As=
-github.com/derekbit/longhorn-share-manager v0.0.0-20230401165619-fd2fbc2aa64a/go.mod h1:15jIjFqyOr95VPRtZVJ7up6wseYpI/9mZByQIANc9Ts=
+github.com/derekbit/longhorn-share-manager v0.0.0-20230404151901-ec52db4474df h1:0Xc2fhu/R4/iJnQ3qSxV6SjPVSc6lG7Ffo2AQv3Mklc=
+github.com/derekbit/longhorn-share-manager v0.0.0-20230404151901-ec52db4474df/go.mod h1:15jIjFqyOr95VPRtZVJ7up6wseYpI/9mZByQIANc9Ts=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=

@@ -164,7 +164,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.4.1 => github.com/derekbit/longhorn-share-manager v0.0.0-20230401165619-fd2fbc2aa64a
+# github.com/longhorn/longhorn-share-manager v1.4.1 => github.com/derekbit/longhorn-share-manager v0.0.0-20230404151901-ec52db4474df
 ## explicit; go 1.17
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/crypto

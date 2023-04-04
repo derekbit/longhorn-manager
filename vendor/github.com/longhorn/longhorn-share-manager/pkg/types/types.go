@@ -18,6 +18,7 @@ const (
 type ProgressState string
 
 const (
+	ProgressStatePending    = ProgressState("pending")
 	ProgressStateStarting   = ProgressState("starting")
 	ProgressStateInProgress = ProgressState("in_progress")
 	ProgressStateComplete   = ProgressState("complete")

@@ -32,7 +32,7 @@ func NewShareManagerServer(manager *server.ShareManager) *ShareManagerServer {
 }
 
 func (s *ShareManagerServer) FilesystemMount(ctx context.Context, req *empty.Empty) (resp *empty.Empty, err error) {
-	volumeName := s.manager.Volume.Name
+	volumeName := s.manager.GetVolumeName()
 	mountPath := types.GetMountPath(volumeName)
 	devicePath := types.GetVolumeDevicePath(volumeName, false)
 
@@ -56,7 +56,7 @@ func (s *ShareManagerServer) FilesystemMountStatus(ctx context.Context, req *emp
 }
 
 func (s *ShareManagerServer) FilesystemTrim(ctx context.Context, req *FilesystemTrimRequest) (resp *empty.Empty, err error) {
-	volumeName := s.manager.Volume.Name
+	volumeName := s.manager.GetVolumeName()
 
 	defer func() {
 		if err != nil {
