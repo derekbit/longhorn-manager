@@ -25,3 +25,19 @@ func NewShareManagerClient(sm *longhorn.ShareManager, pod *v1.Pod) (*ShareManage
 func (c *ShareManagerClient) FilesystemTrim(isEncryptedDevice bool) error {
 	return c.grpcClient.FilesystemTrim(isEncryptedDevice)
 }
+
+func (c *ShareManagerClient) FilesystemMount() error {
+	return c.grpcClient.FilesystemMount()
+}
+
+func (c *ShareManagerClient) FilesystemMountStatus() (*longhorn.ShareManagerMountStatus, error) {
+	resp, err := c.grpcClient.FilesystemMountStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	return &longhorn.ShareManagerMountStatus{
+		State: resp.State,
+		Error: resp.Error,
+	}, nil
+}
