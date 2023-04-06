@@ -13,7 +13,7 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(sm *longhorn.ShareManager, pod *v1.Pod) (*ShareManagerClient, error) {
-	if sm.Status.State != longhorn.ShareManagerStateRunning {
+	if sm.Status.State != longhorn.ShareManagerStateStarting {
 		return nil, fmt.Errorf("invalid Share Manager %v, state: %v", sm.Name, sm.Status.State)
 	}
 

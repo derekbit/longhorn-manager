@@ -655,6 +655,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 func (c *ShareManagerController) syncShareManagerStateWithPodStatus(sm *longhorn.ShareManager, pod *v1.Pod) error {
 	log := getLoggerForShareManager(c.logger, sm)
 
+	logrus.Infof("Debug ========>syncShareManagerStateWithPodStatus = %v (%v)", pod.Name, pod.Status.Phase)
+
 	switch pod.Status.Phase {
 	case v1.PodPending:
 		if sm.Status.State != longhorn.ShareManagerStateStarting {
@@ -676,8 +678,7 @@ func (c *ShareManagerController) syncShareManagerStateWithPodStatus(sm *longhorn
 
 		switch sm.Status.State {
 		case longhorn.ShareManagerStateStarting:
-			sm.Status.State = longhorn.ShareManagerStateRunning
-		case longhorn.ShareManagerStateRunning:
+			logrus.Infof("Debug ========>NewShareManagerClient ")
 			client, err := engineapi.NewShareManagerClient(sm, pod)
 			if err != nil {
 				return errors.Wrapf(err, "failed to launch gRPC client for share manager")
@@ -687,7 +688,7 @@ func (c *ShareManagerController) syncShareManagerStateWithPodStatus(sm *longhorn
 			if err != nil {
 				return errors.Wrapf(err, "failed to get mount status from share manager pod")
 			}
-
+			logrus.Infof("Debug ========>status=%v", status)
 			if status.State != engineapi.ProcessStatePending {
 				break
 			}
@@ -708,11 +709,16 @@ func (c *ShareManagerController) syncShareManagerStateWithPodStatus(sm *longhorn
 				if err != nil {
 					return errors.Wrapf(err, "failed to mount filesystem")
 				}
+				sm.Status.State = longhorn.ShareManagerStateRunning
 			}
+		case longhorn.ShareManagerStateRunning:
+			break
 		default:
+			logrus.Infof("Debug =====> A")
 			sm.Status.State = longhorn.ShareManagerStateError
 		}
 	default:
+		logrus.Infof("Debug =====> B")
 		sm.Status.State = longhorn.ShareManagerStateError
 	}
 
