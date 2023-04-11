@@ -40,6 +40,7 @@ type ProcessStatus struct {
 	ErrorMsg  string `json:"errorMsg"`
 	PortStart int32  `json:"portStart"`
 	PortEnd   int32  `json:"portEnd"`
+	UUID      string `json:"uuid"`
 }
 
 func RPCToProcessStatus(obj *rpc.ProcessStatus) ProcessStatus {
@@ -48,6 +49,7 @@ func RPCToProcessStatus(obj *rpc.ProcessStatus) ProcessStatus {
 		ErrorMsg:  obj.ErrorMsg,
 		PortStart: obj.PortStart,
 		PortEnd:   obj.PortEnd,
+		UUID:      obj.Uuid,
 	}
 }
 
