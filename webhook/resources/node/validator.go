@@ -124,13 +124,13 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
-	// Validate StorageReserved and Disk.Tags
-	for name, disk := range newNode.Spec.Disks {
-		if disk.StorageReserved < 0 {
+	// Validate Disks StorageReserved and Tags
+	for diskName, diskSpec := range newNode.Spec.Disks {
+		if diskSpec.StorageReserved < 0 {
 			return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable",
-				name, name, disk.Path), "")
+				newNode.Name, diskName, diskSpec.Path), "")
 		}
-		_, err := util.ValidateTags(disk.Tags)
+		_, err := util.ValidateTags(diskSpec.Tags)
 		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
