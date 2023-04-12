@@ -289,9 +289,21 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
-		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
-			status.Started = true
-			break
+		i, exists := im.Status.Instances[instanceName]
+		logrus.Infof("Debug =====> instanceName=%v, im.Name=%v, spec.DesireState=%v, exists=%v, i.Status.State=%v, i.Status.UUID=%v, i.Status.DeletionFailedAt=%v, Status.State=%v",
+			instanceName, im.Name, spec.DesireState, exists, i.Status.State, i.Status.UUID, i.Status.DeletionFailedAt, status.CurrentState)
+		if exists && i.Status.State == longhorn.InstanceStateRunning {
+			if i.Status.DeletionFailedAt == "" {
+				status.Started = true
+				break
+			} else {
+				logrus.Infof("Deleting orphaned instance %v due to deletion failed at %v", instanceName, i.Status.DeletionFailedAt)
+				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+					return err
+				}
+				status.Started = false
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
