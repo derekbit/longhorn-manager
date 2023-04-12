@@ -22,7 +22,45 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	if err := upgradeInstanceManagers(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	return upgradeVolumes(namespace, lhClient, resourceMaps)
+
+	if err := upgradeNodes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade node failed")
+	}()
+
+	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn nodes during the node upgrade")
+	}
+
+	for _, n := range nodeMap {
+		if n.Spec.Disks == nil {
+			continue
+		}
+
+		for name, disk := range n.Spec.Disks {
+			if disk.Type == "" {
+				disk.Type = longhorn.DiskTypeFilesystem
+				n.Spec.Disks[name] = disk
+			}
+		}
+	}
+
+	return nil
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
