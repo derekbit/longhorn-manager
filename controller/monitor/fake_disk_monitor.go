@@ -31,10 +31,10 @@ func NewFakeNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 
 		syncCallback: syncCallback,
 
-		getDiskStatHandler:               fakeGetDiskStat,
-		getDiskConfig:                    fakeGetDiskConfig,
-		generateDiskConfig:               fakeGenerateDiskConfig,
-		getPossibleReplicaDirectoryNames: fakeGetPossibleReplicaDirectoryNames,
+		getDiskStatHandler:                      fakeGetDiskStat,
+		getDiskConfigHandler:                    fakeGetDiskConfig,
+		generateDiskConfigHandler:               fakeGenerateDiskConfig,
+		getPossibleReplicaDirectoryNamesHandler: fakeGetPossibleReplicaDirectoryNames,
 	}
 
 	return m, nil
@@ -46,7 +46,7 @@ func fakeGetPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUI
 	}
 }
 
-func fakeGetDiskStat(directory string) (*util.DiskStat, error) {
+func fakeGetDiskStat(diskType longhorn.DiskType, directory string) (*util.DiskStat, error) {
 	return &util.DiskStat{
 		DiskID:     "fsid",
 		Path:       directory,
@@ -60,13 +60,13 @@ func fakeGetDiskStat(directory string) (*util.DiskStat, error) {
 	}, nil
 }
 
-func fakeGetDiskConfig(path string) (*util.DiskConfig, error) {
+func fakeGetDiskConfig(diskType longhorn.DiskType, path string) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskUUID: TestDiskID1,
 	}, nil
 }
 
-func fakeGenerateDiskConfig(path string) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, path string) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskUUID: TestDiskID1,
 	}, nil

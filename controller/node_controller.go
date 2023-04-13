@@ -692,8 +692,8 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 		nc.updateNotReadyDiskStatusReadyCondition(node, diskInfoMap)
 	}
 
-	for fsid, diskInfoMap := range readyDiskInfoMap {
-		nc.updateReadyDiskStatusReadyCondition(node, fsid, diskInfoMap)
+	for _, diskInfoMap := range readyDiskInfoMap {
+		nc.updateReadyDiskStatusReadyCondition(node, diskInfoMap)
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
@@ -791,7 +791,7 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 	}
 }
 
-func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, fsid string, diskInfoMap map[string]*monitor.CollectedDiskInfo) {
+func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo) {
 	diskStatusMap := node.Status.DiskStatus
 
 	for diskName, info := range diskInfoMap {

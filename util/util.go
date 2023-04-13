@@ -730,66 +730,6 @@ type DiskConfig struct {
 	DiskUUID string `json:"diskUUID"`
 }
 
-func GetDiskConfig(path string) (*DiskConfig, error) {
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, DiskConfigFile)
-	output, err := nsExec.Execute("cat", []string{filePath})
-	if err != nil {
-		return nil, fmt.Errorf("cannot find config file %v on host: %v", filePath, err)
-	}
-
-	cfg := &DiskConfig{}
-	if err := json.Unmarshal([]byte(output), cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", filePath, output, err)
-	}
-	return cfg, nil
-}
-
-func GenerateDiskConfig(path string) (*DiskConfig, error) {
-	cfg := &DiskConfig{
-		DiskUUID: UUID(),
-	}
-	encoded, err := json.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
-	}
-
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, DiskConfigFile)
-	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
-		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", filePath)
-	}
-
-	defer func() {
-		if err != nil {
-			if derr := DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(nsExec, path); derr != nil {
-				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", path, derr)
-			}
-
-		}
-	}()
-
-	if _, err := nsExec.ExecuteWithStdin("dd", []string{"of=" + filePath}, string(encoded)); err != nil {
-		return nil, fmt.Errorf("cannot write to disk cfg on %v: %v", filePath, err)
-	}
-	if err := CreateDiskPathReplicaSubdirectory(path); err != nil {
-		return nil, err
-	}
-	if _, err := nsExec.Execute("sync", []string{filePath}); err != nil {
-		return nil, fmt.Errorf("cannot sync disk cfg on %v: %v", filePath, err)
-	}
-
-	return cfg, nil
-}
-
 func MinInt(a, b int) int {
 	if a <= b {
 		return a
