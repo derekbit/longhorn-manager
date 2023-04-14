@@ -86,8 +86,8 @@ type DiskStat struct {
 	DiskID           string
 	Path             string
 	Type             string
-	FreeBlock        int64
-	TotalBlock       int64
+	FreeBlocks       int64
+	TotalBlocks      int64
 	BlockSize        int64
 	StorageMaximum   int64
 	StorageAvailable int64
@@ -433,6 +433,15 @@ func CheckBackupType(backupTarget string) (string, error) {
 	return u.Scheme, nil
 }
 
+type FsStat struct {
+	Fsid       string
+	Path       string
+	Type       string
+	FreeBlock  int64
+	TotalBlock int64
+	BlockSize  int64
+}
+
 func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
@@ -445,16 +454,22 @@ func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	}
 	output = strings.Replace(output, "\n", "", -1)
 
-	diskStat := &DiskStat{}
-	err = json.Unmarshal([]byte(output), diskStat)
+	fsStat := &FsStat{}
+	err = json.Unmarshal([]byte(output), fsStat)
 	if err != nil {
 		return nil, err
 	}
 
-	diskStat.StorageMaximum = diskStat.TotalBlock * diskStat.BlockSize
-	diskStat.StorageAvailable = diskStat.FreeBlock * diskStat.BlockSize
-
-	return diskStat, nil
+	return &DiskStat{
+		DiskID:           fsStat.Fsid,
+		Path:             fsStat.Path,
+		Type:             fsStat.Type,
+		FreeBlocks:       fsStat.FreeBlock,
+		TotalBlocks:      fsStat.TotalBlock,
+		BlockSize:        fsStat.BlockSize,
+		StorageMaximum:   fsStat.TotalBlock * fsStat.BlockSize,
+		StorageAvailable: fsStat.FreeBlock * fsStat.BlockSize,
+	}, nil
 }
 
 func RetryOnConflictCause(fn func() (interface{}, error)) (interface{}, error) {

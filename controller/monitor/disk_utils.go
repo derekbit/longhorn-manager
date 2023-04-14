@@ -7,39 +7,56 @@ import (
 
 	"github.com/pkg/errors"
 
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
 // GetDiskStat returns the disk stat of the given directory
-func GetDiskStat(diskType longhorn.DiskType, directory string) (stat *util.DiskStat, err error) {
+func GetDiskStat(diskType longhorn.DiskType, path string, client engineapi.DiskServiceClient) (stat *util.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return getFilesystemTypeDiskStat(directory)
+		return getFilesystemTypeDiskStat(path)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskStat(directory)
+		return getBlockTypeDiskStat(client, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func getFilesystemTypeDiskStat(directory string) (stat *util.DiskStat, err error) {
-	return util.GetDiskStat(directory)
+func getFilesystemTypeDiskStat(path string) (stat *util.DiskStat, err error) {
+	return util.GetDiskStat(path)
 }
 
-func getBlockTypeDiskStat(directory string) (stat *util.DiskStat, err error) {
-	return &util.DiskStat{}, nil
+func getBlockTypeDiskStat(client engineapi.DiskServiceClient, path string) (stat *util.DiskStat, err error) {
+	info, err := client.DiskInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	return &util.DiskStat{
+		DiskID:           info.ID,
+		Path:             info.Path,
+		Type:             info.Type,
+		TotalBlocks:      info.TotalBlocks,
+		FreeBlocks:       info.FreeBlocks,
+		BlockSize:        info.BlockSize,
+		StorageMaximum:   info.TotalSize,
+		StorageAvailable: info.FreeSize,
+	}, nil
 }
 
 // GetDiskConfig returns the disk config of the given directory
-func GetDiskConfig(diskType longhorn.DiskType, path string) (*util.DiskConfig, error) {
+func GetDiskConfig(diskType longhorn.DiskType, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskConfig(path)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskConfig(path)
+		return getBlockTypeDiskConfig(client, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -64,17 +81,26 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func getBlockTypeDiskConfig(path string) (config *util.DiskConfig, err error) {
-	return &util.DiskConfig{}, nil
+func getBlockTypeDiskConfig(client engineapi.DiskServiceClient, path string) (config *util.DiskConfig, err error) {
+	info, err := client.DiskInfo(path)
+	if err != nil {
+		if grpcstatus.Code(err) == grpccodes.NotFound {
+			return nil, errors.Wrapf(err, "cannot find disk info")
+		}
+		return nil, err
+	}
+	return &util.DiskConfig{
+		DiskUUID: info.UUID,
+	}, nil
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func GenerateDiskConfig(diskType longhorn.DiskType, path string) (*util.DiskConfig, error) {
+func GenerateDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(path)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(path)
+		return generateBlockTypeDiskConfig(client, name, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -121,7 +147,12 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(path string) (*util.DiskConfig, error) {
-	// Create a lvstore on the given block device
-	return &util.DiskConfig{}, nil
+func generateBlockTypeDiskConfig(client engineapi.DiskServiceClient, name, path string) (*util.DiskConfig, error) {
+	info, err := client.DiskCreate(name, path)
+	if err != nil {
+		return nil, err
+	}
+	return &util.DiskConfig{
+		DiskUUID: info.UUID,
+	}, nil
 }
