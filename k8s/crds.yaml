@@ -3247,6 +3247,11 @@ spec:
                 - rwo
                 - rwx
                 type: string
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk-aio
+                type: string
               backingImage:
                 type: string
               backupCompressionMethod:
