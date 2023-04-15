@@ -76,6 +76,9 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 			v.Spec.RevisionCounterDisabled = true
 		}
+		if v.Spec.BackendStoreDriver == "" {
+			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
 	}
 
 	return nil
