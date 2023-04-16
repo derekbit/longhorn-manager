@@ -24,6 +24,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -78,6 +82,28 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		}
 		if v.Spec.BackendStoreDriver == "" {
 			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
+	}
+
+	return nil
+}
+
+func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
+	}()
+
+	replicaMap, err := upgradeutil.ListAndUpdateReplicasInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
+	}
+
+	for _, r := range replicaMap {
+		if r.Spec.BackendStoreDriver == "" {
+			r.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
 		}
 	}
 
