@@ -76,6 +76,9 @@ type InstanceSpec struct {
 	LogRequested bool `json:"logRequested"`
 	// +optional
 	SalvageRequested bool `json:"salvageRequested"`
+	// +kubebuilder:validation:Enum=longhorn;spdk-aio
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 type InstanceStatus struct {
