@@ -24,6 +24,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeEngines(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -104,6 +108,28 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 	for _, r := range replicaMap {
 		if r.Spec.BackendStoreDriver == "" {
 			r.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
+	}
+
+	return nil
+}
+
+func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine failed")
+	}()
+
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn engines during the engine upgrade")
+	}
+
+	for _, e := range engineMap {
+		if e.Spec.BackendStoreDriver == "" {
+			e.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
 		}
 	}
 
