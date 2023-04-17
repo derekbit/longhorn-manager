@@ -45,6 +45,8 @@ type InstanceProcess struct {
 type InstanceProcessSpec struct {
 	// +optional
 	Name string `json:"name"`
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 type InstanceState string
