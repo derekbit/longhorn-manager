@@ -24,6 +24,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeInstanceManagers(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	if err := upgradeEngines(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -130,6 +134,31 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 	for _, e := range engineMap {
 		if e.Spec.BackendStoreDriver == "" {
 			e.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
+	}
+
+	return nil
+}
+
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instanceManager failed")
+	}()
+
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn instanceManagers during the instanceManager upgrade")
+	}
+
+	for _, im := range imMap {
+		for name, instance := range im.Status.Instances {
+			if instance.Spec.BackendStoreDriver == "" {
+				instance.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+				im.Status.Instances[name] = instance
+			}
 		}
 	}
 
