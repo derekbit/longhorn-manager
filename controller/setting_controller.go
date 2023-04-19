@@ -243,6 +243,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.cleanupFailedSupportBundles(); err != nil {
 			return err
 		}
+	case string(types.SettingNameSpdk):
+		if err := sc.updateSpdk(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -666,6 +670,39 @@ func (sc *SettingController) updateCNI() error {
 	pods := append(imPodList, bimPodList...)
 	for _, pod := range pods {
 		if pod.Annotations[nadAnnot] == storageNetwork.Value {
+			continue
+		}
+
+		if err := sc.ds.DeletePod(pod.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sc *SettingController) updateSpdk() error {
+	spdk, err := sc.ds.GetSetting(types.SettingNameSpdk)
+	if err != nil {
+		return err
+	}
+
+	volumesDetached, err := sc.ds.AreAllVolumesDetached()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
+	}
+
+	if !volumesDetached {
+		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameSpdk)
+	}
+
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameSpdk)
+	}
+
+	for _, pod := range imPodList {
+		if pod.Annotations[types.SpdkAnnotation] == spdk.Value {
 			continue
 		}
 

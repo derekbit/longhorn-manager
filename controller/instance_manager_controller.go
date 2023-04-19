@@ -14,6 +14,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -809,7 +810,7 @@ func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName str
 		return false, nil
 	}
 
-	detached, err = imc.areAllInstanceRemovedFromCurrentNodeByType(longhorn.InstanceManagerTypeAllInOne)
+	detached, err = imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeAllInOne)
 	if err != nil {
 		return false, err
 	}
@@ -1115,11 +1116,44 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	}
 
 	secretIsOptional := true
+
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
-	podSpec.Spec.Containers[0].Args = []string{
-		"instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+
+	spdk, err := imc.ds.GetSetting(types.SettingNameSpdk)
+	if err != nil {
+		return nil, err
 	}
+	spdkAnnot := string(types.SpdkAnnotation)
+	if spdk.Value != podSpec.Annotations[spdkAnnot] {
+		podSpec.Annotations[spdkAnnot] = spdk.Value
+	}
+
+	if spdk.Value == "true" {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--enable-spdk", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+		}
+
+		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameSpdkHugepageLimit)
+		if err != nil {
+			return nil, err
+		}
+
+		if podSpec.Spec.Containers[0].Resources.Requests == nil {
+			podSpec.Spec.Containers[0].Resources.Requests = v1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Requests[v1.ResourceMemory] = resource.MustParse("128Mi")
+
+		if podSpec.Spec.Containers[0].Resources.Limits == nil {
+			podSpec.Spec.Containers[0].Resources.Limits = v1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Limits[v1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+	} else {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+		}
+	}
+
 	podSpec.Spec.Containers[0].Env = []v1.EnvVar{
 		{
 			Name:  "TLS_DIR",
@@ -1181,6 +1215,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		},
 	}
+
+	if spdk.Value == "true" {
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			MountPath: "/hugepages",
+			Name:      "hugepage",
+		})
+
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, v1.Volume{
+			Name: "hugepage",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{
+					Medium: v1.StorageMediumHugePages,
+				},
+			},
+		})
+	}
+
 	return podSpec, nil
 }
 
