@@ -354,13 +354,15 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return err
 		}
 	case types.SettingNameStorageNetwork:
+		fallthrough
+	case types.SettingNameSpdk:
 		volumesDetached, err := s.AreAllVolumesDetached()
 		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
 		}
 
 		if !volumesDetached {
-			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)
 		}
 	}
 	return nil
