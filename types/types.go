@@ -865,6 +865,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}
 	return map[string]longhorn.DiskSpec{
 		DefaultDiskPrefix + diskStat.Fsid: {
+			Type:              longhorn.DiskTypeFilesystem,
 			Path:              diskStat.Path,
 			AllowScheduling:   true,
 			EvictionRequested: false,
