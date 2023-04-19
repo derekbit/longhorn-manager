@@ -2996,10 +2996,11 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (
 		},
 		Spec: longhorn.EngineSpec{
 			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				EngineImage: v.Status.CurrentImage,
-				DesireState: longhorn.InstanceStateStopped,
+				VolumeName:         v.Name,
+				VolumeSize:         v.Spec.Size,
+				EngineImage:        v.Status.CurrentImage,
+				BackendStoreDriver: v.Spec.BackendStoreDriver,
+				DesireState:        longhorn.InstanceStateStopped,
 			},
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
@@ -3044,10 +3045,11 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 		},
 		Spec: longhorn.ReplicaSpec{
 			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				EngineImage: v.Status.CurrentImage,
-				DesireState: longhorn.InstanceStateStopped,
+				VolumeName:         v.Name,
+				VolumeSize:         v.Spec.Size,
+				EngineImage:        v.Status.CurrentImage,
+				BackendStoreDriver: v.Spec.BackendStoreDriver,
+				DesireState:        longhorn.InstanceStateStopped,
 			},
 			EngineName:                       e.Name,
 			Active:                           true,
