@@ -21,14 +21,17 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 			AllowScheduling: true,
 			Disks: map[string]longhorn.DiskSpec{
 				TestDiskID1: {
+					Type:            longhorn.DiskTypeFilesystem,
 					Path:            TestDefaultDataPath + "1",
 					AllowScheduling: true,
 				},
 				TestDiskID2: {
+					Type:            longhorn.DiskTypeFilesystem,
 					Path:            TestDefaultDataPath + "2",
 					AllowScheduling: true,
 				},
 				TestDiskID3: {
+					Type:            longhorn.DiskTypeFilesystem,
 					Path:            TestDefaultDataPath + "3",
 					AllowScheduling: true,
 				},

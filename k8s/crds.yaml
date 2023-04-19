@@ -1930,6 +1930,11 @@ spec:
                       items:
                         type: string
                       type: array
+                    type:
+                      enum:
+                      - filesystem
+                      - block
+                      type: string
                   type: object
                 type: object
               engineManagerCPURequest:
