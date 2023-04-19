@@ -47,6 +47,7 @@ type Volume struct {
 	SnapshotDataIntegrity     longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 	UnmapMarkSnapChainRemoved longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
 	BackupCompressionMethod   longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
+	BackendStoreDriver        longhorn.BackendStoreDriverType        `json:"backendStoreDriver"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`

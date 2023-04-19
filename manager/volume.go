@@ -175,6 +175,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			SnapshotDataIntegrity:     spec.SnapshotDataIntegrity,
 			BackupCompressionMethod:   spec.BackupCompressionMethod,
 			UnmapMarkSnapChainRemoved: spec.UnmapMarkSnapChainRemoved,
+			BackendStoreDriver:        spec.BackendStoreDriver,
 		},
 	}
 
