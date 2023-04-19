@@ -294,7 +294,19 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 		return c.parseProcess(replicaProcess), nil
 	case longhorn.BackendStoreDriverTypeSpdkAio:
 		/* TODO: */
-		return nil, nil
+		info, err := c.diskServiceGrpcClient.ReplicaCreate(r.Name, r.Spec.DiskID, r.Spec.VolumeSize)
+		if err != nil {
+			return nil, err
+		}
+
+		return &longhorn.InstanceProcess{
+			Spec: longhorn.InstanceProcessSpec{
+				Name: info.UUID,
+			},
+			Status: longhorn.InstanceProcessStatus{
+				State: longhorn.InstanceStateRunning,
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown backend store driver %v", r.Spec.BackendStoreDriver)
 	}
@@ -337,7 +349,7 @@ func (c *InstanceManagerClient) InstanceDelete(obj interface{}) error {
 			return err
 		case longhorn.BackendStoreDriverTypeSpdkAio:
 			/* TODO: */
-			return nil
+			return c.diskServiceGrpcClient.ReplicaDelete(r.Name, r.Spec.DiskID)
 		default:
 			return fmt.Errorf("unknown backend store driver %v for replica %v", r.Spec.BackendStoreDriver, r.Name)
 		}
@@ -391,7 +403,12 @@ func (c *InstanceManagerClient) InstanceGet(obj interface{}) (*longhorn.Instance
 			return c.parseProcess(process), nil
 		case longhorn.BackendStoreDriverTypeSpdkAio:
 			/* TODO: */
-			return nil, nil
+			aliasName := r.Spec.DiskID + "/" + r.Name
+			replica, err := c.diskServiceGrpcClient.ReplicaInfo(aliasName)
+			if err != nil {
+				return nil, err
+			}
+			return c.parseReplicaInfo((*ReplicaInfo)(unsafe.Pointer(replica))), nil
 		default:
 			return nil, fmt.Errorf("unknown backend store driver %v for replica %v", r.Spec.BackendStoreDriver, r.Name)
 		}
