@@ -83,7 +83,7 @@ type MetadataConfig struct {
 }
 
 type DiskStat struct {
-	Fsid             string
+	DiskID           string
 	Path             string
 	Type             string
 	FreeBlock        int64

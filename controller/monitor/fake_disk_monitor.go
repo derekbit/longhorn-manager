@@ -48,7 +48,7 @@ func fakeGetPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUI
 
 func fakeGetDiskStat(directory string) (*util.DiskStat, error) {
 	return &util.DiskStat{
-		Fsid:       "fsid",
+		DiskID:     "fsid",
 		Path:       directory,
 		Type:       "ext4",
 		FreeBlock:  0,
