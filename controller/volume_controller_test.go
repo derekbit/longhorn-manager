@@ -1058,6 +1058,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			Size:                TestVolumeSize,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
+			BackendStoreDriver:  longhorn.BackendStoreDriverTypeLonghorn,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
