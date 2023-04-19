@@ -1313,7 +1313,7 @@ func (m *InstanceManagerMonitor) Run() {
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.client.ProcessWatch(ctx)
+	notifier, err := m.client.InstanceWatch(ctx)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
 		cancel()
@@ -1401,7 +1401,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return true
 	}
 
-	resp, err := m.client.ProcessList()
+	resp, err := m.client.InstanceList(im.Spec.Type)
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false

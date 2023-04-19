@@ -461,7 +461,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
+	return c.EngineInstanceCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
@@ -574,7 +574,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	defer c.Close()
 
-	err = c.ProcessDelete(e.Name)
+	err = c.InstanceDelete(types.LonghornKindEngine, e)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -668,7 +668,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	}
 	defer c.Close()
 
-	return c.ProcessGet(e.Name)
+	return c.InstanceGet(types.LonghornKindEngine, e)
 }
 
 func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -687,7 +687,7 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.ProcessLog(ctx, e.Name)
+	stream, err := c.InstanceLog(ctx, types.LonghornKindEngine, e)
 	return c, stream, err
 }
 
@@ -1994,7 +1994,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 		return err
 	}
 
-	processBinary, err := c.ProcessGetBinary(e.Name)
+	processBinary, err := c.InstanceGetBinary(e.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the binary of the current engine process")
 	}
