@@ -35,7 +35,7 @@ import (
 var (
 	nodeControllerResyncPeriod = 30 * time.Second
 
-	unknownFsid = "UNKNOWN_FSID"
+	unknownDiskID = "UNKNOWN_DISKID"
 
 	snapshotChangeEventQueueMax = 1048576
 )
@@ -702,25 +702,25 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) (notReadyDiskInfoMap, readyDiskInfoMap map[string]map[string]*monitor.CollectedDiskInfo) {
 	notReadyDiskInfoMap = make(map[string]map[string]*monitor.CollectedDiskInfo, 0)
 	readyDiskInfoMap = make(map[string]map[string]*monitor.CollectedDiskInfo, 0)
-	fsidDiskGroupMap := make(map[string]map[string]*monitor.CollectedDiskInfo, 0)
+	diskIDDiskGroupMap := make(map[string]map[string]*monitor.CollectedDiskInfo, 0)
 
-	// Find out notReadyDiskInfoMap and fsidDiskGroupMap
+	// Find out notReadyDiskInfoMap and diskIDDiskGroupMap
 	for diskName, diskInfo := range collectedDataInfo {
-		fsid := unknownFsid
+		diskID := unknownDiskID
 		if diskInfo.DiskStat != nil {
-			fsid = diskInfo.DiskStat.Fsid
+			diskID = diskInfo.DiskStat.DiskID
 		}
 
-		if notReadyDiskInfoMap[fsid] == nil {
-			notReadyDiskInfoMap[fsid] = make(map[string]*monitor.CollectedDiskInfo, 0)
+		if notReadyDiskInfoMap[diskID] == nil {
+			notReadyDiskInfoMap[diskID] = make(map[string]*monitor.CollectedDiskInfo, 0)
 		}
-		if fsidDiskGroupMap[fsid] == nil {
-			fsidDiskGroupMap[fsid] = make(map[string]*monitor.CollectedDiskInfo, 0)
+		if diskIDDiskGroupMap[diskID] == nil {
+			diskIDDiskGroupMap[diskID] = make(map[string]*monitor.CollectedDiskInfo, 0)
 		}
 
 		// The disk info collected by the node monitor will contain the condition only when the disk is NotReady
 		if diskInfo.Condition != nil {
-			notReadyDiskInfoMap[fsid][diskName] = diskInfo
+			notReadyDiskInfoMap[diskID][diskName] = diskInfo
 			continue
 		}
 
@@ -736,7 +736,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			}
 
 			if errorMessage != "" {
-				notReadyDiskInfoMap[fsid][diskName] =
+				notReadyDiskInfoMap[diskID][diskName] =
 					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
 						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
@@ -745,29 +745,29 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			}
 		}
 
-		fsidDiskGroupMap[fsid][diskName] = diskInfo
+		diskIDDiskGroupMap[diskID][diskName] = diskInfo
 	}
 
 	// Find the duplicated disks and move them to notReadyDiskInfoMap
-	for fsid, diskInfoMap := range fsidDiskGroupMap {
+	for diskID, diskInfoMap := range diskIDDiskGroupMap {
 		for diskName, diskInfo := range diskInfoMap {
-			if readyDiskInfoMap[fsid] == nil {
-				readyDiskInfoMap[fsid] = make(map[string]*monitor.CollectedDiskInfo, 0)
+			if readyDiskInfoMap[diskID] == nil {
+				readyDiskInfoMap[diskID] = make(map[string]*monitor.CollectedDiskInfo, 0)
 			}
 
-			if nc.isFSIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
-				isReadyDiskFound(readyDiskInfoMap[fsid]) {
-				notReadyDiskInfoMap[fsid][diskName] =
+			if nc.isDiskIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
+				isReadyDiskFound(readyDiskInfoMap[diskID]) {
+				notReadyDiskInfoMap[diskID][diskName] =
 					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
-							diskName, diskInfoMap[diskName].Path, node.Name, fsid, monitor.GetDiskNamesFromDiskMap(diskInfoMap)))
+							diskName, diskInfoMap[diskName].Path, node.Name, diskID, monitor.GetDiskNamesFromDiskMap(diskInfoMap)))
 				continue
 			}
 
 			node.Status.DiskStatus[diskName].DiskUUID = diskInfo.DiskUUID
-			readyDiskInfoMap[fsid][diskName] = diskInfo
+			readyDiskInfoMap[diskID][diskName] = diskInfo
 		}
 	}
 
@@ -1294,7 +1294,7 @@ func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*
 }
 
 // Check all disks in the same filesystem ID are in ready status
-func (nc *NodeController) isFSIDDuplicatedWithExistingReadyDisk(diskName string, diskInfo map[string]*monitor.CollectedDiskInfo, diskStatusMap map[string]*longhorn.DiskStatus) bool {
+func (nc *NodeController) isDiskIDDuplicatedWithExistingReadyDisk(diskName string, diskInfo map[string]*monitor.CollectedDiskInfo, diskStatusMap map[string]*longhorn.DiskStatus) bool {
 	if len(diskInfo) > 1 {
 		for otherName := range diskInfo {
 			diskReady := types.GetCondition(diskStatusMap[otherName].Conditions, longhorn.DiskConditionTypeReady)

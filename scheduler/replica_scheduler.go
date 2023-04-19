@@ -72,8 +72,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	nodeDisksMap := map[string]map[string]struct{}{}
 	for _, node := range nodeCandidates {
 		disks := map[string]struct{}{}
-		for fsid, diskStatus := range node.Status.DiskStatus {
-			diskSpec, exists := node.Spec.Disks[fsid]
+		for diskID, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskID]
 			if !exists {
 				continue
 			}
@@ -292,17 +292,17 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 
 	// find disk that fit for current replica
 	for diskUUID := range disks {
-		var fsid string
+		var diskID string
 		var diskSpec longhorn.DiskSpec
 		var diskStatus *longhorn.DiskStatus
 		diskFound := false
-		for fsid, diskStatus = range node.Status.DiskStatus {
+		for diskID, diskStatus = range node.Status.DiskStatus {
 			if diskStatus.DiskUUID != diskUUID {
 				continue
 			}
 			if !requireSchedulingCheck || types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
 				diskFound = true
-				diskSpec = node.Spec.Disks[fsid]
+				diskSpec = node.Spec.Disks[diskID]
 				break
 			}
 		}
