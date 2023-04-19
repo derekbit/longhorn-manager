@@ -1,0 +1,94 @@
+syntax="proto3";
+
+package imrpc;
+
+import "google/protobuf/empty.proto";
+import "imrpc.proto";
+
+service InstanceService {
+    rpc InstanceCreate(InstanceCreateRequest) returns (InstanceResponse) {}
+	rpc InstanceDelete(InstanceDeleteRequest) returns (InstanceResponse) {}
+	rpc InstanceGet(InstanceGetRequest) returns (InstanceResponse) {}
+	rpc InstanceList(google.protobuf.Empty) returns (InstanceListResponse) {}
+	rpc InstanceLog(InstanceLogRequest) returns (stream LogResponse) {}
+	rpc InstanceWatch(google.protobuf.Empty) returns (stream InstanceResponse) {}
+	rpc InstanceReplace(InstanceReplaceRequest) returns (InstanceResponse) {}
+
+	rpc VersionGet(google.protobuf.Empty) returns(InstanceVersionResponse);
+}
+
+message Process {
+	string binary = 1;
+	repeated string args = 2;
+}
+
+message InstanceSpec {
+	string name = 1;
+	string type = 2;
+	string backend_store_driver = 3;
+
+	int64 size = 4;
+	string disk_uuid = 5;
+
+	int32 port_count = 6;
+	repeated string port_args = 7;
+
+	Process process = 8;
+}
+
+message InstanceStatus {
+	string state = 1;
+	string error_msg = 2;
+	int32 port_start = 3;
+	int32 port_end = 4;
+}
+
+message InstanceCreateRequest {
+	InstanceSpec spec = 1;
+}
+
+message InstanceDeleteRequest {
+	string name = 1;
+	string type = 2;
+	string backend_store_driver = 3;
+}
+
+message InstanceGetRequest {
+	string name = 1;
+	string type = 2;
+	string backend_store_driver = 3;
+}
+
+message InstanceResponse {
+	InstanceSpec spec = 1;
+	InstanceStatus status = 2;
+	bool deleted = 3;
+}
+
+message InstanceListResponse{
+	map<string, InstanceResponse> instances = 1;
+}
+
+message InstanceLogRequest {
+	string name = 1;
+	string type = 2;
+	string backend_store_driver = 3;
+}
+
+message InstanceReplaceRequest {
+	InstanceSpec spec = 1;
+	string terminate_signal = 2;
+}
+
+message InstanceVersionResponse {
+    string version = 1;
+    string gitCommit = 2;
+    string buildDate = 3;
+
+    int64 instanceManagerAPIVersion = 4;
+    int64 instanceManagerAPIMinVersion = 5;
+
+    int64 instanceManagerProxyAPIVersion = 6;
+    int64 instanceManagerProxyAPIMinVersion = 7;
+}
+

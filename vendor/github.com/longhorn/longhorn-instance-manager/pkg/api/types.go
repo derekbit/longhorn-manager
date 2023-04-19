@@ -4,6 +4,18 @@ import (
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
+type Instance struct {
+	Name      string   `json:"name"`
+	Binary    string   `json:"binary"`
+	Args      []string `json:"args"`
+	PortCount int32    `json:"portCount"`
+	PortArgs  []string `json:"portArgs"`
+
+	InstanceStatus InstanceStatus `json:"instanceStatus"`
+
+	Deleted bool `json:"deleted"`
+}
+
 type Process struct {
 	Name      string   `json:"name"`
 	Binary    string   `json:"binary"`
@@ -14,6 +26,59 @@ type Process struct {
 	ProcessStatus ProcessStatus `json:"processStatus"`
 
 	Deleted bool `json:"deleted"`
+}
+
+func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
+	return &Instance{
+		Name:           obj.Spec.Name,
+		Binary:         obj.Spec.Process.Binary,
+		Args:           obj.Spec.Process.Args,
+		PortCount:      obj.Spec.PortCount,
+		PortArgs:       obj.Spec.PortArgs,
+		InstanceStatus: RPCToInstanceStatus(obj.Status),
+	}
+
+
+func RPCToInstanceList(obj *rpc.InstanceListResponse) map[string]*Instance {
+	ret := map[string]*Instance{}
+	for name, p := range obj.Instances {
+		ret[name] = RPCToInstance(p)
+	}
+	return ret
+}
+
+type InstanceStatus struct {
+	State     string `json:"state"`
+	ErrorMsg  string `json:"errorMsg"`
+	PortStart int32  `json:"portStart"`
+	PortEnd   int32  `json:"portEnd"`
+}
+
+func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
+	return InstanceStatus{
+		State:     obj.State,
+		ErrorMsg:  obj.ErrorMsg,
+		PortStart: obj.PortStart,
+		PortEnd:   obj.PortEnd,
+	}
+}
+
+type InstanceStream struct {
+	stream rpc.InstanceService_InstanceWatchClient
+}
+
+func NewInstanceStream(stream rpc.InstanceService_InstanceWatchClient) *InstanceStream {
+	return &InstanceStream{
+		stream,
+	}
+}
+
+func (s *InstanceStream) Recv() (*Instance, error) {
+	resp, err := s.stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return RPCToInstance(resp), nil
 }
 
 func RPCToProcess(obj *rpc.ProcessResponse) *Process {
@@ -61,12 +126,8 @@ func NewProcessStream(stream rpc.ProcessManagerService_ProcessWatchClient) *Proc
 	}
 }
 
-func (s *ProcessStream) Recv() (*Process, error) {
-	resp, err := s.stream.Recv()
-	if err != nil {
-		return nil, err
-	}
-	return RPCToProcess(resp), nil
+func (s *ProcessStream) Recv() (*rpc.ProcessResponse, error) {
+	return s.stream.Recv()
 }
 
 func NewLogStream(stream rpc.ProcessManagerService_ProcessLogClient) *LogStream {
