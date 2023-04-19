@@ -408,7 +408,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
+	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
@@ -563,7 +563,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
+	if err := c.InstanceDelete(r); err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -673,7 +673,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	return c.ProcessGet(r.Name)
+	return c.InstanceGet(r)
 }
 
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -692,7 +692,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.ProcessLog(ctx, r.Name)
+	stream, err := c.InstanceLog(ctx, r)
 	return c, stream, err
 }
 
