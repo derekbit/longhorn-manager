@@ -1,0 +1,94 @@
+syntax="proto3";
+
+package imrpc;
+
+import "google/protobuf/empty.proto";
+
+service DiskService {
+    rpc DiskCreate(DiskCreateRequest) returns (DiskCreateResponse);
+	rpc DiskInfo(DiskInfoRequest) returns (DiskInfoResponse);
+
+    rpc ReplicaCreate(ReplicaCreateRequest) returns (ReplicaCreateResponse);
+    rpc ReplicaDelete(ReplicaDeleteRequest) returns (google.protobuf.Empty);
+    rpc ReplicaList(google.protobuf.Empty) returns (ReplicaListResponse);
+    rpc ReplicaInfo(ReplicaInfoRequest) returns (ReplicaInfoResponse);
+}
+
+message DiskInfo {
+    string id = 1;
+    string uuid = 2;
+    string path = 3;
+    string type = 4;
+
+    int64 total_size = 5;
+    int64 free_size = 6;
+
+    int64 total_blocks = 7;
+    int64 free_blocks = 8;
+
+    int64 block_size = 9;
+    int64 cluster_size = 10;
+
+    bool readonly = 11;
+}
+
+message ReplicaInfo {
+    string name = 1;
+    string uuid = 2;
+
+    string bdev_name = 3;
+    string lvstore_uuid = 4;
+
+    int64 total_size = 5;
+    int64 total_blocks = 6;
+    int64 block_size = 7;
+
+    bool thin_provision = 8;
+
+    string state = 9;
+}
+
+message DiskCreateRequest{
+	string disk_name = 1;
+    string disk_path = 2;
+}
+
+message DiskCreateResponse{
+    DiskInfo disk_info = 1;
+}
+
+message DiskInfoRequest{
+	string disk_path = 1;
+}
+
+message DiskInfoResponse{
+    DiskInfo disk_info = 1;
+}
+
+message ReplicaCreateRequest{
+    string name = 1;
+	string lvstore_uuid = 2;
+    int64 size = 3;
+}
+
+message ReplicaCreateResponse {
+    ReplicaInfo replica_info = 1;
+}
+
+message ReplicaInfoRequest {
+    string name = 1;
+    string lvstore_uuid = 2;
+}
+
+message ReplicaDeleteRequest {
+    string name = 1;
+    string lvstore_uuid = 2;
+}
+
+message ReplicaInfoResponse {
+    ReplicaInfo replica_info = 1;
+}
+
+message ReplicaListResponse{
+	map<string, ReplicaInfo> replica_infos = 1;
+}
