@@ -408,7 +408,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
+	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion, im.Status.APIVersion)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
@@ -563,7 +563,8 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	if err := c.InstanceDelete(types.LonghornKindReplica, r); err != nil && !types.ErrorIsNotFound(err) {
+	err = c.InstanceDelete(r.Name, types.LonghornKindReplica, r.Spec.BackendStoreDriver, im.Status.APIVersion)
+	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -667,13 +668,14 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 			return nil, err
 		}
 	}
+
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
 	defer c.Close()
 
-	return c.InstanceGet(types.LonghornKindReplica, r)
+	return c.InstanceGet(r.Name, types.LonghornKindReplica, r.Spec.BackendStoreDriver, im.Status.APIVersion)
 }
 
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -692,7 +694,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.InstanceLog(ctx, types.LonghornKindReplica, r)
+	stream, err := c.InstanceLog(ctx, r.Name, types.LonghornKindReplica, r.Spec.BackendStoreDriver, im.Status.APIVersion)
 	return c, stream, err
 }
 

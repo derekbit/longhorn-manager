@@ -21,9 +21,10 @@ const (
 	CLIVersionFour = 4
 	CLIVersionFive = 5
 
-	InstanceManagerDefaultPort            = 8500
-	InstanceManagerProxyDefaultPort       = InstanceManagerDefaultPort + 1
-	InstanceManagerDiskServiceDefaultPort = InstanceManagerDefaultPort + 2
+	InstanceManagerProcessManagerServiceDefaultPort = 8500
+	InstanceManagerProxyDefaultPort                 = InstanceManagerProcessManagerServiceDefaultPort + 1
+	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2
+	InstanceManagerInstanceServiceDefaultPort       = InstanceManagerProcessManagerServiceDefaultPort + 3
 
 	BackingImageManagerDefaultPort    = 8000
 	BackingImageDataSourceDefaultPort = 8000

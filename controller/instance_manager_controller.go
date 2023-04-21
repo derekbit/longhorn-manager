@@ -64,6 +64,7 @@ type InstanceManagerMonitor struct {
 
 	Name         string
 	controllerID string
+	imAPIVersion int
 
 	ds                 *datastore.DataStore
 	lock               *sync.RWMutex
@@ -1070,7 +1071,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					LivenessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
-								Port: intstr.FromInt(engineapi.InstanceManagerDefaultPort),
+								Port: intstr.FromInt(engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
@@ -1263,6 +1264,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		logger:                 log,
 		Name:                   im.Name,
 		controllerID:           imc.controllerID,
+		imAPIVersion:           im.Status.APIVersion,
 		ds:                     imc.ds,
 		lock:                   &sync.RWMutex{},
 		stopCh:                 stopCh,
@@ -1313,7 +1315,7 @@ func (m *InstanceManagerMonitor) Run() {
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.client.InstanceWatch(ctx)
+	notifier, err := m.client.InstanceWatch(ctx, m.imAPIVersion)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
 		cancel()
@@ -1401,7 +1403,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return true
 	}
 
-	resp, err := m.client.InstanceList(im.Spec.Type)
+	resp, err := m.client.InstanceList(im.Status.APIVersion)
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false

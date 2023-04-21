@@ -5,9 +5,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/net/context"
 
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
+	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
@@ -59,8 +59,8 @@ func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	client, err := imclient.NewDiskServiceClient(ctx, cancel, im.Status.IP, InstanceManagerDiskServiceDefaultPort)
+	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
+	client, err := imclient.NewDiskServiceClient(endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
