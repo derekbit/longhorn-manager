@@ -37,7 +37,7 @@ func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 		PortArgs:       obj.Spec.PortArgs,
 		InstanceStatus: RPCToInstanceStatus(obj.Status),
 	}
-
+}
 
 func RPCToInstanceList(obj *rpc.InstanceListResponse) map[string]*Instance {
 	ret := map[string]*Instance{}

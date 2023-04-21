@@ -3,6 +3,7 @@ syntax="proto3";
 package imrpc;
 
 import "google/protobuf/empty.proto";
+import "imrpc.proto";
 
 service DiskService {
     rpc DiskCreate(DiskCreateRequest) returns (DiskCreateResponse);
@@ -12,6 +13,8 @@ service DiskService {
     rpc ReplicaDelete(ReplicaDeleteRequest) returns (google.protobuf.Empty);
     rpc ReplicaList(google.protobuf.Empty) returns (ReplicaListResponse);
     rpc ReplicaInfo(ReplicaInfoRequest) returns (ReplicaInfoResponse);
+
+    rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
 
 message DiskInfo {

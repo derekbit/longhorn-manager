@@ -2,14 +2,12 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
-	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
 
 	"github.com/longhorn/longhorn-instance-manager/pkg/api"
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
@@ -19,11 +17,7 @@ import (
 )
 
 type InstanceServiceContext struct {
-	cc *grpc.ClientConn
-
-	ctx  context.Context
-	quit context.CancelFunc
-
+	cc      *grpc.ClientConn
 	service rpc.InstanceServiceClient
 }
 
@@ -40,41 +34,42 @@ func (c *InstanceServiceClient) getControllerServiceClient() rpc.InstanceService
 
 type InstanceServiceClient struct {
 	serviceURL string
+	tlsConfig  *tls.Config
 	InstanceServiceContext
 }
 
-func NewInstanceServiceClient(ctx context.Context, ctxCancel context.CancelFunc, address string, port int) (*InstanceServiceClient, error) {
-	getServiceCtx := func(serviceUrl string) (InstanceServiceContext, error) {
-		dialOptions := []grpc.DialOption{
-			grpc.WithInsecure(),
-			grpc.WithKeepaliveParams(keepalive.ClientParameters{
-				Time:                time.Second * 10,
-				PermitWithoutStream: true,
-			}),
-		}
-		connection, err := grpc.Dial(serviceUrl, dialOptions...)
+func NewInstanceServiceClient(serviceURL string, tlsConfig *tls.Config) (*InstanceServiceClient, error) {
+	getInstanceServiceContext := func(serviceUrl string, tlsConfig *tls.Config) (InstanceServiceContext, error) {
+		connection, err := util.Connect(serviceUrl, tlsConfig)
 		if err != nil {
 			return InstanceServiceContext{}, errors.Wrapf(err, "cannot connect to Instance Service %v", serviceUrl)
 		}
+
 		return InstanceServiceContext{
 			cc:      connection,
-			ctx:     ctx,
-			quit:    ctxCancel,
 			service: rpc.NewInstanceServiceClient(connection),
 		}, nil
 	}
 
-	serviceURL := util.GetURL(address, port)
-	serviceCtx, err := getServiceCtx(serviceURL)
+	serviceContext, err := getInstanceServiceContext(serviceURL, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Tracef("Connected to instance service on %v", serviceURL)
 
 	return &InstanceServiceClient{
 		serviceURL:             serviceURL,
-		InstanceServiceContext: serviceCtx,
+		tlsConfig:              tlsConfig,
+		InstanceServiceContext: serviceContext,
 	}, nil
+}
+
+func NewInstanceServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peerName string) (*InstanceServiceClient, error) {
+	tlsConfig, err := util.LoadClientTLS(caFile, certFile, keyFile, peerName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load tls key pair from file")
+	}
+
+	return NewInstanceServiceClient(serviceURL, tlsConfig)
 }
 
 func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreDriver, diskUUID string, size int64,
@@ -243,5 +238,8 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 
 		InstanceManagerProxyAPIVersion:    int(resp.InstanceManagerProxyAPIVersion),
 		InstanceManagerProxyAPIMinVersion: int(resp.InstanceManagerProxyAPIMinVersion),
+
+		InstanceManagerDiskServiceAPIVersion:    int(resp.InstanceManagerDiskServiceAPIVersion),
+		InstanceManagerDiskServiceAPIMinVersion: int(resp.InstanceManagerDiskServiceAPIMinVersion),
 	}, nil
 }

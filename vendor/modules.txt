@@ -154,7 +154,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66 => github.com/derekbit/longhorn-instance-manager v0.0.0-20230421130907-671cdad318f2
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66 => github.com/derekbit/longhorn-instance-manager v0.0.0-20230421160658-b9015163093d
 ## explicit; go 1.20
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
