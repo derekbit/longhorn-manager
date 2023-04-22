@@ -28,3 +28,6 @@ type ReplicaInfo struct {
 
 	State string
 }
+
+type EngineInfo struct {
+}

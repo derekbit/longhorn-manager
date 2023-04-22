@@ -106,7 +106,7 @@ func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreD
 	return api.RPCToInstance(p), nil
 }
 
-func (c *InstanceServiceClient) InstanceDelete(name, instanceType, backendStoreDriver string) (*api.Instance, error) {
+func (c *InstanceServiceClient) InstanceDelete(name, instanceType, backendStoreDriver, diskUUID string) (*api.Instance, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to delete instance: missing required parameter name")
 	}
@@ -119,6 +119,7 @@ func (c *InstanceServiceClient) InstanceDelete(name, instanceType, backendStoreD
 		Name:               name,
 		Type:               instanceType,
 		BackendStoreDriver: backendStoreDriver,
+		DiskUuid:           diskUUID,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to delete instance %v", name)

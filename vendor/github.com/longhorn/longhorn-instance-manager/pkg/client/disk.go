@@ -88,24 +88,22 @@ func (c *DiskServiceClient) DiskCreate(diskName, diskPath string) (*DiskInfo, er
 		return nil, err
 	}
 
-	diskInfo := resp.GetDiskInfo()
-
 	return &DiskInfo{
-		ID:          diskInfo.GetId(),
-		UUID:        diskInfo.GetUuid(),
-		Path:        diskInfo.GetPath(),
-		Type:        diskInfo.GetType(),
-		TotalSize:   diskInfo.GetTotalSize(),
-		FreeSize:    diskInfo.GetFreeSize(),
-		TotalBlocks: diskInfo.GetTotalBlocks(),
-		FreeBlocks:  diskInfo.GetFreeBlocks(),
-		BlockSize:   diskInfo.GetBlockSize(),
-		ClusterSize: diskInfo.GetClusterSize(),
-		Readonly:    diskInfo.GetReadonly(),
+		ID:          resp.GetId(),
+		UUID:        resp.GetUuid(),
+		Path:        resp.GetPath(),
+		Type:        resp.GetType(),
+		TotalSize:   resp.GetTotalSize(),
+		FreeSize:    resp.GetFreeSize(),
+		TotalBlocks: resp.GetTotalBlocks(),
+		FreeBlocks:  resp.GetFreeBlocks(),
+		BlockSize:   resp.GetBlockSize(),
+		ClusterSize: resp.GetClusterSize(),
+		Readonly:    resp.GetReadonly(),
 	}, nil
 }
 
-func (c *DiskServiceClient) DiskInfo(diskPath string) (*DiskInfo, error) {
+func (c *DiskServiceClient) DiskGet(diskPath string) (*DiskInfo, error) {
 	if diskPath == "" {
 		return nil, fmt.Errorf("failed to get disk info: missing required parameter")
 	}
@@ -114,31 +112,29 @@ func (c *DiskServiceClient) DiskInfo(diskPath string) (*DiskInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	resp, err := client.DiskInfo(ctx, &rpc.DiskInfoRequest{
+	resp, err := client.DiskGet(ctx, &rpc.DiskGetRequest{
 		DiskPath: diskPath,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	diskInfo := resp.GetDiskInfo()
-
 	return &DiskInfo{
-		ID:          diskInfo.GetId(),
-		UUID:        diskInfo.GetUuid(),
-		Path:        diskInfo.GetPath(),
-		Type:        diskInfo.GetType(),
-		TotalSize:   diskInfo.GetTotalSize(),
-		FreeSize:    diskInfo.GetFreeSize(),
-		TotalBlocks: diskInfo.GetTotalBlocks(),
-		FreeBlocks:  diskInfo.GetFreeBlocks(),
-		BlockSize:   diskInfo.GetBlockSize(),
-		ClusterSize: diskInfo.GetClusterSize(),
-		Readonly:    diskInfo.GetReadonly(),
+		ID:          resp.GetId(),
+		UUID:        resp.GetUuid(),
+		Path:        resp.GetPath(),
+		Type:        resp.GetType(),
+		TotalSize:   resp.GetTotalSize(),
+		FreeSize:    resp.GetFreeSize(),
+		TotalBlocks: resp.GetTotalBlocks(),
+		FreeBlocks:  resp.GetFreeBlocks(),
+		BlockSize:   resp.GetBlockSize(),
+		ClusterSize: resp.GetClusterSize(),
+		Readonly:    resp.GetReadonly(),
 	}, nil
 }
 
-func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64) (*ReplicaInfo, error) {
+func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64) (*rpc.Replica, error) {
 	if name == "" || lvstoreUUID == "" || size == 0 {
 		return nil, fmt.Errorf("failed to create replica: missing required parameter")
 	}
@@ -156,18 +152,7 @@ func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64) 
 		return nil, err
 	}
 
-	replicaInfo := resp.GetReplicaInfo()
-
-	return &ReplicaInfo{
-		Name:          replicaInfo.GetName(),
-		UUID:          replicaInfo.GetUuid(),
-		BdevName:      replicaInfo.GetBdevName(),
-		LvstoreUUID:   replicaInfo.GetLvstoreUuid(),
-		TotalSize:     replicaInfo.GetTotalSize(),
-		TotalBlocks:   replicaInfo.GetTotalBlocks(),
-		ThinProvision: replicaInfo.GetThinProvision(),
-		State:         replicaInfo.GetState(),
-	}, nil
+	return resp, nil
 }
 
 func (c *DiskServiceClient) ReplicaDelete(name, lvstoreUUID string) error {
@@ -186,7 +171,7 @@ func (c *DiskServiceClient) ReplicaDelete(name, lvstoreUUID string) error {
 	return err
 }
 
-func (c *DiskServiceClient) ReplicaInfo(name, lvstoreUUID string) (*ReplicaInfo, error) {
+func (c *DiskServiceClient) ReplicaGet(name, lvstoreUUID string) (*ReplicaInfo, error) {
 	if name == "" || lvstoreUUID == "" {
 		return nil, fmt.Errorf("failed to get replica: missing required parameter")
 	}
@@ -195,7 +180,7 @@ func (c *DiskServiceClient) ReplicaInfo(name, lvstoreUUID string) (*ReplicaInfo,
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	resp, err := client.ReplicaInfo(ctx, &rpc.ReplicaInfoRequest{
+	resp, err := client.ReplicaGet(ctx, &rpc.ReplicaGetRequest{
 		Name:        name,
 		LvstoreUuid: lvstoreUUID,
 	})
@@ -203,17 +188,15 @@ func (c *DiskServiceClient) ReplicaInfo(name, lvstoreUUID string) (*ReplicaInfo,
 		return nil, err
 	}
 
-	replicaInfo := resp.GetReplicaInfo()
-
 	return &ReplicaInfo{
-		Name:          replicaInfo.GetName(),
-		UUID:          replicaInfo.GetUuid(),
-		BdevName:      replicaInfo.GetBdevName(),
-		LvstoreUUID:   replicaInfo.GetLvstoreUuid(),
-		TotalSize:     replicaInfo.GetTotalSize(),
-		TotalBlocks:   replicaInfo.GetTotalBlocks(),
-		ThinProvision: replicaInfo.GetThinProvision(),
-		State:         replicaInfo.GetState(),
+		Name:          resp.GetName(),
+		UUID:          resp.GetUuid(),
+		BdevName:      resp.GetBdevName(),
+		LvstoreUUID:   resp.GetLvstoreUuid(),
+		TotalSize:     resp.GetTotalSize(),
+		TotalBlocks:   resp.GetTotalBlocks(),
+		ThinProvision: resp.GetThinProvision(),
+		State:         resp.GetState(),
 	}, nil
 }
 
@@ -229,23 +212,30 @@ func (c *DiskServiceClient) ReplicaList() (map[string]*ReplicaInfo, error) {
 
 	replicaInfos := map[string]*ReplicaInfo{}
 
-	for _, replicaInfo := range resp.GetReplicaInfos() {
-		replicaInfos[replicaInfo.GetName()] = &ReplicaInfo{
-			Name:          replicaInfo.GetName(),
-			UUID:          replicaInfo.GetUuid(),
-			BdevName:      replicaInfo.GetBdevName(),
-			LvstoreUUID:   replicaInfo.GetLvstoreUuid(),
-			TotalSize:     replicaInfo.GetTotalSize(),
-			TotalBlocks:   replicaInfo.GetTotalBlocks(),
-			ThinProvision: replicaInfo.GetThinProvision(),
-			State:         replicaInfo.GetState(),
+	for _, replica := range resp.GetReplicas() {
+		replicaInfos[replica.GetName()] = &ReplicaInfo{
+			Name:          replica.GetName(),
+			UUID:          replica.GetUuid(),
+			BdevName:      replica.GetBdevName(),
+			LvstoreUUID:   replica.GetLvstoreUuid(),
+			TotalSize:     replica.GetTotalSize(),
+			TotalBlocks:   replica.GetTotalBlocks(),
+			ThinProvision: replica.GetThinProvision(),
+			State:         replica.GetState(),
 		}
 	}
 	return replicaInfos, nil
 }
 
-func (c *DiskServiceClient) VersionGet() (*meta.VersionOutput, error) {
+func (c *DiskServiceClient) EngineCreate(name string, size int64) (*rpc.Engine, error) {
+	return nil, nil
+}
 
+func (c *DiskServiceClient) EngineDelete() error {
+	return nil
+}
+
+func (c *DiskServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()

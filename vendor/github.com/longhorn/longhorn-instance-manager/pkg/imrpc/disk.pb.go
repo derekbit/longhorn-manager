@@ -25,7 +25,35 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
-type DiskInfo struct {
+type ReplicaMode int32
+
+const (
+	ReplicaMode_WO  ReplicaMode = 0
+	ReplicaMode_RW  ReplicaMode = 1
+	ReplicaMode_ERR ReplicaMode = 2
+)
+
+var ReplicaMode_name = map[int32]string{
+	0: "WO",
+	1: "RW",
+	2: "ERR",
+}
+
+var ReplicaMode_value = map[string]int32{
+	"WO":  0,
+	"RW":  1,
+	"ERR": 2,
+}
+
+func (x ReplicaMode) String() string {
+	return proto.EnumName(ReplicaMode_name, int32(x))
+}
+
+func (ReplicaMode) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_f96b80c5532b4167, []int{0}
+}
+
+type Disk struct {
 	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Uuid                 string   `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	Path                 string   `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
@@ -42,109 +70,109 @@ type DiskInfo struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *DiskInfo) Reset()         { *m = DiskInfo{} }
-func (m *DiskInfo) String() string { return proto.CompactTextString(m) }
-func (*DiskInfo) ProtoMessage()    {}
-func (*DiskInfo) Descriptor() ([]byte, []int) {
+func (m *Disk) Reset()         { *m = Disk{} }
+func (m *Disk) String() string { return proto.CompactTextString(m) }
+func (*Disk) ProtoMessage()    {}
+func (*Disk) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f96b80c5532b4167, []int{0}
 }
 
-func (m *DiskInfo) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DiskInfo.Unmarshal(m, b)
+func (m *Disk) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Disk.Unmarshal(m, b)
 }
-func (m *DiskInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DiskInfo.Marshal(b, m, deterministic)
+func (m *Disk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Disk.Marshal(b, m, deterministic)
 }
-func (m *DiskInfo) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DiskInfo.Merge(m, src)
+func (m *Disk) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Disk.Merge(m, src)
 }
-func (m *DiskInfo) XXX_Size() int {
-	return xxx_messageInfo_DiskInfo.Size(m)
+func (m *Disk) XXX_Size() int {
+	return xxx_messageInfo_Disk.Size(m)
 }
-func (m *DiskInfo) XXX_DiscardUnknown() {
-	xxx_messageInfo_DiskInfo.DiscardUnknown(m)
+func (m *Disk) XXX_DiscardUnknown() {
+	xxx_messageInfo_Disk.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_DiskInfo proto.InternalMessageInfo
+var xxx_messageInfo_Disk proto.InternalMessageInfo
 
-func (m *DiskInfo) GetId() string {
+func (m *Disk) GetId() string {
 	if m != nil {
 		return m.Id
 	}
 	return ""
 }
 
-func (m *DiskInfo) GetUuid() string {
+func (m *Disk) GetUuid() string {
 	if m != nil {
 		return m.Uuid
 	}
 	return ""
 }
 
-func (m *DiskInfo) GetPath() string {
+func (m *Disk) GetPath() string {
 	if m != nil {
 		return m.Path
 	}
 	return ""
 }
 
-func (m *DiskInfo) GetType() string {
+func (m *Disk) GetType() string {
 	if m != nil {
 		return m.Type
 	}
 	return ""
 }
 
-func (m *DiskInfo) GetTotalSize() int64 {
+func (m *Disk) GetTotalSize() int64 {
 	if m != nil {
 		return m.TotalSize
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetFreeSize() int64 {
+func (m *Disk) GetFreeSize() int64 {
 	if m != nil {
 		return m.FreeSize
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetTotalBlocks() int64 {
+func (m *Disk) GetTotalBlocks() int64 {
 	if m != nil {
 		return m.TotalBlocks
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetFreeBlocks() int64 {
+func (m *Disk) GetFreeBlocks() int64 {
 	if m != nil {
 		return m.FreeBlocks
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetBlockSize() int64 {
+func (m *Disk) GetBlockSize() int64 {
 	if m != nil {
 		return m.BlockSize
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetClusterSize() int64 {
+func (m *Disk) GetClusterSize() int64 {
 	if m != nil {
 		return m.ClusterSize
 	}
 	return 0
 }
 
-func (m *DiskInfo) GetReadonly() bool {
+func (m *Disk) GetReadonly() bool {
 	if m != nil {
 		return m.Readonly
 	}
 	return false
 }
 
-type ReplicaInfo struct {
+type Replica struct {
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Uuid                 string   `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	BdevName             string   `protobuf:"bytes,3,opt,name=bdev_name,json=bdevName,proto3" json:"bdev_name,omitempty"`
@@ -159,90 +187,193 @@ type ReplicaInfo struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ReplicaInfo) Reset()         { *m = ReplicaInfo{} }
-func (m *ReplicaInfo) String() string { return proto.CompactTextString(m) }
-func (*ReplicaInfo) ProtoMessage()    {}
-func (*ReplicaInfo) Descriptor() ([]byte, []int) {
+func (m *Replica) Reset()         { *m = Replica{} }
+func (m *Replica) String() string { return proto.CompactTextString(m) }
+func (*Replica) ProtoMessage()    {}
+func (*Replica) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f96b80c5532b4167, []int{1}
 }
 
-func (m *ReplicaInfo) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicaInfo.Unmarshal(m, b)
+func (m *Replica) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Replica.Unmarshal(m, b)
 }
-func (m *ReplicaInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicaInfo.Marshal(b, m, deterministic)
+func (m *Replica) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Replica.Marshal(b, m, deterministic)
 }
-func (m *ReplicaInfo) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicaInfo.Merge(m, src)
+func (m *Replica) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Replica.Merge(m, src)
 }
-func (m *ReplicaInfo) XXX_Size() int {
-	return xxx_messageInfo_ReplicaInfo.Size(m)
+func (m *Replica) XXX_Size() int {
+	return xxx_messageInfo_Replica.Size(m)
 }
-func (m *ReplicaInfo) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicaInfo.DiscardUnknown(m)
+func (m *Replica) XXX_DiscardUnknown() {
+	xxx_messageInfo_Replica.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ReplicaInfo proto.InternalMessageInfo
+var xxx_messageInfo_Replica proto.InternalMessageInfo
 
-func (m *ReplicaInfo) GetName() string {
+func (m *Replica) GetName() string {
 	if m != nil {
 		return m.Name
 	}
 	return ""
 }
 
-func (m *ReplicaInfo) GetUuid() string {
+func (m *Replica) GetUuid() string {
 	if m != nil {
 		return m.Uuid
 	}
 	return ""
 }
 
-func (m *ReplicaInfo) GetBdevName() string {
+func (m *Replica) GetBdevName() string {
 	if m != nil {
 		return m.BdevName
 	}
 	return ""
 }
 
-func (m *ReplicaInfo) GetLvstoreUuid() string {
+func (m *Replica) GetLvstoreUuid() string {
 	if m != nil {
 		return m.LvstoreUuid
 	}
 	return ""
 }
 
-func (m *ReplicaInfo) GetTotalSize() int64 {
+func (m *Replica) GetTotalSize() int64 {
 	if m != nil {
 		return m.TotalSize
 	}
 	return 0
 }
 
-func (m *ReplicaInfo) GetTotalBlocks() int64 {
+func (m *Replica) GetTotalBlocks() int64 {
 	if m != nil {
 		return m.TotalBlocks
 	}
 	return 0
 }
 
-func (m *ReplicaInfo) GetBlockSize() int64 {
+func (m *Replica) GetBlockSize() int64 {
 	if m != nil {
 		return m.BlockSize
 	}
 	return 0
 }
 
-func (m *ReplicaInfo) GetThinProvision() bool {
+func (m *Replica) GetThinProvision() bool {
 	if m != nil {
 		return m.ThinProvision
 	}
 	return false
 }
 
-func (m *ReplicaInfo) GetState() string {
+func (m *Replica) GetState() string {
 	if m != nil {
 		return m.State
+	}
+	return ""
+}
+
+type Engine struct {
+	Name                 string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Uuid                 string                 `protobuf:"bytes,2,opt,name=uuid,proto3" json:"uuid,omitempty"`
+	Size                 uint64                 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	Address              string                 `protobuf:"bytes,4,opt,name=address,proto3" json:"address,omitempty"`
+	ReplicaAddressMap    map[string]string      `protobuf:"bytes,5,rep,name=replica_address_map,json=replicaAddressMap,proto3" json:"replica_address_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	ReplicaModeMap       map[string]ReplicaMode `protobuf:"bytes,6,rep,name=replica_mode_map,json=replicaModeMap,proto3" json:"replica_mode_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"varint,2,opt,name=value,proto3,enum=imrpc.ReplicaMode"`
+	Endpoint             string                 `protobuf:"bytes,7,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	Frontend             string                 `protobuf:"bytes,8,opt,name=frontend,proto3" json:"frontend,omitempty"`
+	FrontendState        string                 `protobuf:"bytes,9,opt,name=frontend_state,json=frontendState,proto3" json:"frontend_state,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}               `json:"-"`
+	XXX_unrecognized     []byte                 `json:"-"`
+	XXX_sizecache        int32                  `json:"-"`
+}
+
+func (m *Engine) Reset()         { *m = Engine{} }
+func (m *Engine) String() string { return proto.CompactTextString(m) }
+func (*Engine) ProtoMessage()    {}
+func (*Engine) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f96b80c5532b4167, []int{2}
+}
+
+func (m *Engine) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Engine.Unmarshal(m, b)
+}
+func (m *Engine) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Engine.Marshal(b, m, deterministic)
+}
+func (m *Engine) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Engine.Merge(m, src)
+}
+func (m *Engine) XXX_Size() int {
+	return xxx_messageInfo_Engine.Size(m)
+}
+func (m *Engine) XXX_DiscardUnknown() {
+	xxx_messageInfo_Engine.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Engine proto.InternalMessageInfo
+
+func (m *Engine) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *Engine) GetUuid() string {
+	if m != nil {
+		return m.Uuid
+	}
+	return ""
+}
+
+func (m *Engine) GetSize() uint64 {
+	if m != nil {
+		return m.Size
+	}
+	return 0
+}
+
+func (m *Engine) GetAddress() string {
+	if m != nil {
+		return m.Address
+	}
+	return ""
+}
+
+func (m *Engine) GetReplicaAddressMap() map[string]string {
+	if m != nil {
+		return m.ReplicaAddressMap
+	}
+	return nil
+}
+
+func (m *Engine) GetReplicaModeMap() map[string]ReplicaMode {
+	if m != nil {
+		return m.ReplicaModeMap
+	}
+	return nil
+}
+
+func (m *Engine) GetEndpoint() string {
+	if m != nil {
+		return m.Endpoint
+	}
+	return ""
+}
+
+func (m *Engine) GetFrontend() string {
+	if m != nil {
+		return m.Frontend
+	}
+	return ""
+}
+
+func (m *Engine) GetFrontendState() string {
+	if m != nil {
+		return m.FrontendState
 	}
 	return ""
 }
@@ -259,7 +390,7 @@ func (m *DiskCreateRequest) Reset()         { *m = DiskCreateRequest{} }
 func (m *DiskCreateRequest) String() string { return proto.CompactTextString(m) }
 func (*DiskCreateRequest) ProtoMessage()    {}
 func (*DiskCreateRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{2}
+	return fileDescriptor_f96b80c5532b4167, []int{3}
 }
 
 func (m *DiskCreateRequest) XXX_Unmarshal(b []byte) error {
@@ -294,121 +425,43 @@ func (m *DiskCreateRequest) GetDiskPath() string {
 	return ""
 }
 
-type DiskCreateResponse struct {
-	DiskInfo             *DiskInfo `protobuf:"bytes,1,opt,name=disk_info,json=diskInfo,proto3" json:"disk_info,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
-	XXX_unrecognized     []byte    `json:"-"`
-	XXX_sizecache        int32     `json:"-"`
-}
-
-func (m *DiskCreateResponse) Reset()         { *m = DiskCreateResponse{} }
-func (m *DiskCreateResponse) String() string { return proto.CompactTextString(m) }
-func (*DiskCreateResponse) ProtoMessage()    {}
-func (*DiskCreateResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{3}
-}
-
-func (m *DiskCreateResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DiskCreateResponse.Unmarshal(m, b)
-}
-func (m *DiskCreateResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DiskCreateResponse.Marshal(b, m, deterministic)
-}
-func (m *DiskCreateResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DiskCreateResponse.Merge(m, src)
-}
-func (m *DiskCreateResponse) XXX_Size() int {
-	return xxx_messageInfo_DiskCreateResponse.Size(m)
-}
-func (m *DiskCreateResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_DiskCreateResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DiskCreateResponse proto.InternalMessageInfo
-
-func (m *DiskCreateResponse) GetDiskInfo() *DiskInfo {
-	if m != nil {
-		return m.DiskInfo
-	}
-	return nil
-}
-
-type DiskInfoRequest struct {
+type DiskGetRequest struct {
 	DiskPath             string   `protobuf:"bytes,1,opt,name=disk_path,json=diskPath,proto3" json:"disk_path,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *DiskInfoRequest) Reset()         { *m = DiskInfoRequest{} }
-func (m *DiskInfoRequest) String() string { return proto.CompactTextString(m) }
-func (*DiskInfoRequest) ProtoMessage()    {}
-func (*DiskInfoRequest) Descriptor() ([]byte, []int) {
+func (m *DiskGetRequest) Reset()         { *m = DiskGetRequest{} }
+func (m *DiskGetRequest) String() string { return proto.CompactTextString(m) }
+func (*DiskGetRequest) ProtoMessage()    {}
+func (*DiskGetRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f96b80c5532b4167, []int{4}
 }
 
-func (m *DiskInfoRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DiskInfoRequest.Unmarshal(m, b)
+func (m *DiskGetRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_DiskGetRequest.Unmarshal(m, b)
 }
-func (m *DiskInfoRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DiskInfoRequest.Marshal(b, m, deterministic)
+func (m *DiskGetRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_DiskGetRequest.Marshal(b, m, deterministic)
 }
-func (m *DiskInfoRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DiskInfoRequest.Merge(m, src)
+func (m *DiskGetRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DiskGetRequest.Merge(m, src)
 }
-func (m *DiskInfoRequest) XXX_Size() int {
-	return xxx_messageInfo_DiskInfoRequest.Size(m)
+func (m *DiskGetRequest) XXX_Size() int {
+	return xxx_messageInfo_DiskGetRequest.Size(m)
 }
-func (m *DiskInfoRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_DiskInfoRequest.DiscardUnknown(m)
+func (m *DiskGetRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DiskGetRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_DiskInfoRequest proto.InternalMessageInfo
+var xxx_messageInfo_DiskGetRequest proto.InternalMessageInfo
 
-func (m *DiskInfoRequest) GetDiskPath() string {
+func (m *DiskGetRequest) GetDiskPath() string {
 	if m != nil {
 		return m.DiskPath
 	}
 	return ""
-}
-
-type DiskInfoResponse struct {
-	DiskInfo             *DiskInfo `protobuf:"bytes,1,opt,name=disk_info,json=diskInfo,proto3" json:"disk_info,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
-	XXX_unrecognized     []byte    `json:"-"`
-	XXX_sizecache        int32     `json:"-"`
-}
-
-func (m *DiskInfoResponse) Reset()         { *m = DiskInfoResponse{} }
-func (m *DiskInfoResponse) String() string { return proto.CompactTextString(m) }
-func (*DiskInfoResponse) ProtoMessage()    {}
-func (*DiskInfoResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{5}
-}
-
-func (m *DiskInfoResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DiskInfoResponse.Unmarshal(m, b)
-}
-func (m *DiskInfoResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DiskInfoResponse.Marshal(b, m, deterministic)
-}
-func (m *DiskInfoResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DiskInfoResponse.Merge(m, src)
-}
-func (m *DiskInfoResponse) XXX_Size() int {
-	return xxx_messageInfo_DiskInfoResponse.Size(m)
-}
-func (m *DiskInfoResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_DiskInfoResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DiskInfoResponse proto.InternalMessageInfo
-
-func (m *DiskInfoResponse) GetDiskInfo() *DiskInfo {
-	if m != nil {
-		return m.DiskInfo
-	}
-	return nil
 }
 
 type ReplicaCreateRequest struct {
@@ -424,7 +477,7 @@ func (m *ReplicaCreateRequest) Reset()         { *m = ReplicaCreateRequest{} }
 func (m *ReplicaCreateRequest) String() string { return proto.CompactTextString(m) }
 func (*ReplicaCreateRequest) ProtoMessage()    {}
 func (*ReplicaCreateRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{6}
+	return fileDescriptor_f96b80c5532b4167, []int{5}
 }
 
 func (m *ReplicaCreateRequest) XXX_Unmarshal(b []byte) error {
@@ -466,46 +519,7 @@ func (m *ReplicaCreateRequest) GetSize() int64 {
 	return 0
 }
 
-type ReplicaCreateResponse struct {
-	ReplicaInfo          *ReplicaInfo `protobuf:"bytes,1,opt,name=replica_info,json=replicaInfo,proto3" json:"replica_info,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
-	XXX_unrecognized     []byte       `json:"-"`
-	XXX_sizecache        int32        `json:"-"`
-}
-
-func (m *ReplicaCreateResponse) Reset()         { *m = ReplicaCreateResponse{} }
-func (m *ReplicaCreateResponse) String() string { return proto.CompactTextString(m) }
-func (*ReplicaCreateResponse) ProtoMessage()    {}
-func (*ReplicaCreateResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{7}
-}
-
-func (m *ReplicaCreateResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicaCreateResponse.Unmarshal(m, b)
-}
-func (m *ReplicaCreateResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicaCreateResponse.Marshal(b, m, deterministic)
-}
-func (m *ReplicaCreateResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicaCreateResponse.Merge(m, src)
-}
-func (m *ReplicaCreateResponse) XXX_Size() int {
-	return xxx_messageInfo_ReplicaCreateResponse.Size(m)
-}
-func (m *ReplicaCreateResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicaCreateResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ReplicaCreateResponse proto.InternalMessageInfo
-
-func (m *ReplicaCreateResponse) GetReplicaInfo() *ReplicaInfo {
-	if m != nil {
-		return m.ReplicaInfo
-	}
-	return nil
-}
-
-type ReplicaInfoRequest struct {
+type ReplicaGetRequest struct {
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	LvstoreUuid          string   `protobuf:"bytes,2,opt,name=lvstore_uuid,json=lvstoreUuid,proto3" json:"lvstore_uuid,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -513,39 +527,39 @@ type ReplicaInfoRequest struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ReplicaInfoRequest) Reset()         { *m = ReplicaInfoRequest{} }
-func (m *ReplicaInfoRequest) String() string { return proto.CompactTextString(m) }
-func (*ReplicaInfoRequest) ProtoMessage()    {}
-func (*ReplicaInfoRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{8}
+func (m *ReplicaGetRequest) Reset()         { *m = ReplicaGetRequest{} }
+func (m *ReplicaGetRequest) String() string { return proto.CompactTextString(m) }
+func (*ReplicaGetRequest) ProtoMessage()    {}
+func (*ReplicaGetRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f96b80c5532b4167, []int{6}
 }
 
-func (m *ReplicaInfoRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicaInfoRequest.Unmarshal(m, b)
+func (m *ReplicaGetRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ReplicaGetRequest.Unmarshal(m, b)
 }
-func (m *ReplicaInfoRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicaInfoRequest.Marshal(b, m, deterministic)
+func (m *ReplicaGetRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ReplicaGetRequest.Marshal(b, m, deterministic)
 }
-func (m *ReplicaInfoRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicaInfoRequest.Merge(m, src)
+func (m *ReplicaGetRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ReplicaGetRequest.Merge(m, src)
 }
-func (m *ReplicaInfoRequest) XXX_Size() int {
-	return xxx_messageInfo_ReplicaInfoRequest.Size(m)
+func (m *ReplicaGetRequest) XXX_Size() int {
+	return xxx_messageInfo_ReplicaGetRequest.Size(m)
 }
-func (m *ReplicaInfoRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicaInfoRequest.DiscardUnknown(m)
+func (m *ReplicaGetRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_ReplicaGetRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ReplicaInfoRequest proto.InternalMessageInfo
+var xxx_messageInfo_ReplicaGetRequest proto.InternalMessageInfo
 
-func (m *ReplicaInfoRequest) GetName() string {
+func (m *ReplicaGetRequest) GetName() string {
 	if m != nil {
 		return m.Name
 	}
 	return ""
 }
 
-func (m *ReplicaInfoRequest) GetLvstoreUuid() string {
+func (m *ReplicaGetRequest) GetLvstoreUuid() string {
 	if m != nil {
 		return m.LvstoreUuid
 	}
@@ -564,7 +578,7 @@ func (m *ReplicaDeleteRequest) Reset()         { *m = ReplicaDeleteRequest{} }
 func (m *ReplicaDeleteRequest) String() string { return proto.CompactTextString(m) }
 func (*ReplicaDeleteRequest) ProtoMessage()    {}
 func (*ReplicaDeleteRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{9}
+	return fileDescriptor_f96b80c5532b4167, []int{7}
 }
 
 func (m *ReplicaDeleteRequest) XXX_Unmarshal(b []byte) error {
@@ -599,57 +613,18 @@ func (m *ReplicaDeleteRequest) GetLvstoreUuid() string {
 	return ""
 }
 
-type ReplicaInfoResponse struct {
-	ReplicaInfo          *ReplicaInfo `protobuf:"bytes,1,opt,name=replica_info,json=replicaInfo,proto3" json:"replica_info,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
-	XXX_unrecognized     []byte       `json:"-"`
-	XXX_sizecache        int32        `json:"-"`
-}
-
-func (m *ReplicaInfoResponse) Reset()         { *m = ReplicaInfoResponse{} }
-func (m *ReplicaInfoResponse) String() string { return proto.CompactTextString(m) }
-func (*ReplicaInfoResponse) ProtoMessage()    {}
-func (*ReplicaInfoResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{10}
-}
-
-func (m *ReplicaInfoResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicaInfoResponse.Unmarshal(m, b)
-}
-func (m *ReplicaInfoResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicaInfoResponse.Marshal(b, m, deterministic)
-}
-func (m *ReplicaInfoResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicaInfoResponse.Merge(m, src)
-}
-func (m *ReplicaInfoResponse) XXX_Size() int {
-	return xxx_messageInfo_ReplicaInfoResponse.Size(m)
-}
-func (m *ReplicaInfoResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicaInfoResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ReplicaInfoResponse proto.InternalMessageInfo
-
-func (m *ReplicaInfoResponse) GetReplicaInfo() *ReplicaInfo {
-	if m != nil {
-		return m.ReplicaInfo
-	}
-	return nil
-}
-
 type ReplicaListResponse struct {
-	ReplicaInfos         map[string]*ReplicaInfo `protobuf:"bytes,1,rep,name=replica_infos,json=replicaInfos,proto3" json:"replica_infos,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
-	XXX_NoUnkeyedLiteral struct{}                `json:"-"`
-	XXX_unrecognized     []byte                  `json:"-"`
-	XXX_sizecache        int32                   `json:"-"`
+	Replicas             map[string]*Replica `protobuf:"bytes,1,rep,name=replicas,proto3" json:"replicas,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	XXX_NoUnkeyedLiteral struct{}            `json:"-"`
+	XXX_unrecognized     []byte              `json:"-"`
+	XXX_sizecache        int32               `json:"-"`
 }
 
 func (m *ReplicaListResponse) Reset()         { *m = ReplicaListResponse{} }
 func (m *ReplicaListResponse) String() string { return proto.CompactTextString(m) }
 func (*ReplicaListResponse) ProtoMessage()    {}
 func (*ReplicaListResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_f96b80c5532b4167, []int{11}
+	return fileDescriptor_f96b80c5532b4167, []int{8}
 }
 
 func (m *ReplicaListResponse) XXX_Unmarshal(b []byte) error {
@@ -670,79 +645,196 @@ func (m *ReplicaListResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ReplicaListResponse proto.InternalMessageInfo
 
-func (m *ReplicaListResponse) GetReplicaInfos() map[string]*ReplicaInfo {
+func (m *ReplicaListResponse) GetReplicas() map[string]*Replica {
 	if m != nil {
-		return m.ReplicaInfos
+		return m.Replicas
 	}
 	return nil
 }
 
+type EngineCreateRequest struct {
+	Name                 string            `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Address              string            `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	ReplicaAddressMap    map[string]string `protobuf:"bytes,3,rep,name=replica_address_map,json=replicaAddressMap,proto3" json:"replica_address_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	Frontend             string            `protobuf:"bytes,4,opt,name=frontend,proto3" json:"frontend,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
+	XXX_unrecognized     []byte            `json:"-"`
+	XXX_sizecache        int32             `json:"-"`
+}
+
+func (m *EngineCreateRequest) Reset()         { *m = EngineCreateRequest{} }
+func (m *EngineCreateRequest) String() string { return proto.CompactTextString(m) }
+func (*EngineCreateRequest) ProtoMessage()    {}
+func (*EngineCreateRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f96b80c5532b4167, []int{9}
+}
+
+func (m *EngineCreateRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_EngineCreateRequest.Unmarshal(m, b)
+}
+func (m *EngineCreateRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_EngineCreateRequest.Marshal(b, m, deterministic)
+}
+func (m *EngineCreateRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_EngineCreateRequest.Merge(m, src)
+}
+func (m *EngineCreateRequest) XXX_Size() int {
+	return xxx_messageInfo_EngineCreateRequest.Size(m)
+}
+func (m *EngineCreateRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_EngineCreateRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_EngineCreateRequest proto.InternalMessageInfo
+
+func (m *EngineCreateRequest) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *EngineCreateRequest) GetAddress() string {
+	if m != nil {
+		return m.Address
+	}
+	return ""
+}
+
+func (m *EngineCreateRequest) GetReplicaAddressMap() map[string]string {
+	if m != nil {
+		return m.ReplicaAddressMap
+	}
+	return nil
+}
+
+func (m *EngineCreateRequest) GetFrontend() string {
+	if m != nil {
+		return m.Frontend
+	}
+	return ""
+}
+
+type EngineDeleteRequest struct {
+	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *EngineDeleteRequest) Reset()         { *m = EngineDeleteRequest{} }
+func (m *EngineDeleteRequest) String() string { return proto.CompactTextString(m) }
+func (*EngineDeleteRequest) ProtoMessage()    {}
+func (*EngineDeleteRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f96b80c5532b4167, []int{10}
+}
+
+func (m *EngineDeleteRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_EngineDeleteRequest.Unmarshal(m, b)
+}
+func (m *EngineDeleteRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_EngineDeleteRequest.Marshal(b, m, deterministic)
+}
+func (m *EngineDeleteRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_EngineDeleteRequest.Merge(m, src)
+}
+func (m *EngineDeleteRequest) XXX_Size() int {
+	return xxx_messageInfo_EngineDeleteRequest.Size(m)
+}
+func (m *EngineDeleteRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_EngineDeleteRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_EngineDeleteRequest proto.InternalMessageInfo
+
+func (m *EngineDeleteRequest) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
 func init() {
-	proto.RegisterType((*DiskInfo)(nil), "imrpc.DiskInfo")
-	proto.RegisterType((*ReplicaInfo)(nil), "imrpc.ReplicaInfo")
+	proto.RegisterEnum("imrpc.ReplicaMode", ReplicaMode_name, ReplicaMode_value)
+	proto.RegisterType((*Disk)(nil), "imrpc.Disk")
+	proto.RegisterType((*Replica)(nil), "imrpc.Replica")
+	proto.RegisterType((*Engine)(nil), "imrpc.Engine")
+	proto.RegisterMapType((map[string]string)(nil), "imrpc.Engine.ReplicaAddressMapEntry")
+	proto.RegisterMapType((map[string]ReplicaMode)(nil), "imrpc.Engine.ReplicaModeMapEntry")
 	proto.RegisterType((*DiskCreateRequest)(nil), "imrpc.DiskCreateRequest")
-	proto.RegisterType((*DiskCreateResponse)(nil), "imrpc.DiskCreateResponse")
-	proto.RegisterType((*DiskInfoRequest)(nil), "imrpc.DiskInfoRequest")
-	proto.RegisterType((*DiskInfoResponse)(nil), "imrpc.DiskInfoResponse")
+	proto.RegisterType((*DiskGetRequest)(nil), "imrpc.DiskGetRequest")
 	proto.RegisterType((*ReplicaCreateRequest)(nil), "imrpc.ReplicaCreateRequest")
-	proto.RegisterType((*ReplicaCreateResponse)(nil), "imrpc.ReplicaCreateResponse")
-	proto.RegisterType((*ReplicaInfoRequest)(nil), "imrpc.ReplicaInfoRequest")
+	proto.RegisterType((*ReplicaGetRequest)(nil), "imrpc.ReplicaGetRequest")
 	proto.RegisterType((*ReplicaDeleteRequest)(nil), "imrpc.ReplicaDeleteRequest")
-	proto.RegisterType((*ReplicaInfoResponse)(nil), "imrpc.ReplicaInfoResponse")
 	proto.RegisterType((*ReplicaListResponse)(nil), "imrpc.ReplicaListResponse")
-	proto.RegisterMapType((map[string]*ReplicaInfo)(nil), "imrpc.ReplicaListResponse.ReplicaInfosEntry")
+	proto.RegisterMapType((map[string]*Replica)(nil), "imrpc.ReplicaListResponse.ReplicasEntry")
+	proto.RegisterType((*EngineCreateRequest)(nil), "imrpc.EngineCreateRequest")
+	proto.RegisterMapType((map[string]string)(nil), "imrpc.EngineCreateRequest.ReplicaAddressMapEntry")
+	proto.RegisterType((*EngineDeleteRequest)(nil), "imrpc.EngineDeleteRequest")
 }
 
 func init() { proto.RegisterFile("disk.proto", fileDescriptor_f96b80c5532b4167) }
 
 var fileDescriptor_f96b80c5532b4167 = []byte{
-	// 727 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x55, 0xdd, 0x4e, 0xdb, 0x48,
-	0x14, 0x96, 0x9d, 0x04, 0x9c, 0xe3, 0xf0, 0x37, 0xcb, 0xb2, 0xc6, 0x59, 0xb4, 0xc1, 0xd2, 0x4a,
-	0xb9, 0x40, 0x41, 0xa2, 0x6a, 0x55, 0xb5, 0x37, 0x85, 0x06, 0x55, 0x6d, 0x01, 0x51, 0xa3, 0xf6,
-	0x36, 0x72, 0x92, 0x09, 0x8c, 0x62, 0x6c, 0xd7, 0x33, 0x89, 0x14, 0x5e, 0xa3, 0xaf, 0xd2, 0xdb,
-	0xbe, 0x4b, 0x1f, 0xa5, 0x9a, 0x33, 0x93, 0xc4, 0x76, 0x8c, 0x2a, 0x95, 0xbb, 0x99, 0xef, 0xfc,
-	0x7f, 0xe7, 0xb3, 0x07, 0x60, 0xc8, 0xf8, 0xb8, 0x93, 0xa4, 0xb1, 0x88, 0x49, 0x8d, 0xdd, 0xa7,
-	0xc9, 0xc0, 0x6d, 0xde, 0xc6, 0xf1, 0x6d, 0x48, 0x8f, 0x11, 0xec, 0x4f, 0x46, 0xc7, 0xf4, 0x3e,
-	0x11, 0x33, 0xe5, 0xe3, 0xda, 0xe8, 0xa3, 0x2e, 0xde, 0x77, 0x13, 0xac, 0x2e, 0xe3, 0xe3, 0xf7,
-	0xd1, 0x28, 0x26, 0x9b, 0x60, 0xb2, 0xa1, 0x63, 0xb4, 0x8c, 0x76, 0xdd, 0x37, 0xd9, 0x90, 0x10,
-	0xa8, 0x4e, 0x26, 0x6c, 0xe8, 0x98, 0x88, 0xe0, 0x59, 0x62, 0x49, 0x20, 0xee, 0x9c, 0x8a, 0xc2,
-	0xe4, 0x59, 0x62, 0x62, 0x96, 0x50, 0xa7, 0xaa, 0x30, 0x79, 0x26, 0x07, 0x00, 0x22, 0x16, 0x41,
-	0xd8, 0xe3, 0xec, 0x81, 0x3a, 0xb5, 0x96, 0xd1, 0xae, 0xf8, 0x75, 0x44, 0x6e, 0xd8, 0x03, 0x25,
-	0x4d, 0xa8, 0x8f, 0x52, 0x4a, 0x95, 0x75, 0x0d, 0xad, 0x96, 0x04, 0xd0, 0x78, 0x08, 0x0d, 0x15,
-	0xdb, 0x0f, 0xe3, 0xc1, 0x98, 0x3b, 0xeb, 0x68, 0xb7, 0x11, 0x3b, 0x43, 0x88, 0xfc, 0x07, 0x36,
-	0xc6, 0x6b, 0x0f, 0x0b, 0x3d, 0x40, 0x42, 0xda, 0xe1, 0x00, 0x00, 0x6d, 0xaa, 0x42, 0x5d, 0xd5,
-	0x47, 0x64, 0x5e, 0x62, 0x10, 0x4e, 0xb8, 0xa0, 0xa9, 0x72, 0x00, 0x55, 0x42, 0x63, 0xe8, 0xe2,
-	0x82, 0x95, 0xd2, 0x60, 0x18, 0x47, 0xe1, 0xcc, 0xb1, 0x5b, 0x46, 0xdb, 0xf2, 0x17, 0x77, 0xef,
-	0x9b, 0x09, 0xb6, 0x4f, 0x93, 0x90, 0x0d, 0x02, 0x64, 0x8e, 0x40, 0x35, 0x0a, 0xee, 0xa9, 0xe6,
-	0x0e, 0xcf, 0xa5, 0xec, 0x35, 0xa1, 0xde, 0x1f, 0xd2, 0x69, 0x0f, 0x9d, 0x15, 0x85, 0x96, 0x04,
-	0xae, 0x64, 0xc0, 0x21, 0x34, 0xc2, 0x29, 0x17, 0x71, 0x4a, 0x7b, 0x18, 0xa8, 0xe8, 0xb4, 0x35,
-	0xf6, 0x59, 0xc6, 0xff, 0x86, 0xd5, 0x22, 0x71, 0x6b, 0xab, 0xc4, 0xe5, 0x79, 0x59, 0x2f, 0xf2,
-	0xf2, 0x3f, 0x6c, 0x8a, 0x3b, 0x16, 0xf5, 0x92, 0x34, 0x9e, 0x32, 0xce, 0xe2, 0x08, 0xa9, 0xb5,
-	0xfc, 0x0d, 0x89, 0x5e, 0xcf, 0x41, 0xb2, 0x0b, 0x35, 0x2e, 0x02, 0xa1, 0x88, 0xad, 0xfb, 0xea,
-	0xe2, 0x5d, 0xc2, 0x8e, 0xd4, 0xd2, 0xdb, 0x94, 0x06, 0x82, 0xfa, 0xf4, 0xeb, 0x84, 0x72, 0x21,
-	0x47, 0x96, 0x02, 0xed, 0x65, 0xf8, 0xb1, 0x24, 0x80, 0x23, 0xcf, 0x8d, 0x28, 0x29, 0x73, 0x69,
-	0xbc, 0x0e, 0xc4, 0x9d, 0x77, 0x06, 0x24, 0x9b, 0x8e, 0x27, 0x71, 0xc4, 0x29, 0x39, 0xd2, 0x21,
-	0x2c, 0x1a, 0xc5, 0x98, 0xcf, 0x3e, 0xd9, 0xea, 0x28, 0x49, 0xcf, 0x85, 0xac, 0x72, 0xc8, 0x93,
-	0xd7, 0x81, 0xad, 0x05, 0x5a, 0x68, 0x08, 0x6b, 0x1a, 0x85, 0x9a, 0x6f, 0x60, 0x7b, 0xe9, 0xff,
-	0x47, 0x15, 0x03, 0xd8, 0xd5, 0xca, 0xc8, 0xf3, 0x50, 0x26, 0x91, 0xe2, 0xc6, 0xcd, 0xd5, 0x8d,
-	0x13, 0xa8, 0xe2, 0xa6, 0x2a, 0xb8, 0x29, 0x3c, 0x7b, 0x57, 0xf0, 0x77, 0xa1, 0x84, 0xee, 0xf4,
-	0x39, 0x34, 0x52, 0x65, 0xc8, 0x36, 0x4b, 0x74, 0xb3, 0x19, 0xc1, 0xfa, 0x76, 0xba, 0xbc, 0x78,
-	0x1f, 0x81, 0x64, 0x6d, 0x4f, 0x6a, 0xd8, 0xbb, 0x5c, 0xcc, 0xdf, 0xa5, 0x21, 0x7d, 0xea, 0xfc,
-	0xde, 0x05, 0xfc, 0x95, 0xeb, 0xed, 0x69, 0x93, 0xfe, 0x30, 0x16, 0xe9, 0x2e, 0x18, 0x17, 0x8b,
-	0x74, 0x9f, 0x60, 0x23, 0x9b, 0x8e, 0x3b, 0x46, 0xab, 0xd2, 0xb6, 0x4f, 0x8e, 0xf2, 0xf9, 0xb2,
-	0x21, 0xd9, 0x1a, 0xfc, 0x3c, 0x12, 0xe9, 0xcc, 0x6f, 0x64, 0x2a, 0x71, 0xf7, 0x06, 0x76, 0x56,
-	0x5c, 0xc8, 0x36, 0x54, 0xc6, 0x74, 0xa6, 0x39, 0x90, 0x47, 0xd2, 0x86, 0xda, 0x34, 0x08, 0x27,
-	0x14, 0x67, 0x2f, 0x9f, 0x40, 0x39, 0xbc, 0x32, 0x5f, 0x1a, 0x27, 0x3f, 0x2b, 0x60, 0x4b, 0xcd,
-	0xdd, 0xd0, 0x74, 0xca, 0x06, 0x94, 0x9c, 0x02, 0x2c, 0x3f, 0x11, 0xe2, 0x64, 0x54, 0x99, 0x13,
-	0x9f, 0xbb, 0x5f, 0x62, 0xd1, 0xa3, 0xbf, 0xce, 0x3c, 0x00, 0x7b, 0x45, 0x59, 0xeb, 0xf0, 0x7f,
-	0x56, 0x70, 0x1d, 0xfc, 0x01, 0x36, 0x72, 0x4a, 0x24, 0xcd, 0x7c, 0xff, 0xf9, 0x2e, 0xfe, 0x2d,
-	0x37, 0xea, 0x5c, 0xdd, 0x45, 0x2e, 0x25, 0x9c, 0x62, 0xae, 0x9c, 0x9c, 0xdc, 0xbd, 0x8e, 0x7a,
-	0xe3, 0x3a, 0xf3, 0x37, 0xae, 0x73, 0x2e, 0xdf, 0x38, 0x72, 0xba, 0xf8, 0x31, 0xcb, 0x6d, 0x91,
-	0x47, 0xdc, 0x5c, 0xf7, 0xf1, 0xcd, 0x92, 0x6e, 0xfe, 0xdf, 0xbe, 0x5f, 0xb2, 0x12, 0xdd, 0x84,
-	0x5b, 0x66, 0xd2, 0x59, 0x5e, 0x00, 0x7c, 0xa1, 0xa9, 0xfc, 0x5b, 0xbe, 0xa3, 0x8f, 0xf7, 0xb1,
-	0xdd, 0xd1, 0x4e, 0xf3, 0xb8, 0xfe, 0x1a, 0x7a, 0x3c, 0xfb, 0x15, 0x00, 0x00, 0xff, 0xff, 0x3a,
-	0xc8, 0x58, 0x66, 0xd7, 0x07, 0x00, 0x00,
+	// 913 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0xdd, 0x6e, 0xe3, 0x44,
+	0x14, 0xc6, 0x4e, 0x9a, 0x9f, 0xe3, 0x36, 0x4a, 0xa7, 0xcb, 0xca, 0x72, 0xb5, 0xa2, 0xb5, 0x16,
+	0x14, 0x90, 0x36, 0x2b, 0xba, 0x12, 0x02, 0xc4, 0xcd, 0x2e, 0xa9, 0x90, 0x58, 0x0a, 0x2b, 0x97,
+	0x65, 0x2f, 0x23, 0x37, 0x3e, 0x6d, 0xad, 0x3a, 0xb6, 0xf1, 0x4c, 0x22, 0x65, 0x9f, 0x80, 0x3b,
+	0x1e, 0x03, 0x2e, 0x79, 0x41, 0x24, 0x34, 0x67, 0xc6, 0xee, 0x4c, 0x92, 0xaa, 0x0b, 0xec, 0x55,
+	0x66, 0xbe, 0xf3, 0x37, 0xe7, 0x9b, 0xef, 0x4c, 0x0c, 0x90, 0xa4, 0xfc, 0x66, 0x5c, 0x56, 0x85,
+	0x28, 0xd8, 0x4e, 0x3a, 0xaf, 0xca, 0x59, 0x70, 0x78, 0x55, 0x14, 0x57, 0x19, 0x3e, 0x25, 0xf0,
+	0x62, 0x71, 0xf9, 0x14, 0xe7, 0xa5, 0x58, 0x29, 0x9f, 0xc0, 0x23, 0x1f, 0xb5, 0x09, 0xff, 0x72,
+	0xa1, 0x3d, 0x49, 0xf9, 0x0d, 0x1b, 0x80, 0x9b, 0x26, 0xbe, 0x73, 0xe4, 0x8c, 0xfa, 0x91, 0x9b,
+	0x26, 0x8c, 0x41, 0x7b, 0xb1, 0x48, 0x13, 0xdf, 0x25, 0x84, 0xd6, 0x12, 0x2b, 0x63, 0x71, 0xed,
+	0xb7, 0x14, 0x26, 0xd7, 0x12, 0x13, 0xab, 0x12, 0xfd, 0xb6, 0xc2, 0xe4, 0x9a, 0x3d, 0x02, 0x10,
+	0x85, 0x88, 0xb3, 0x29, 0x4f, 0xdf, 0xa2, 0xbf, 0x73, 0xe4, 0x8c, 0x5a, 0x51, 0x9f, 0x90, 0xf3,
+	0xf4, 0x2d, 0xb2, 0x43, 0xe8, 0x5f, 0x56, 0x88, 0xca, 0xda, 0x21, 0x6b, 0x4f, 0x02, 0x64, 0x3c,
+	0x86, 0x5d, 0x15, 0x7b, 0x91, 0x15, 0xb3, 0x1b, 0xee, 0x77, 0xc9, 0xee, 0x11, 0xf6, 0x82, 0x20,
+	0xf6, 0x11, 0x78, 0x14, 0xaf, 0x3d, 0x7a, 0xe4, 0x01, 0x12, 0xd2, 0x0e, 0x8f, 0x00, 0xc8, 0xa6,
+	0x2a, 0xf4, 0x55, 0x7d, 0x42, 0xea, 0x12, 0xb3, 0x6c, 0xc1, 0x05, 0x56, 0xca, 0x01, 0x54, 0x09,
+	0x8d, 0x91, 0x4b, 0x00, 0xbd, 0x0a, 0xe3, 0xa4, 0xc8, 0xb3, 0x95, 0xef, 0x1d, 0x39, 0xa3, 0x5e,
+	0xd4, 0xec, 0xc3, 0xdf, 0x5d, 0xe8, 0x46, 0x58, 0x66, 0xe9, 0x2c, 0x96, 0xdd, 0xe7, 0xf1, 0x1c,
+	0x35, 0x6f, 0xb4, 0xde, 0xca, 0xdc, 0x21, 0xf4, 0x2f, 0x12, 0x5c, 0x4e, 0xc9, 0x59, 0xd1, 0xd7,
+	0x93, 0xc0, 0x8f, 0x32, 0xe0, 0x18, 0x76, 0xb3, 0x25, 0x17, 0x45, 0x85, 0x53, 0x0a, 0x54, 0x54,
+	0x7a, 0x1a, 0x7b, 0x2d, 0xe3, 0xef, 0x61, 0x74, 0x9d, 0xb4, 0xce, 0x26, 0x69, 0x36, 0x27, 0xdd,
+	0x75, 0x4e, 0x3e, 0x86, 0x81, 0xb8, 0x4e, 0xf3, 0x69, 0x59, 0x15, 0xcb, 0x94, 0xa7, 0x45, 0x4e,
+	0xb4, 0xf6, 0xa2, 0x3d, 0x89, 0xbe, 0xaa, 0x41, 0xf6, 0x00, 0x76, 0xb8, 0x88, 0x85, 0x22, 0xb5,
+	0x1f, 0xa9, 0x4d, 0xf8, 0x77, 0x0b, 0x3a, 0xa7, 0xf9, 0x55, 0x9a, 0xe3, 0x3b, 0x13, 0xc2, 0xa0,
+	0x4d, 0x07, 0x91, 0x5c, 0xb4, 0x23, 0x5a, 0x33, 0x1f, 0xba, 0x71, 0x92, 0x54, 0xc8, 0xb9, 0xa6,
+	0xa0, 0xde, 0xb2, 0x9f, 0xe1, 0xa0, 0x52, 0x8c, 0x4f, 0x35, 0x34, 0x9d, 0xc7, 0xa5, 0xbf, 0x73,
+	0xd4, 0x1a, 0x79, 0x27, 0x8f, 0xc7, 0x4a, 0xd0, 0xea, 0x04, 0x63, 0x7d, 0x35, 0xcf, 0x95, 0xdf,
+	0x59, 0x5c, 0x9e, 0xe6, 0xa2, 0x5a, 0x45, 0xfb, 0xd5, 0x3a, 0xce, 0x5e, 0xc2, 0xb0, 0xce, 0x3a,
+	0x2f, 0x12, 0xa4, 0x94, 0x1d, 0x4a, 0x79, 0xbc, 0x35, 0xe5, 0x59, 0x91, 0x60, 0x93, 0x6f, 0x50,
+	0x59, 0xa0, 0x54, 0x0c, 0xe6, 0x49, 0x59, 0xa4, 0xb9, 0x20, 0x76, 0xfb, 0x51, 0xb3, 0x97, 0xb6,
+	0xcb, 0xaa, 0xc8, 0x05, 0xe6, 0x09, 0xd1, 0xda, 0x8f, 0x9a, 0xbd, 0x24, 0xbe, 0x5e, 0x4f, 0x4d,
+	0x6a, 0xf7, 0x6a, 0xf4, 0x5c, 0x82, 0xc1, 0x04, 0x1e, 0x6e, 0x6f, 0x8c, 0x0d, 0xa1, 0x75, 0x83,
+	0x2b, 0x4d, 0xb8, 0x5c, 0xca, 0x4b, 0x5a, 0xc6, 0xd9, 0x02, 0x35, 0xe1, 0x6a, 0xf3, 0xb5, 0xfb,
+	0xa5, 0x13, 0xbc, 0x86, 0x83, 0x2d, 0xbd, 0x6c, 0x49, 0x31, 0x32, 0x53, 0x0c, 0x4e, 0x98, 0xe6,
+	0xc3, 0x08, 0x36, 0xd2, 0x86, 0x67, 0xb0, 0x2f, 0xdf, 0x90, 0x6f, 0x2b, 0x8c, 0x05, 0x46, 0xf8,
+	0xeb, 0x02, 0xb9, 0x90, 0x92, 0x97, 0x0f, 0xd3, 0xd4, 0x90, 0x43, 0x4f, 0x02, 0x24, 0xf9, 0xda,
+	0x48, 0xcf, 0x89, 0x7b, 0x6b, 0x7c, 0x15, 0x8b, 0xeb, 0xf0, 0x09, 0x0c, 0x64, 0xba, 0xef, 0x50,
+	0xac, 0xe7, 0x22, 0x77, 0x67, 0xcd, 0x3d, 0x86, 0x07, 0xfa, 0x5c, 0xf6, 0x01, 0xb6, 0x49, 0x71,
+	0x7d, 0xd4, 0xdc, 0xcd, 0x51, 0x33, 0x95, 0xd9, 0x52, 0xca, 0x0c, 0xbf, 0x87, 0x7d, 0x5d, 0xc2,
+	0x38, 0xd4, 0x7f, 0xcb, 0x1f, 0x9e, 0x35, 0xc7, 0x9d, 0x60, 0x86, 0xff, 0xf7, 0xb8, 0xe1, 0x9f,
+	0x4e, 0x73, 0xa7, 0x3f, 0xa4, 0x5c, 0x44, 0xc8, 0xcb, 0x22, 0xe7, 0xc8, 0x26, 0xf2, 0x05, 0x23,
+	0x98, 0xfb, 0x0e, 0x89, 0x7a, 0x64, 0x5f, 0xa2, 0xe9, 0x5d, 0x63, 0x5c, 0x69, 0xbb, 0x89, 0x0c,
+	0x5e, 0xc2, 0x9e, 0x65, 0xda, 0x22, 0x95, 0xc7, 0xa6, 0x54, 0xbc, 0x93, 0x81, 0x5d, 0xc5, 0x94,
+	0xc9, 0x6f, 0x2e, 0x1c, 0xa8, 0x89, 0xba, 0xff, 0xa2, 0x8c, 0xb7, 0xc0, 0xb5, 0xdf, 0x82, 0x78,
+	0xfb, 0x5b, 0xd0, 0xa2, 0x1e, 0x3f, 0xb7, 0x06, 0xd7, 0x2a, 0xf3, 0x2f, 0x1e, 0x06, 0x73, 0x5e,
+	0xdb, 0xf6, 0xbc, 0xbe, 0x9f, 0x41, 0x0c, 0x3f, 0xad, 0x99, 0xb8, 0x57, 0x03, 0x9f, 0x7d, 0x02,
+	0x9e, 0x31, 0x76, 0xac, 0x03, 0xee, 0x9b, 0x9f, 0x86, 0x1f, 0xc8, 0xdf, 0xe8, 0xcd, 0xd0, 0x61,
+	0x5d, 0x68, 0x9d, 0x46, 0xd1, 0xd0, 0x3d, 0xf9, 0xa3, 0x0d, 0x9e, 0x1c, 0x9b, 0x73, 0xac, 0x96,
+	0xe9, 0x0c, 0xd9, 0x33, 0x80, 0xdb, 0xa1, 0x64, 0xbe, 0x26, 0x66, 0x63, 0x4e, 0x03, 0xcf, 0xb0,
+	0xb0, 0x27, 0xd0, 0xd5, 0xa3, 0xc7, 0x3e, 0x34, 0xf0, 0x5b, 0xd5, 0xdb, 0xee, 0xdf, 0x34, 0xf2,
+	0xd0, 0x65, 0x0e, 0xed, 0xdb, 0xb7, 0x2b, 0xad, 0x49, 0x83, 0x4d, 0x9a, 0x68, 0xc5, 0xc2, 0x7a,
+	0xb4, 0xc5, 0x4d, 0xf0, 0x70, 0xac, 0x3e, 0x6a, 0xc6, 0xf5, 0x47, 0xcd, 0xf8, 0x54, 0x7e, 0xd4,
+	0xb0, 0x2f, 0x00, 0x6e, 0x67, 0xb3, 0xe9, 0x73, 0x63, 0x5c, 0x37, 0xaa, 0x3f, 0x6f, 0x78, 0x95,
+	0x93, 0xc0, 0xee, 0x48, 0x1f, 0x04, 0x77, 0x4f, 0x0d, 0xfb, 0x0a, 0x76, 0x4d, 0xa1, 0xb1, 0xe0,
+	0x6e, 0xf5, 0x05, 0x7b, 0x96, 0x8d, 0xbd, 0xa8, 0x43, 0x75, 0xeb, 0x76, 0xe8, 0x3b, 0x77, 0xfe,
+	0x0b, 0x56, 0xf2, 0x7f, 0x59, 0x76, 0x7e, 0x57, 0x03, 0xc3, 0xb1, 0x76, 0xaa, 0x8f, 0x7d, 0xd1,
+	0x21, 0x8f, 0x67, 0xff, 0x04, 0x00, 0x00, 0xff, 0xff, 0xa0, 0x10, 0xd6, 0x63, 0x39, 0x0a, 0x00,
+	0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -757,12 +849,14 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type DiskServiceClient interface {
-	DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*DiskCreateResponse, error)
-	DiskInfo(ctx context.Context, in *DiskInfoRequest, opts ...grpc.CallOption) (*DiskInfoResponse, error)
-	ReplicaCreate(ctx context.Context, in *ReplicaCreateRequest, opts ...grpc.CallOption) (*ReplicaCreateResponse, error)
+	DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*Disk, error)
+	DiskGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*Disk, error)
+	ReplicaCreate(ctx context.Context, in *ReplicaCreateRequest, opts ...grpc.CallOption) (*Replica, error)
 	ReplicaDelete(ctx context.Context, in *ReplicaDeleteRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	ReplicaGet(ctx context.Context, in *ReplicaGetRequest, opts ...grpc.CallOption) (*Replica, error)
 	ReplicaList(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ReplicaListResponse, error)
-	ReplicaInfo(ctx context.Context, in *ReplicaInfoRequest, opts ...grpc.CallOption) (*ReplicaInfoResponse, error)
+	EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error)
+	EngineDelete(ctx context.Context, in *EngineDeleteRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	VersionGet(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*VersionResponse, error)
 }
 
@@ -774,8 +868,8 @@ func NewDiskServiceClient(cc *grpc.ClientConn) DiskServiceClient {
 	return &diskServiceClient{cc}
 }
 
-func (c *diskServiceClient) DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*DiskCreateResponse, error) {
-	out := new(DiskCreateResponse)
+func (c *diskServiceClient) DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*Disk, error) {
+	out := new(Disk)
 	err := c.cc.Invoke(ctx, "/imrpc.DiskService/DiskCreate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -783,17 +877,17 @@ func (c *diskServiceClient) DiskCreate(ctx context.Context, in *DiskCreateReques
 	return out, nil
 }
 
-func (c *diskServiceClient) DiskInfo(ctx context.Context, in *DiskInfoRequest, opts ...grpc.CallOption) (*DiskInfoResponse, error) {
-	out := new(DiskInfoResponse)
-	err := c.cc.Invoke(ctx, "/imrpc.DiskService/DiskInfo", in, out, opts...)
+func (c *diskServiceClient) DiskGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*Disk, error) {
+	out := new(Disk)
+	err := c.cc.Invoke(ctx, "/imrpc.DiskService/DiskGet", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *diskServiceClient) ReplicaCreate(ctx context.Context, in *ReplicaCreateRequest, opts ...grpc.CallOption) (*ReplicaCreateResponse, error) {
-	out := new(ReplicaCreateResponse)
+func (c *diskServiceClient) ReplicaCreate(ctx context.Context, in *ReplicaCreateRequest, opts ...grpc.CallOption) (*Replica, error) {
+	out := new(Replica)
 	err := c.cc.Invoke(ctx, "/imrpc.DiskService/ReplicaCreate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -810,6 +904,15 @@ func (c *diskServiceClient) ReplicaDelete(ctx context.Context, in *ReplicaDelete
 	return out, nil
 }
 
+func (c *diskServiceClient) ReplicaGet(ctx context.Context, in *ReplicaGetRequest, opts ...grpc.CallOption) (*Replica, error) {
+	out := new(Replica)
+	err := c.cc.Invoke(ctx, "/imrpc.DiskService/ReplicaGet", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *diskServiceClient) ReplicaList(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ReplicaListResponse, error) {
 	out := new(ReplicaListResponse)
 	err := c.cc.Invoke(ctx, "/imrpc.DiskService/ReplicaList", in, out, opts...)
@@ -819,9 +922,18 @@ func (c *diskServiceClient) ReplicaList(ctx context.Context, in *empty.Empty, op
 	return out, nil
 }
 
-func (c *diskServiceClient) ReplicaInfo(ctx context.Context, in *ReplicaInfoRequest, opts ...grpc.CallOption) (*ReplicaInfoResponse, error) {
-	out := new(ReplicaInfoResponse)
-	err := c.cc.Invoke(ctx, "/imrpc.DiskService/ReplicaInfo", in, out, opts...)
+func (c *diskServiceClient) EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error) {
+	out := new(Engine)
+	err := c.cc.Invoke(ctx, "/imrpc.DiskService/EngineCreate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *diskServiceClient) EngineDelete(ctx context.Context, in *EngineDeleteRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
+	err := c.cc.Invoke(ctx, "/imrpc.DiskService/EngineDelete", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -839,12 +951,14 @@ func (c *diskServiceClient) VersionGet(ctx context.Context, in *empty.Empty, opt
 
 // DiskServiceServer is the server API for DiskService service.
 type DiskServiceServer interface {
-	DiskCreate(context.Context, *DiskCreateRequest) (*DiskCreateResponse, error)
-	DiskInfo(context.Context, *DiskInfoRequest) (*DiskInfoResponse, error)
-	ReplicaCreate(context.Context, *ReplicaCreateRequest) (*ReplicaCreateResponse, error)
+	DiskCreate(context.Context, *DiskCreateRequest) (*Disk, error)
+	DiskGet(context.Context, *DiskGetRequest) (*Disk, error)
+	ReplicaCreate(context.Context, *ReplicaCreateRequest) (*Replica, error)
 	ReplicaDelete(context.Context, *ReplicaDeleteRequest) (*empty.Empty, error)
+	ReplicaGet(context.Context, *ReplicaGetRequest) (*Replica, error)
 	ReplicaList(context.Context, *empty.Empty) (*ReplicaListResponse, error)
-	ReplicaInfo(context.Context, *ReplicaInfoRequest) (*ReplicaInfoResponse, error)
+	EngineCreate(context.Context, *EngineCreateRequest) (*Engine, error)
+	EngineDelete(context.Context, *EngineDeleteRequest) (*empty.Empty, error)
 	VersionGet(context.Context, *empty.Empty) (*VersionResponse, error)
 }
 
@@ -852,23 +966,29 @@ type DiskServiceServer interface {
 type UnimplementedDiskServiceServer struct {
 }
 
-func (*UnimplementedDiskServiceServer) DiskCreate(ctx context.Context, req *DiskCreateRequest) (*DiskCreateResponse, error) {
+func (*UnimplementedDiskServiceServer) DiskCreate(ctx context.Context, req *DiskCreateRequest) (*Disk, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DiskCreate not implemented")
 }
-func (*UnimplementedDiskServiceServer) DiskInfo(ctx context.Context, req *DiskInfoRequest) (*DiskInfoResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DiskInfo not implemented")
+func (*UnimplementedDiskServiceServer) DiskGet(ctx context.Context, req *DiskGetRequest) (*Disk, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiskGet not implemented")
 }
-func (*UnimplementedDiskServiceServer) ReplicaCreate(ctx context.Context, req *ReplicaCreateRequest) (*ReplicaCreateResponse, error) {
+func (*UnimplementedDiskServiceServer) ReplicaCreate(ctx context.Context, req *ReplicaCreateRequest) (*Replica, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaCreate not implemented")
 }
 func (*UnimplementedDiskServiceServer) ReplicaDelete(ctx context.Context, req *ReplicaDeleteRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaDelete not implemented")
 }
+func (*UnimplementedDiskServiceServer) ReplicaGet(ctx context.Context, req *ReplicaGetRequest) (*Replica, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaGet not implemented")
+}
 func (*UnimplementedDiskServiceServer) ReplicaList(ctx context.Context, req *empty.Empty) (*ReplicaListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaList not implemented")
 }
-func (*UnimplementedDiskServiceServer) ReplicaInfo(ctx context.Context, req *ReplicaInfoRequest) (*ReplicaInfoResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReplicaInfo not implemented")
+func (*UnimplementedDiskServiceServer) EngineCreate(ctx context.Context, req *EngineCreateRequest) (*Engine, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineCreate not implemented")
+}
+func (*UnimplementedDiskServiceServer) EngineDelete(ctx context.Context, req *EngineDeleteRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineDelete not implemented")
 }
 func (*UnimplementedDiskServiceServer) VersionGet(ctx context.Context, req *empty.Empty) (*VersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VersionGet not implemented")
@@ -896,20 +1016,20 @@ func _DiskService_DiskCreate_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DiskService_DiskInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DiskInfoRequest)
+func _DiskService_DiskGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiskGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DiskServiceServer).DiskInfo(ctx, in)
+		return srv.(DiskServiceServer).DiskGet(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/imrpc.DiskService/DiskInfo",
+		FullMethod: "/imrpc.DiskService/DiskGet",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DiskServiceServer).DiskInfo(ctx, req.(*DiskInfoRequest))
+		return srv.(DiskServiceServer).DiskGet(ctx, req.(*DiskGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -950,6 +1070,24 @@ func _DiskService_ReplicaDelete_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DiskService_ReplicaGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiskServiceServer).ReplicaGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.DiskService/ReplicaGet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DiskServiceServer).ReplicaGet(ctx, req.(*ReplicaGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DiskService_ReplicaList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(empty.Empty)
 	if err := dec(in); err != nil {
@@ -968,20 +1106,38 @@ func _DiskService_ReplicaList_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DiskService_ReplicaInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReplicaInfoRequest)
+func _DiskService_EngineCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DiskServiceServer).ReplicaInfo(ctx, in)
+		return srv.(DiskServiceServer).EngineCreate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/imrpc.DiskService/ReplicaInfo",
+		FullMethod: "/imrpc.DiskService/EngineCreate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DiskServiceServer).ReplicaInfo(ctx, req.(*ReplicaInfoRequest))
+		return srv.(DiskServiceServer).EngineCreate(ctx, req.(*EngineCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DiskService_EngineDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiskServiceServer).EngineDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.DiskService/EngineDelete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DiskServiceServer).EngineDelete(ctx, req.(*EngineDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1013,8 +1169,8 @@ var _DiskService_serviceDesc = grpc.ServiceDesc{
 			Handler:    _DiskService_DiskCreate_Handler,
 		},
 		{
-			MethodName: "DiskInfo",
-			Handler:    _DiskService_DiskInfo_Handler,
+			MethodName: "DiskGet",
+			Handler:    _DiskService_DiskGet_Handler,
 		},
 		{
 			MethodName: "ReplicaCreate",
@@ -1025,12 +1181,20 @@ var _DiskService_serviceDesc = grpc.ServiceDesc{
 			Handler:    _DiskService_ReplicaDelete_Handler,
 		},
 		{
+			MethodName: "ReplicaGet",
+			Handler:    _DiskService_ReplicaGet_Handler,
+		},
+		{
 			MethodName: "ReplicaList",
 			Handler:    _DiskService_ReplicaList_Handler,
 		},
 		{
-			MethodName: "ReplicaInfo",
-			Handler:    _DiskService_ReplicaInfo_Handler,
+			MethodName: "EngineCreate",
+			Handler:    _DiskService_EngineCreate_Handler,
+		},
+		{
+			MethodName: "EngineDelete",
+			Handler:    _DiskService_EngineDelete_Handler,
 		},
 		{
 			MethodName: "VersionGet",

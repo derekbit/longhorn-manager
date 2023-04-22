@@ -51,6 +51,8 @@ message InstanceDeleteRequest {
 	string name = 1;
 	string type = 2;
 	string backend_store_driver = 3;
+
+	string disk_uuid = 4;
 }
 
 message InstanceGetRequest {
