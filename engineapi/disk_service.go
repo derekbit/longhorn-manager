@@ -27,21 +27,6 @@ type DiskInfo struct {
 	Readonly    bool
 }
 
-type ReplicaInfo struct {
-	Name        string
-	UUID        string
-	BdevName    string
-	LvstoreName string
-
-	TotalSize   int64
-	TotalBlocks int64
-	BlockSize   int64
-
-	ThinProvision bool
-
-	State string
-}
-
 func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c DiskServiceClient, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to get disk service client")
@@ -83,7 +68,7 @@ type DiskService struct {
 
 type DiskServiceClient interface {
 	DiskCreate(string, string) (*DiskInfo, error)
-	DiskInfo(string) (*DiskInfo, error)
+	DiskGet(string) (*DiskInfo, error)
 	Close()
 }
 
@@ -108,21 +93,7 @@ func (s *DiskService) DiskCreate(diskName, diskPath string) (*DiskInfo, error) {
 	return (*DiskInfo)(unsafe.Pointer(info)), err
 }
 
-func (s *DiskService) DiskInfo(uuid string) (*DiskInfo, error) {
+func (s *DiskService) DiskGet(uuid string) (*DiskInfo, error) {
 	info, err := s.grpcClient.DiskGet(uuid)
 	return (*DiskInfo)(unsafe.Pointer(info)), err
-}
-
-func (s *DiskService) ReplicaCreate(name, lvstoreUUID string, size int64) (*ReplicaInfo, error) {
-	info, err := s.grpcClient.ReplicaCreate(name, lvstoreUUID, size)
-	return (*ReplicaInfo)(unsafe.Pointer(info)), err
-}
-
-func (s *DiskService) ReplicaInfo(name, lvstoreUUID string) (*ReplicaInfo, error) {
-	info, err := s.grpcClient.ReplicaGet(name, lvstoreUUID)
-	return (*ReplicaInfo)(unsafe.Pointer(info)), err
-}
-
-func (s *DiskService) ReplicaDelete(name, lvstoreUUID string) error {
-	return s.grpcClient.ReplicaDelete(name, lvstoreUUID)
 }

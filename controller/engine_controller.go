@@ -461,7 +461,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	return c.EngineInstanceCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion, im.Status.APIVersion)
+	return c.EngineInstanceCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, im.Status.IP, engineCLIAPIVersion, im.Status.APIVersion)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {

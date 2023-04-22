@@ -134,7 +134,7 @@ func (c *DiskServiceClient) DiskGet(diskPath string) (*DiskInfo, error) {
 	}, nil
 }
 
-func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64) (*rpc.Replica, error) {
+func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, address string) (*rpc.Replica, error) {
 	if name == "" || lvstoreUUID == "" || size == 0 {
 		return nil, fmt.Errorf("failed to create replica: missing required parameter")
 	}
@@ -147,6 +147,7 @@ func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64) 
 		Name:        name,
 		LvstoreUuid: lvstoreUUID,
 		Size:        size,
+		Address:     address,
 	})
 	if err != nil {
 		return nil, err

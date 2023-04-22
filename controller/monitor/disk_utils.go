@@ -34,7 +34,7 @@ func getFilesystemTypeDiskStat(path string) (stat *util.DiskStat, err error) {
 }
 
 func getBlockTypeDiskStat(client engineapi.DiskServiceClient, path string) (stat *util.DiskStat, err error) {
-	info, err := client.DiskInfo(path)
+	info, err := client.DiskGet(path)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 }
 
 func getBlockTypeDiskConfig(client engineapi.DiskServiceClient, path string) (config *util.DiskConfig, err error) {
-	info, err := client.DiskInfo(path)
+	info, err := client.DiskGet(path)
 	if err != nil {
 		if grpcstatus.Code(err) == grpccodes.NotFound {
 			return nil, errors.Wrapf(err, "cannot find disk info")

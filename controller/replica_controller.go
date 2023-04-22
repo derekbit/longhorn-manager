@@ -408,7 +408,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion, im.Status.APIVersion)
+	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, im.Status.IP, engineCLIAPIVersion, im.Status.APIVersion)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {

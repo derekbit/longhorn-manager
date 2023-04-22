@@ -23,9 +23,10 @@ message ProcessSpecific {
 }
 
 message SpdkSpecific {
-    map<string, string> replica_address_map = 1;
-    string frontend = 2;
-	string disk_uuid = 3;
+	string address = 1;
+    map<string, string> replica_address_map = 2;
+    string frontend = 3;
+	string disk_uuid = 4;
 }
 
 message InstanceSpec {

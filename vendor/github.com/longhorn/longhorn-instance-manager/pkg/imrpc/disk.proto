@@ -50,9 +50,8 @@ message Replica {
     int64 total_blocks = 6;
     int64 block_size = 7;
 
-    bool thin_provision = 8;
-
-    string state = 9;
+    int32 port = 9;
+    string state = 10;
 }
 
 message Engine {
@@ -86,6 +85,7 @@ message ReplicaCreateRequest {
     string name = 1;
 	string lvstore_uuid = 2;
     int64 size = 3;
+    string address = 4;
 }
 
 message ReplicaGetRequest {

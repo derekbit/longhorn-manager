@@ -306,7 +306,7 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 // EngineInstanceCreate creates a new engine instance
 func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 	volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
-	dataLocality longhorn.DataLocality, engineCLIAPIVersion, imAPIVersion int) (*longhorn.InstanceProcess, error) {
+	dataLocality longhorn.DataLocality, imIP string, engineCLIAPIVersion, imAPIVersion int) (*longhorn.InstanceProcess, error) {
 
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
@@ -340,7 +340,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name,
 		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
-		binary, args, frontend, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg})
+		binary, args, frontend, imIP, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +349,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 // ReplicaInstanceCreate creates a new replica instance
 func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion, imAPIVersion int) (*longhorn.InstanceProcess, error) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, imIP string, engineCLIAPIVersion, imAPIVersion int) (*longhorn.InstanceProcess, error) {
 
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
@@ -368,7 +368,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name,
 		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
-		binary, args, "", nil, DefaultReplicaPortCount, []string{DefaultPortArg})
+		binary, args, "", imIP, nil, DefaultReplicaPortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}
