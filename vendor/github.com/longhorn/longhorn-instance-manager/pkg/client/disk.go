@@ -200,7 +200,7 @@ func (c *DiskServiceClient) ReplicaGet(name, lvstoreUUID string) (*ReplicaInfo, 
 	}, nil
 }
 
-func (c *DiskServiceClient) ReplicaList() (map[string]*ReplicaInfo, error) {
+func (c *DiskServiceClient) ReplicaList() (map[string]*rpc.Replica, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
@@ -210,29 +210,46 @@ func (c *DiskServiceClient) ReplicaList() (map[string]*ReplicaInfo, error) {
 		return nil, err
 	}
 
-	replicaInfos := map[string]*ReplicaInfo{}
-
-	for _, replica := range resp.GetReplicas() {
-		replicaInfos[replica.GetName()] = &ReplicaInfo{
-			Name:          replica.GetName(),
-			UUID:          replica.GetUuid(),
-			BdevName:      replica.GetBdevName(),
-			LvstoreUUID:   replica.GetLvstoreUuid(),
-			TotalSize:     replica.GetTotalSize(),
-			TotalBlocks:   replica.GetTotalBlocks(),
-			ThinProvision: replica.GetThinProvision(),
-			State:         replica.GetState(),
-		}
-	}
-	return replicaInfos, nil
+	return resp.Replicas, nil
 }
 
-func (c *DiskServiceClient) EngineCreate(name string, size int64) (*rpc.Engine, error) {
-	return nil, nil
+func (c *DiskServiceClient) EngineCreate(name, frontend, address string, replicaAddresses map[string]string) (*rpc.Engine, error) {
+	if name == "" || replicaAddresses == nil {
+		return nil, fmt.Errorf("failed to create engine: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.EngineCreate(ctx, &rpc.EngineCreateRequest{
+		Name:              name,
+		Address:           address,
+		ReplicaAddressMap: replicaAddresses,
+		Frontend:          frontend,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (c *DiskServiceClient) EngineDelete() error {
 	return nil
+}
+
+func (c *DiskServiceClient) EngineList() (map[string]*rpc.Engine, error) {
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.EngineList(ctx, &empty.Empty{})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Engines, nil
 }
 
 func (c *DiskServiceClient) VersionGet() (*meta.VersionOutput, error) {

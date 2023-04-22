@@ -93,7 +93,7 @@ func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreD
 			PortCount: int32(portCount),
 			PortArgs:  portArgs,
 
-			Process: &rpc.Process{
+			ProcessSpecific: &rpc.ProcessSpecific{
 				Binary: binary,
 				Args:   args,
 			},
@@ -203,7 +203,7 @@ func (c *InstanceServiceClient) InstanceReplace(name, instanceType, backendStore
 			Name:               name,
 			Type:               instanceType,
 			BackendStoreDriver: backendStoreDriver,
-			Process: &rpc.Process{
+			ProcessSpecific: &rpc.ProcessSpecific{
 				Binary: binary,
 				Args:   args,
 			},

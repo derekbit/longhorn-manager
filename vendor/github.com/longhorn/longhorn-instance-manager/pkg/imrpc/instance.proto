@@ -17,9 +17,14 @@ service InstanceService {
 	rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
 
-message Process {
+message ProcessSpecific {
 	string binary = 1;
 	repeated string args = 2;
+}
+
+message SpdkSpecific {
+    map<string, string> replica_address_map = 1;
+    string frontend = 2;
 }
 
 message InstanceSpec {
@@ -33,7 +38,8 @@ message InstanceSpec {
 	int32 port_count = 6;
 	repeated string port_args = 7;
 
-	Process process = 8;
+	ProcessSpecific process_specific = 8;
+	SpdkSpecific spdk_specific = 9;
 }
 
 message InstanceStatus {

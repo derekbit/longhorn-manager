@@ -1132,7 +1132,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 	if spdk.Value == "true" {
 		podSpec.Spec.Containers[0].Args = []string{
-			"instance-manager", "--enable-spdk", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", "0.0.0.0:8500",
 		}
 
 		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameSpdkHugepageLimit)

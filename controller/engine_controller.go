@@ -574,7 +574,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	defer c.Close()
 
-	err = c.InstanceDelete(e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, "", im.Status.APIVersion)
+	err = c.InstanceDelete(e.Name, string(longhorn.InstanceManagerTypeEngine), e.Spec.BackendStoreDriver, "", im.Status.APIVersion)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -668,7 +668,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	}
 	defer c.Close()
 
-	return c.InstanceGet(e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, im.Status.APIVersion)
+	return c.InstanceGet(e.Name, string(longhorn.InstanceManagerTypeEngine), e.Spec.BackendStoreDriver, im.Status.APIVersion)
 }
 
 func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -687,7 +687,7 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.InstanceLog(ctx, e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, im.Status.APIVersion)
+	stream, err := c.InstanceLog(ctx, e.Name, string(longhorn.InstanceManagerTypeEngine), e.Spec.BackendStoreDriver, im.Status.APIVersion)
 	return c, stream, err
 }
 
@@ -1989,7 +1989,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 		return err
 	}
 
-	processBinary, err := c.InstanceGetBinary(e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, im.Status.APIVersion)
+	processBinary, err := c.InstanceGetBinary(e.Name, string(longhorn.InstanceManagerTypeEngine), e.Spec.BackendStoreDriver, im.Status.APIVersion)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the binary of the current engine process")
 	}

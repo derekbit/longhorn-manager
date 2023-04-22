@@ -328,7 +328,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name,
-		types.LonghornKindEngine, string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
+		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
 		binary, args, DefaultEnginePortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
@@ -356,7 +356,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name,
-		types.LonghornKindReplica, string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
+		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
 		binary, args, DefaultReplicaPortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
@@ -497,7 +497,7 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
 
 	instance, err := c.instanceServiceGrpcClient.InstanceReplace(e.Name,
-		types.LonghornKindEngine, string(e.Spec.BackendStoreDriver), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err
 	}

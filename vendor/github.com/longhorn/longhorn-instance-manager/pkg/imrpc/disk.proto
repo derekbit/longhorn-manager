@@ -16,6 +16,7 @@ service DiskService {
 
     rpc EngineCreate(EngineCreateRequest) returns (Engine);
     rpc EngineDelete(EngineDeleteRequest) returns (google.protobuf.Empty);
+    rpc EngineList(google.protobuf.Empty) returns (EngineListResponse);
 
     rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
@@ -110,4 +111,8 @@ message EngineCreateRequest {
 
 message EngineDeleteRequest {
     string name = 1;
+}
+
+message EngineListResponse {
+	map<string, Engine> engines = 1;
 }

@@ -31,8 +31,8 @@ type Process struct {
 func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 	return &Instance{
 		Name:           obj.Spec.Name,
-		Binary:         obj.Spec.Process.Binary,
-		Args:           obj.Spec.Process.Args,
+		Binary:         obj.Spec.ProcessSpecific.Binary,
+		Args:           obj.Spec.ProcessSpecific.Args,
 		PortCount:      obj.Spec.PortCount,
 		PortArgs:       obj.Spec.PortArgs,
 		InstanceStatus: RPCToInstanceStatus(obj.Status),
