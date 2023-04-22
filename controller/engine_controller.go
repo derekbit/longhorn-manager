@@ -574,7 +574,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	defer c.Close()
 
-	err = c.InstanceDelete(e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, im.Status.APIVersion)
+	err = c.InstanceDelete(e.Name, types.LonghornKindEngine, e.Spec.BackendStoreDriver, "", im.Status.APIVersion)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}

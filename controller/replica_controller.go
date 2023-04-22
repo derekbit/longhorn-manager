@@ -563,7 +563,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	err = c.InstanceDelete(r.Name, types.LonghornKindReplica, r.Spec.BackendStoreDriver, im.Status.APIVersion)
+	err = c.InstanceDelete(r.Name, types.LonghornKindReplica, r.Spec.BackendStoreDriver, r.Spec.DiskID, im.Status.APIVersion)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}

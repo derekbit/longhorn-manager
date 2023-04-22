@@ -365,13 +365,13 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 }
 
 // InstanceDelete deletes the instance
-func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, imAPIVersion int) error {
+func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, diskUUID string, imAPIVersion int) error {
 	if imAPIVersion < 4 {
 		/* Fall back to the old way of creating replica process */
 		return nil
 	}
 
-	_, err := c.instanceServiceGrpcClient.InstanceDelete(name, kind, string(backendStoreDriver))
+	_, err := c.instanceServiceGrpcClient.InstanceDelete(name, kind, string(backendStoreDriver), diskUUID)
 	return err
 }
 

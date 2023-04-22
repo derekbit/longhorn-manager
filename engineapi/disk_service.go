@@ -109,7 +109,7 @@ func (s *DiskService) DiskCreate(diskName, diskPath string) (*DiskInfo, error) {
 }
 
 func (s *DiskService) DiskInfo(uuid string) (*DiskInfo, error) {
-	info, err := s.grpcClient.DiskInfo(uuid)
+	info, err := s.grpcClient.DiskGet(uuid)
 	return (*DiskInfo)(unsafe.Pointer(info)), err
 }
 
@@ -119,7 +119,7 @@ func (s *DiskService) ReplicaCreate(name, lvstoreUUID string, size int64) (*Repl
 }
 
 func (s *DiskService) ReplicaInfo(name, lvstoreUUID string) (*ReplicaInfo, error) {
-	info, err := s.grpcClient.ReplicaInfo(name, lvstoreUUID)
+	info, err := s.grpcClient.ReplicaGet(name, lvstoreUUID)
 	return (*ReplicaInfo)(unsafe.Pointer(info)), err
 }
 
