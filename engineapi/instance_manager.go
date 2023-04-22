@@ -314,12 +314,23 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 	binary := ""
 	args := []string{}
+	frontend := ""
+	replicaAddresses := map[string]string{}
+
 	var err error
-	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+
+	switch e.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeLonghorn:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(e, volumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout, dataLocality, engineCLIAPIVersion)
+	case longhorn.BackendStoreDriverTypeSpdkAio:
+		replicaAddresses = e.Status.CurrentReplicaAddressMap
+		frontend, err = GetEngineProcessFrontend(volumeFrontend)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	if imAPIVersion < 4 {
@@ -329,7 +340,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name,
 		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
-		binary, args, DefaultEnginePortCount, []string{DefaultPortArg})
+		binary, args, frontend, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +368,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name,
 		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
-		binary, args, DefaultReplicaPortCount, []string{DefaultPortArg})
+		binary, args, "", nil, DefaultReplicaPortCount, []string{DefaultPortArg})
 	if err != nil {
 		return nil, err
 	}

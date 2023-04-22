@@ -73,7 +73,7 @@ func NewInstanceServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peer
 }
 
 func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreDriver, diskUUID string, size int64,
-	binary string, args []string, portCount int, portArgs []string) (*api.Instance, error) {
+	binary string, args []string, frontend string, replicaAddressMap map[string]string, portCount int, portArgs []string) (*api.Instance, error) {
 	if name == "" || instanceType == "" || backendStoreDriver == "" {
 		return nil, fmt.Errorf("failed to create instance: missing required parameter")
 	}
@@ -88,7 +88,6 @@ func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreD
 			Type:               instanceType,
 			BackendStoreDriver: backendStoreDriver,
 			Size:               size,
-			DiskUuid:           diskUUID,
 
 			PortCount: int32(portCount),
 			PortArgs:  portArgs,
@@ -96,6 +95,12 @@ func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreD
 			ProcessSpecific: &rpc.ProcessSpecific{
 				Binary: binary,
 				Args:   args,
+			},
+
+			SpdkSpecific: &rpc.SpdkSpecific{
+				Frontend:          frontend,
+				ReplicaAddressMap: replicaAddressMap,
+				DiskUuid:          diskUUID,
 			},
 		},
 	})
