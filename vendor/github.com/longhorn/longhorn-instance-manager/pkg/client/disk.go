@@ -171,7 +171,7 @@ func (c *DiskServiceClient) ReplicaDelete(name, lvstoreUUID string) error {
 	return err
 }
 
-func (c *DiskServiceClient) ReplicaGet(name, lvstoreUUID string) (*ReplicaInfo, error) {
+func (c *DiskServiceClient) ReplicaGet(name, lvstoreUUID string) (*rpc.Replica, error) {
 	if name == "" || lvstoreUUID == "" {
 		return nil, fmt.Errorf("failed to get replica: missing required parameter")
 	}
@@ -180,24 +180,10 @@ func (c *DiskServiceClient) ReplicaGet(name, lvstoreUUID string) (*ReplicaInfo, 
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	resp, err := client.ReplicaGet(ctx, &rpc.ReplicaGetRequest{
+	return client.ReplicaGet(ctx, &rpc.ReplicaGetRequest{
 		Name:        name,
 		LvstoreUuid: lvstoreUUID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &ReplicaInfo{
-		Name:          resp.GetName(),
-		UUID:          resp.GetUuid(),
-		BdevName:      resp.GetBdevName(),
-		LvstoreUUID:   resp.GetLvstoreUuid(),
-		TotalSize:     resp.GetTotalSize(),
-		TotalBlocks:   resp.GetTotalBlocks(),
-		ThinProvision: resp.GetThinProvision(),
-		State:         resp.GetState(),
-	}, nil
 }
 
 func (c *DiskServiceClient) ReplicaList() (map[string]*rpc.Replica, error) {
