@@ -387,7 +387,7 @@ func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDr
 }
 
 // InstanceGet returns the instance process
-func (c *InstanceManagerClient) InstanceGet(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, imAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) InstanceGet(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, diskUUID string, imAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -397,7 +397,7 @@ func (c *InstanceManagerClient) InstanceGet(name, kind string, backendStoreDrive
 		return nil, nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceGet(name, kind, string(backendStoreDriver))
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(name, kind, string(backendStoreDriver), diskUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +405,7 @@ func (c *InstanceManagerClient) InstanceGet(name, kind string, backendStoreDrive
 }
 
 // InstanceGetBinary returns the binary name of the instance
-func (c *InstanceManagerClient) InstanceGetBinary(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, imAPIVersion int) (string, error) {
+func (c *InstanceManagerClient) InstanceGetBinary(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, diskUUID string, imAPIVersion int) (string, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return "", err
 	}
@@ -415,7 +415,7 @@ func (c *InstanceManagerClient) InstanceGetBinary(name, kind string, backendStor
 		return "", nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceGet(name, kind, string(backendStoreDriver))
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(name, kind, string(backendStoreDriver), diskUUID)
 	if err != nil {
 		return "", err
 	}

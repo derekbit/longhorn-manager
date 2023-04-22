@@ -675,7 +675,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	return c.InstanceGet(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, im.Status.APIVersion)
+	return c.InstanceGet(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID, im.Status.APIVersion)
 }
 
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {

@@ -90,7 +90,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.2.3 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/c9s/goprocinfo v0.0.0-20190309065803-0b2ad9ac246b // indirect
+	github.com/c9s/goprocinfo v0.0.0-20210130143923-c95fcf8c64a8 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.3 // indirect
@@ -148,4 +148,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
 
-replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66 => github.com/derekbit/longhorn-instance-manager v0.0.0-20230422121005-b1cd41425038
+replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66 => github.com/derekbit/longhorn-instance-manager v0.0.0-20230422141455-7e05c8b911d5
