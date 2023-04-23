@@ -35,7 +35,8 @@ import (
 )
 
 var (
-	hostToContainer = v1.MountPropagationHostToContainer
+	mountPropagationHostToContainer = v1.MountPropagationHostToContainer
+	mountPropagationBidirectional   = v1.MountPropagationBidirectional
 )
 
 type InstanceManagerController struct {
@@ -1165,12 +1166,17 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		{
 			MountPath:        "/host",
 			Name:             "host",
-			MountPropagation: &hostToContainer,
+			MountPropagation: &mountPropagationHostToContainer,
+		},
+		{
+			MountPath:        "/var/tmp",
+			Name:             "var-tmp",
+			MountPropagation: &mountPropagationBidirectional,
 		},
 		{
 			MountPath:        types.EngineBinaryDirectoryInContainer,
 			Name:             "engine-binaries",
-			MountPropagation: &hostToContainer,
+			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
 			MountPath: types.UnixDomainSocketDirectoryInContainer,
@@ -1187,6 +1193,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/",
+				},
+			},
+		},
+		{
+			Name: "var-tmp",
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: "/var/tmp",
 				},
 			},
 		},
