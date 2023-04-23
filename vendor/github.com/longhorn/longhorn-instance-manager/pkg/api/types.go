@@ -29,14 +29,19 @@ type Process struct {
 }
 
 func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
-	return &Instance{
+	instance := &Instance{
 		Name:           obj.Spec.Name,
-		Binary:         obj.Spec.ProcessSpecific.Binary,
-		Args:           obj.Spec.ProcessSpecific.Args,
 		PortCount:      obj.Spec.PortCount,
 		PortArgs:       obj.Spec.PortArgs,
 		InstanceStatus: RPCToInstanceStatus(obj.Status),
 	}
+
+	if obj.Spec.ProcessSpecific != nil {
+		instance.Binary = obj.Spec.ProcessSpecific.Binary
+		instance.Args = obj.Spec.ProcessSpecific.Args
+	}
+
+	return instance
 }
 
 func RPCToInstanceList(obj *rpc.InstanceListResponse) map[string]*Instance {
