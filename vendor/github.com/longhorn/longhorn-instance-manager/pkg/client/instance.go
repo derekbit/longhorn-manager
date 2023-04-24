@@ -72,7 +72,7 @@ func NewInstanceServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peer
 	return NewInstanceServiceClient(serviceURL, tlsConfig)
 }
 
-func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreDriver, diskUUID string, size int64,
+func (c *InstanceServiceClient) InstanceCreate(name, volumeName, instanceType, backendStoreDriver, diskUUID string, size int64,
 	binary string, args []string, frontend, address string, replicaAddressMap map[string]string, portCount int, portArgs []string) (*api.Instance, error) {
 	if name == "" || instanceType == "" || backendStoreDriver == "" {
 		return nil, fmt.Errorf("failed to create instance: missing required parameter")
@@ -87,6 +87,7 @@ func (c *InstanceServiceClient) InstanceCreate(name, instanceType, backendStoreD
 			Name:               name,
 			Type:               instanceType,
 			BackendStoreDriver: backendStoreDriver,
+			VolumeName:         volumeName,
 			Size:               size,
 
 			PortCount: int32(portCount),
@@ -226,7 +227,6 @@ func (c *InstanceServiceClient) InstanceReplace(name, instanceType, backendStore
 }
 
 func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
-
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()

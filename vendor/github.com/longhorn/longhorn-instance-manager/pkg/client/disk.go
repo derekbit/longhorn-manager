@@ -200,7 +200,7 @@ func (c *DiskServiceClient) ReplicaList() (map[string]*rpc.Replica, error) {
 	return resp.Replicas, nil
 }
 
-func (c *DiskServiceClient) EngineCreate(name, frontend, address string, replicaAddresses map[string]string) (*rpc.Engine, error) {
+func (c *DiskServiceClient) EngineCreate(name, volumeName, frontend, address string, replicaAddresses map[string]string) (*rpc.Engine, error) {
 	if name == "" || replicaAddresses == nil {
 		return nil, fmt.Errorf("failed to create engine: missing required parameter")
 	}
@@ -211,6 +211,7 @@ func (c *DiskServiceClient) EngineCreate(name, frontend, address string, replica
 
 	resp, err := client.EngineCreate(ctx, &rpc.EngineCreateRequest{
 		Name:              name,
+		VolumeName:        volumeName,
 		Address:           address,
 		ReplicaAddressMap: replicaAddresses,
 		Frontend:          frontend,
