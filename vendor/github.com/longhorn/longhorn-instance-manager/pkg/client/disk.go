@@ -227,6 +227,20 @@ func (c *DiskServiceClient) EngineDelete() error {
 	return nil
 }
 
+func (c *DiskServiceClient) EngineGet(name string) (*rpc.Engine, error) {
+	if name == "" {
+		return nil, fmt.Errorf("failed to get replica: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	return client.EngineGet(ctx, &rpc.EngineGetRequest{
+		Name: name,
+	})
+}
+
 func (c *DiskServiceClient) EngineList() (map[string]*rpc.Engine, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)

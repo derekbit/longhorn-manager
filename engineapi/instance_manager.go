@@ -338,7 +338,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 		return nil, nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name,
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name, e.Spec.VolumeName,
 		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
 		binary, args, frontend, imIP, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg})
 	if err != nil {
@@ -366,7 +366,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 		return nil, nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name,
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name, r.Spec.VolumeName,
 		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
 		binary, args, "", imIP, nil, DefaultReplicaPortCount, []string{DefaultPortArg})
 	if err != nil {

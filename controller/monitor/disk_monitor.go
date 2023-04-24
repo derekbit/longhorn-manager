@@ -164,6 +164,12 @@ func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (engineapi.DiskS
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
+	spdkEnabled, err := m.ds.GetSettingAsBool(types.SettingNameSpdk)
+	if err != nil {
+		m.logger.Errorf("Failed to get setting %v: %v", types.SettingNameSpdk, err)
+		return diskInfoMap
+	}
+
 	diskServiceClient, err := m.newDiskServiceClient(node)
 	if err != nil {
 		return diskInfoMap
@@ -175,6 +181,10 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 	}()
 
 	for diskName, disk := range node.Spec.Disks {
+		if !spdkEnabled && disk.Type == longhorn.DiskTypeBlock {
+			continue
+		}
+
 		orphanedReplicaDirectoryNames := map[string]string{}
 
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
