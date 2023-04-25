@@ -205,23 +205,17 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 		return nil
 	}
 
-	processType := longhorn.InstanceTypeReplica
-	if p.PortCount == DefaultEnginePortCount {
-		processType = longhorn.InstanceTypeEngine
-	}
-
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
-			Name: p.Name,
-			/* TODO: add this back when we have a way to get the volume name from the replica process */
-			//BackendStoreDriver: p.BackendStoreDriver,
+			Name:               p.Name,
+			BackendStoreDriver: longhorn.BackendStoreDriverType(p.BackendStoreDriver),
 		},
 		Status: longhorn.InstanceProcessStatus{
+			Type:      getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
 			State:     longhorn.InstanceState(p.InstanceStatus.State),
 			ErrorMsg:  p.InstanceStatus.ErrorMsg,
 			PortStart: p.InstanceStatus.PortStart,
 			PortEnd:   p.InstanceStatus.PortEnd,
-			Type:      processType,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -235,27 +229,40 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 		return nil
 	}
 
-	processType := longhorn.InstanceTypeReplica
-	if p.PortCount == DefaultEnginePortCount {
-		processType = longhorn.InstanceTypeEngine
-	}
-
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name: p.Name,
 		},
 		Status: longhorn.InstanceProcessStatus{
+			Type:      getTypeForProcess(p.PortCount),
 			State:     longhorn.InstanceState(p.ProcessStatus.State),
 			ErrorMsg:  p.ProcessStatus.ErrorMsg,
 			PortStart: p.ProcessStatus.PortStart,
 			PortEnd:   p.ProcessStatus.PortEnd,
-			Type:      processType,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
 			Endpoint: "",
 		},
 	}
+}
+
+func getTypeForInstance(instanceType longhorn.InstanceType, portCount int32) longhorn.InstanceType {
+	if instanceType != longhorn.InstanceType("") {
+		return instanceType
+	}
+
+	if portCount == DefaultEnginePortCount {
+		return longhorn.InstanceTypeEngine
+	}
+	return longhorn.InstanceTypeReplica
+}
+
+func getTypeForProcess(portCount int32) longhorn.InstanceType {
+	if portCount == DefaultEnginePortCount {
+		return longhorn.InstanceTypeEngine
+	}
+	return longhorn.InstanceTypeReplica
 }
 
 func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,

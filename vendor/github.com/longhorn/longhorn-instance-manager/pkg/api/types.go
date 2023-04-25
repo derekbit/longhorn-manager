@@ -5,35 +5,27 @@ import (
 )
 
 type Instance struct {
-	Name      string   `json:"name"`
-	Binary    string   `json:"binary"`
-	Args      []string `json:"args"`
-	PortCount int32    `json:"portCount"`
-	PortArgs  []string `json:"portArgs"`
+	Name               string   `json:"name"`
+	Type               string   `json:"type"`
+	BackendStoreDriver string   `json:"backendStoreDriver"`
+	Binary             string   `json:"binary"`
+	Args               []string `json:"args"`
+	PortCount          int32    `json:"portCount"`
+	PortArgs           []string `json:"portArgs"`
 
 	InstanceStatus InstanceStatus `json:"instanceStatus"`
 
 	Deleted bool `json:"deleted"`
 }
 
-type Process struct {
-	Name      string   `json:"name"`
-	Binary    string   `json:"binary"`
-	Args      []string `json:"args"`
-	PortCount int32    `json:"portCount"`
-	PortArgs  []string `json:"portArgs"`
-
-	ProcessStatus ProcessStatus `json:"processStatus"`
-
-	Deleted bool `json:"deleted"`
-}
-
 func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 	instance := &Instance{
-		Name:           obj.Spec.Name,
-		PortCount:      obj.Spec.PortCount,
-		PortArgs:       obj.Spec.PortArgs,
-		InstanceStatus: RPCToInstanceStatus(obj.Status),
+		Name:               obj.Spec.Name,
+		Type:               obj.Spec.Type,
+		BackendStoreDriver: obj.Spec.BackendStoreDriver,
+		PortCount:          obj.Spec.PortCount,
+		PortArgs:           obj.Spec.PortArgs,
+		InstanceStatus:     RPCToInstanceStatus(obj.Status),
 	}
 
 	if obj.Spec.ProcessSpecific != nil {
@@ -84,6 +76,18 @@ func (s *InstanceStream) Recv() (*Instance, error) {
 		return nil, err
 	}
 	return RPCToInstance(resp), nil
+}
+
+type Process struct {
+	Name      string   `json:"name"`
+	Binary    string   `json:"binary"`
+	Args      []string `json:"args"`
+	PortCount int32    `json:"portCount"`
+	PortArgs  []string `json:"portArgs"`
+
+	ProcessStatus ProcessStatus `json:"processStatus"`
+
+	Deleted bool `json:"deleted"`
 }
 
 func RPCToProcess(obj *rpc.ProcessResponse) *Process {
