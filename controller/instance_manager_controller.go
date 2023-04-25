@@ -26,6 +26,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -65,7 +67,6 @@ type InstanceManagerMonitor struct {
 
 	Name         string
 	controllerID string
-	imAPIVersion int
 
 	ds                 *datastore.DataStore
 	lock               *sync.RWMutex
@@ -1278,7 +1279,6 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		logger:                 log,
 		Name:                   im.Name,
 		controllerID:           imc.controllerID,
-		imAPIVersion:           im.Status.APIVersion,
 		ds:                     imc.ds,
 		lock:                   &sync.RWMutex{},
 		stopCh:                 stopCh,
@@ -1329,7 +1329,7 @@ func (m *InstanceManagerMonitor) Run() {
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.client.InstanceWatch(ctx, m.imAPIVersion)
+	notifier, err := m.client.InstanceWatch(ctx)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
 		cancel()
@@ -1356,7 +1356,13 @@ func (m *InstanceManagerMonitor) Run() {
 				return
 			}
 
-			if _, err := notifier.Recv(); err != nil {
+			var err error
+			if m.client.GetAPIVersion() < 4 {
+				_, err = notifier.(*imapi.ProcessStream).Recv()
+			} else {
+				_, err = notifier.(*imapi.InstanceStream).Recv()
+			}
+			if err != nil {
 				m.logger.Errorf("error receiving next item in engine watch: %v", err)
 				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
@@ -1417,7 +1423,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return true
 	}
 
-	resp, err := m.client.InstanceList(im.Status.APIVersion)
+	resp, err := m.client.InstanceList()
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false
