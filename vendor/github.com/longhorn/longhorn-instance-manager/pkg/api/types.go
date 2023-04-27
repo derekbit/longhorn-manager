@@ -139,6 +139,34 @@ func (s *ProcessStream) Recv() (*rpc.ProcessResponse, error) {
 	return s.stream.Recv()
 }
 
+type ReplicaStream struct {
+	stream rpc.DiskService_ReplicaWatchClient
+}
+
+func NewReplicaStream(stream rpc.DiskService_ReplicaWatchClient) *ReplicaStream {
+	return &ReplicaStream{
+		stream,
+	}
+}
+
+func (s *ReplicaStream) Recv() (*rpc.Replica, error) {
+	return s.stream.Recv()
+}
+
+type EngineStream struct {
+	stream rpc.DiskService_EngineWatchClient
+}
+
+func NewEngineStream(stream rpc.DiskService_EngineWatchClient) *EngineStream {
+	return &EngineStream{
+		stream,
+	}
+}
+
+func (s *EngineStream) Recv() (*rpc.Engine, error) {
+	return s.stream.Recv()
+}
+
 func NewLogStream(stream rpc.ProcessManagerService_ProcessLogClient) *LogStream {
 	return &LogStream{
 		stream,

@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
+	"github.com/longhorn/longhorn-instance-manager/pkg/api"
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	"github.com/longhorn/longhorn-instance-manager/pkg/types"
@@ -252,6 +253,26 @@ func (c *DiskServiceClient) EngineList() (map[string]*rpc.Engine, error) {
 	}
 
 	return resp.Engines, nil
+}
+
+func (c *DiskServiceClient) ReplicaWatch(ctx context.Context) (*api.ReplicaStream, error) {
+	client := c.getControllerServiceClient()
+	stream, err := client.ReplicaWatch(ctx, &empty.Empty{})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open replica update stream")
+	}
+
+	return api.NewReplicaStream(stream), nil
+}
+
+func (c *DiskServiceClient) EngineWatch(ctx context.Context) (*api.EngineStream, error) {
+	client := c.getControllerServiceClient()
+	stream, err := client.EngineWatch(ctx, &empty.Empty{})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open engine update stream")
+	}
+
+	return api.NewEngineStream(stream), nil
 }
 
 func (c *DiskServiceClient) VersionGet() (*meta.VersionOutput, error) {

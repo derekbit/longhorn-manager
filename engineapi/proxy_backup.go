@@ -37,7 +37,7 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 		return "", "", err
 	}
 
-	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(p.DirectToURL(e),
+	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver),
 		backupName, snapshotName, backupTarget, backingImageName, backingImageChecksum,
 		compressionMethod, concurrentLimit, labels, credentialEnv,
 	)
@@ -49,7 +49,7 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 }
 
 func (p *Proxy) SnapshotBackupStatus(e *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error) {
-	recv, err := p.grpcClient.SnapshotBackupStatus(p.DirectToURL(e), backupName, replicaAddress)
+	recv, err := p.grpcClient.SnapshotBackupStatus(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver), backupName, replicaAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,11 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 		return err
 	}
 
-	return p.grpcClient.BackupRestore(p.DirectToURL(e), backupURL, backupTarget, backupVolumeName, envs, concurrentLimit)
+	return p.grpcClient.BackupRestore(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver), backupURL, backupTarget, backupVolumeName, envs, concurrentLimit)
 }
 
 func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {
-	recv, err := p.grpcClient.BackupRestoreStatus(p.DirectToURL(e))
+	recv, err := p.grpcClient.BackupRestoreStatus(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver))
 	if err != nil {
 		return nil, err
 	}

@@ -260,7 +260,7 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 	}
 
 	switch volume.Frontend {
-	case devtypes.FrontendTGTBlockDev:
+	case devtypes.FrontendTGTBlockDev, devtypes.FrontendSPDKBlockDev:
 		return volume.Endpoint, nil
 	case devtypes.FrontendTGTISCSI:
 		if ip == "" {

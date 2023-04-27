@@ -19,6 +19,9 @@ service DiskService {
     rpc EngineGet(EngineGetRequest) returns (Engine);
     rpc EngineList(google.protobuf.Empty) returns (EngineListResponse);
 
+    rpc ReplicaWatch(google.protobuf.Empty) returns (stream Replica) {}
+    rpc EngineWatch(google.protobuf.Empty) returns (stream Engine) {}
+
     rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
 
@@ -65,6 +68,8 @@ message Engine {
     string endpoint = 7;
     string frontend = 8;
     string frontend_state = 9;
+    string ip = 10;
+    int32 port = 11;
 }
 
 enum ReplicaMode {

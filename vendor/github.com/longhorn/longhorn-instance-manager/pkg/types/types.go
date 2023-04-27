@@ -28,3 +28,9 @@ const (
 	InstanceTypeEngine  = "engine"
 	InstanceTypeReplica = "replica"
 )
+
+const (
+	BackendStoreDriverTypeUndefined = ""
+	BackendStoreDriverTypeLonghorn  = "longhorn"
+	BackendStoreDriverTypeSpdkAio   = "spdk-aio"
+)

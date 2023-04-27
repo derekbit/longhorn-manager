@@ -43,6 +43,8 @@ service ProxyEngineService {
 
 message ProxyEngineRequest{
 	string address = 1;
+	string engine_name = 2;
+	string backend_store_driver = 3;
 }
 
 message EngineVersionProxyResponse {
