@@ -22,9 +22,10 @@ const (
 	CLIVersionFive = 5
 
 	InstanceManagerProcessManagerServiceDefaultPort = 8500
-	InstanceManagerProxyDefaultPort                 = InstanceManagerProcessManagerServiceDefaultPort + 1
-	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2
-	InstanceManagerInstanceServiceDefaultPort       = InstanceManagerProcessManagerServiceDefaultPort + 3
+	InstanceManagerProxyServiceDefaultPort          = InstanceManagerProcessManagerServiceDefaultPort + 1 // 8501
+	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2 // 8502
+	InstanceManagerInstanceServiceDefaultPort       = InstanceManagerProcessManagerServiceDefaultPort + 3 // 8503
+	InstanceManagerSpdkServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 4 // 8504
 
 	BackingImageManagerDefaultPort    = 8000
 	BackingImageDataSourceDefaultPort = 8000
@@ -260,7 +261,7 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 	}
 
 	switch volume.Frontend {
-	case devtypes.FrontendTGTBlockDev, devtypes.FrontendSPDKBlockDev:
+	case devtypes.FrontendTGTBlockDev, "spdk-tcp-blockdev":
 		return volume.Endpoint, nil
 	case devtypes.FrontendTGTISCSI:
 		if ip == "" {

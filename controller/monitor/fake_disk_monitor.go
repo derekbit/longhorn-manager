@@ -48,7 +48,7 @@ func fakeGetPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUI
 	}
 }
 
-func fakeGetDiskStat(diskType longhorn.DiskType, directory string, client engineapi.DiskServiceClient) (*util.DiskStat, error) {
+func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client engineapi.DiskServiceClient) (*util.DiskStat, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &util.DiskStat{
@@ -79,7 +79,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, directory string, client engine
 	}
 }
 
-func fakeGetDiskConfig(diskType longhorn.DiskType, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
+func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &util.DiskConfig{

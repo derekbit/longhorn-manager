@@ -72,7 +72,7 @@ func NewDiskServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peerName
 	return NewDiskServiceClient(serviceURL, tlsConfig)
 }
 
-func (c *DiskServiceClient) DiskCreate(diskName, diskPath string) (*DiskInfo, error) {
+func (c *DiskServiceClient) DiskCreate(diskName, diskPath string, blockSize int64) (*DiskInfo, error) {
 	if diskName == "" || diskPath == "" {
 		return nil, fmt.Errorf("failed to create disk: missing required parameter")
 	}
@@ -82,6 +82,39 @@ func (c *DiskServiceClient) DiskCreate(diskName, diskPath string) (*DiskInfo, er
 	defer cancel()
 
 	resp, err := client.DiskCreate(ctx, &rpc.DiskCreateRequest{
+		DiskName:  diskName,
+		DiskPath:  diskPath,
+		BlockSize: blockSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &DiskInfo{
+		ID:          resp.GetId(),
+		UUID:        resp.GetUuid(),
+		Path:        resp.GetPath(),
+		Type:        resp.GetType(),
+		TotalSize:   resp.GetTotalSize(),
+		FreeSize:    resp.GetFreeSize(),
+		TotalBlocks: resp.GetTotalBlocks(),
+		FreeBlocks:  resp.GetFreeBlocks(),
+		BlockSize:   resp.GetBlockSize(),
+		ClusterSize: resp.GetClusterSize(),
+		Readonly:    resp.GetReadonly(),
+	}, nil
+}
+
+func (c *DiskServiceClient) DiskGet(diskName, diskPath string) (*DiskInfo, error) {
+	if diskPath == "" {
+		return nil, fmt.Errorf("failed to get disk info: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.DiskGet(ctx, &rpc.DiskGetRequest{
 		DiskName: diskName,
 		DiskPath: diskPath,
 	})
@@ -104,38 +137,7 @@ func (c *DiskServiceClient) DiskCreate(diskName, diskPath string) (*DiskInfo, er
 	}, nil
 }
 
-func (c *DiskServiceClient) DiskGet(diskPath string) (*DiskInfo, error) {
-	if diskPath == "" {
-		return nil, fmt.Errorf("failed to get disk info: missing required parameter")
-	}
-
-	client := c.getControllerServiceClient()
-	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
-	defer cancel()
-
-	resp, err := client.DiskGet(ctx, &rpc.DiskGetRequest{
-		DiskPath: diskPath,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &DiskInfo{
-		ID:          resp.GetId(),
-		UUID:        resp.GetUuid(),
-		Path:        resp.GetPath(),
-		Type:        resp.GetType(),
-		TotalSize:   resp.GetTotalSize(),
-		FreeSize:    resp.GetFreeSize(),
-		TotalBlocks: resp.GetTotalBlocks(),
-		FreeBlocks:  resp.GetFreeBlocks(),
-		BlockSize:   resp.GetBlockSize(),
-		ClusterSize: resp.GetClusterSize(),
-		Readonly:    resp.GetReadonly(),
-	}, nil
-}
-
-func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, address string) (*rpc.Replica, error) {
+func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, exposeRequired bool) (*rpc.Replica, error) {
 	if name == "" || lvstoreUUID == "" || size == 0 {
 		return nil, fmt.Errorf("failed to create replica: missing required parameter")
 	}
@@ -145,10 +147,10 @@ func (c *DiskServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, 
 	defer cancel()
 
 	resp, err := client.ReplicaCreate(ctx, &rpc.ReplicaCreateRequest{
-		Name:        name,
-		LvstoreUuid: lvstoreUUID,
-		Size:        size,
-		Address:     address,
+		Name:           name,
+		LvstoreUuid:    lvstoreUUID,
+		Size:           size,
+		ExposeRequired: exposeRequired,
 	})
 	if err != nil {
 		return nil, err
@@ -201,7 +203,7 @@ func (c *DiskServiceClient) ReplicaList() (map[string]*rpc.Replica, error) {
 	return resp.Replicas, nil
 }
 
-func (c *DiskServiceClient) EngineCreate(name, volumeName, frontend, address string, replicaAddresses map[string]string) (*rpc.Engine, error) {
+func (c *DiskServiceClient) EngineCreate(name, volumeName, frontend string, replicaAddresses map[string]string) (*rpc.Engine, error) {
 	if name == "" || replicaAddresses == nil {
 		return nil, fmt.Errorf("failed to create engine: missing required parameter")
 	}
@@ -213,7 +215,6 @@ func (c *DiskServiceClient) EngineCreate(name, volumeName, frontend, address str
 	resp, err := client.EngineCreate(ctx, &rpc.EngineCreateRequest{
 		Name:              name,
 		VolumeName:        volumeName,
-		Address:           address,
 		ReplicaAddressMap: replicaAddresses,
 		Frontend:          frontend,
 	})
@@ -224,8 +225,19 @@ func (c *DiskServiceClient) EngineCreate(name, volumeName, frontend, address str
 	return resp, nil
 }
 
-func (c *DiskServiceClient) EngineDelete() error {
-	return nil
+func (c *DiskServiceClient) EngineDelete(name string) error {
+	if name == "" {
+		return fmt.Errorf("failed to delete engine: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.EngineDelete(ctx, &rpc.EngineDeleteRequest{
+		Name: name,
+	})
+	return err
 }
 
 func (c *DiskServiceClient) EngineGet(name string) (*rpc.Engine, error) {

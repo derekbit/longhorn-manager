@@ -17,13 +17,17 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
+const (
+	defaultBlockSize = 4096
+)
+
 // GetDiskStat returns the disk stat of the given directory
-func GetDiskStat(diskType longhorn.DiskType, path string, client engineapi.DiskServiceClient) (stat *util.DiskStat, err error) {
+func GetDiskStat(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (stat *util.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskStat(path)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskStat(client, path)
+		return getBlockTypeDiskStat(client, name, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -33,8 +37,8 @@ func getFilesystemTypeDiskStat(path string) (stat *util.DiskStat, err error) {
 	return util.GetDiskStat(path)
 }
 
-func getBlockTypeDiskStat(client engineapi.DiskServiceClient, path string) (stat *util.DiskStat, err error) {
-	info, err := client.DiskGet(path)
+func getBlockTypeDiskStat(client engineapi.DiskServiceClient, name, path string) (stat *util.DiskStat, err error) {
+	info, err := client.DiskGet(name, path)
 	if err != nil {
 		return nil, err
 	}
@@ -51,12 +55,12 @@ func getBlockTypeDiskStat(client engineapi.DiskServiceClient, path string) (stat
 }
 
 // GetDiskConfig returns the disk config of the given directory
-func GetDiskConfig(diskType longhorn.DiskType, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
+func GetDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskConfig(path)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskConfig(client, path)
+		return getBlockTypeDiskConfig(client, name, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -81,8 +85,8 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func getBlockTypeDiskConfig(client engineapi.DiskServiceClient, path string) (config *util.DiskConfig, err error) {
-	info, err := client.DiskGet(path)
+func getBlockTypeDiskConfig(client engineapi.DiskServiceClient, name, path string) (config *util.DiskConfig, err error) {
+	info, err := client.DiskGet(name, path)
 	if err != nil {
 		if grpcstatus.Code(err) == grpccodes.NotFound {
 			return nil, errors.Wrapf(err, "cannot find disk info")
@@ -100,7 +104,7 @@ func GenerateDiskConfig(diskType longhorn.DiskType, name, path string, client en
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(path)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, name, path)
+		return generateBlockTypeDiskConfig(client, name, path, defaultBlockSize)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -147,8 +151,8 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client engineapi.DiskServiceClient, name, path string) (*util.DiskConfig, error) {
-	info, err := client.DiskCreate(name, path)
+func generateBlockTypeDiskConfig(client engineapi.DiskServiceClient, name, path string, blockSize int64) (*util.DiskConfig, error) {
+	info, err := client.DiskCreate(name, path, blockSize)
 	if err != nil {
 		return nil, err
 	}

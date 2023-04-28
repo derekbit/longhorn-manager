@@ -563,9 +563,12 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	err = c.InstanceDelete(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID)
-	if err != nil && !types.ErrorIsNotFound(err) {
-		return err
+	// No need to delete the instance if the replica is backed by a SPDK lvol
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		err = c.InstanceDelete(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID)
+		if err != nil && !types.ErrorIsNotFound(err) {
+			return err
+		}
 	}
 
 	if err := deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {

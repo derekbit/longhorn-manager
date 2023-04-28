@@ -81,17 +81,19 @@ enum ReplicaMode {
 message DiskCreateRequest{
 	string disk_name = 1;
     string disk_path = 2;
+    int64 block_size = 3;
 }
 
 message DiskGetRequest {
-	string disk_path = 1;
+    string disk_name = 1;
+	string disk_path = 2;
 }
 
 message ReplicaCreateRequest {
     string name = 1;
 	string lvstore_uuid = 2;
     int64 size = 3;
-    string address = 4;
+    bool expose_required = 4;
 }
 
 message ReplicaGetRequest {
@@ -111,9 +113,8 @@ message ReplicaListResponse {
 message EngineCreateRequest {
     string name = 1;
     string volume_name = 2;
-    string address = 3;
-    map<string, string> replica_address_map = 4;
-    string frontend = 5;
+    map<string, string> replica_address_map = 3;
+    string frontend = 4;
 }
 
 message EngineDeleteRequest {

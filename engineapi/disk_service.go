@@ -67,8 +67,8 @@ type DiskService struct {
 }
 
 type DiskServiceClient interface {
-	DiskCreate(string, string) (*DiskInfo, error)
-	DiskGet(string) (*DiskInfo, error)
+	DiskCreate(string, string, int64) (*DiskInfo, error)
+	DiskGet(string, string) (*DiskInfo, error)
 	Close()
 }
 
@@ -88,12 +88,12 @@ func (s *DiskService) Close() {
 	s.proxyConnCounter.DecreaseCount()
 }
 
-func (s *DiskService) DiskCreate(diskName, diskPath string) (*DiskInfo, error) {
-	info, err := s.grpcClient.DiskCreate(diskName, diskPath)
+func (s *DiskService) DiskCreate(diskName, diskPath string, blockSize int64) (*DiskInfo, error) {
+	info, err := s.grpcClient.DiskCreate(diskName, diskPath, blockSize)
 	return (*DiskInfo)(unsafe.Pointer(info)), err
 }
 
-func (s *DiskService) DiskGet(uuid string) (*DiskInfo, error) {
-	info, err := s.grpcClient.DiskGet(uuid)
+func (s *DiskService) DiskGet(name, path string) (*DiskInfo, error) {
+	info, err := s.grpcClient.DiskGet(name, path)
 	return (*DiskInfo)(unsafe.Pointer(info)), err
 }

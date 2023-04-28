@@ -55,8 +55,8 @@ type CollectedDiskInfo struct {
 	OrphanedReplicaDirectoryNames map[string]string
 }
 
-type GetDiskStatHandler func(longhorn.DiskType, string, engineapi.DiskServiceClient) (*util.DiskStat, error)
-type GetDiskConfigHandler func(longhorn.DiskType, string, engineapi.DiskServiceClient) (*util.DiskConfig, error)
+type GetDiskStatHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskStat, error)
+type GetDiskConfigHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskConfig, error)
 type GetPossibleReplicaDirectoryNamesHandler func(*longhorn.Node, string, string, string) map[string]string
 
@@ -189,7 +189,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
 
-		diskConfig, err := m.getDiskConfigHandler(disk.Type, disk.Path, diskServiceClient)
+		diskConfig, err := m.getDiskConfigHandler(disk.Type, diskName, disk.Path, diskServiceClient)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
 				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
@@ -215,7 +215,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			}
 		}
 
-		stat, err := m.getDiskStatHandler(disk.Type, disk.Path, diskServiceClient)
+		stat, err := m.getDiskStatHandler(disk.Type, diskName, disk.Path, diskServiceClient)
 		if err != nil {
 			diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
 				orphanedReplicaDirectoryNames, string(longhorn.DiskConditionReasonNoDiskInfo),
