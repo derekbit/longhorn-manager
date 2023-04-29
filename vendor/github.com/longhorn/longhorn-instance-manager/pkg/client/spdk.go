@@ -72,8 +72,8 @@ func NewSPDKServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peerName
 	return NewSPDKServiceClient(serviceURL, tlsConfig)
 }
 
-func (c *SPDKServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, exposeRequired bool) (*rpc.Replica, error) {
-	if name == "" || lvstoreUUID == "" || size == 0 {
+func (c *SPDKServiceClient) ReplicaCreate(name, lvsUUID string, size uint64, exposeRequired bool) (*rpc.Replica, error) {
+	if name == "" || lvsUUID == "" || size == 0 {
 		return nil, fmt.Errorf("failed to create replica: missing required parameter")
 	}
 
@@ -83,7 +83,7 @@ func (c *SPDKServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, 
 
 	resp, err := client.ReplicaCreate(ctx, &rpc.ReplicaCreateRequest{
 		Name:           name,
-		LvstoreUuid:    lvstoreUUID,
+		LvsUuid:        lvsUUID,
 		Size:           size,
 		ExposeRequired: exposeRequired,
 	})
@@ -94,8 +94,8 @@ func (c *SPDKServiceClient) ReplicaCreate(name, lvstoreUUID string, size int64, 
 	return resp, nil
 }
 
-func (c *SPDKServiceClient) ReplicaDelete(name, lvstoreUUID string) error {
-	if name == "" || lvstoreUUID == "" {
+func (c *SPDKServiceClient) ReplicaDelete(name string, cleanupRequired bool) error {
+	if name == "" {
 		return fmt.Errorf("failed to delete replica: missing required parameter")
 	}
 
@@ -104,14 +104,14 @@ func (c *SPDKServiceClient) ReplicaDelete(name, lvstoreUUID string) error {
 	defer cancel()
 
 	_, err := client.ReplicaDelete(ctx, &rpc.ReplicaDeleteRequest{
-		Name:        name,
-		LvstoreUuid: lvstoreUUID,
+		Name:            name,
+		CleanupRequired: cleanupRequired,
 	})
 	return err
 }
 
-func (c *SPDKServiceClient) ReplicaGet(name, lvstoreUUID string) (*rpc.Replica, error) {
-	if name == "" || lvstoreUUID == "" {
+func (c *SPDKServiceClient) ReplicaGet(name string) (*rpc.Replica, error) {
+	if name == "" {
 		return nil, fmt.Errorf("failed to get replica: missing required parameter")
 	}
 
@@ -120,8 +120,7 @@ func (c *SPDKServiceClient) ReplicaGet(name, lvstoreUUID string) (*rpc.Replica, 
 	defer cancel()
 
 	return client.ReplicaGet(ctx, &rpc.ReplicaGetRequest{
-		Name:        name,
-		LvstoreUuid: lvstoreUUID,
+		Name: name,
 	})
 }
 

@@ -34,7 +34,7 @@ message InstanceSpec {
 	string type = 2;
 	string backend_store_driver = 3;
 	string volume_name = 4;
-	int64 size = 5;
+	uint64 size = 5;
 
 	int32 port_count = 6;
 	repeated string port_args = 7;
@@ -52,6 +52,7 @@ message InstanceStatus {
 
 message InstanceCreateRequest {
 	InstanceSpec spec = 1;
+	bool expose_required = 2;
 }
 
 message InstanceDeleteRequest {
@@ -60,6 +61,7 @@ message InstanceDeleteRequest {
 	string backend_store_driver = 3;
 
 	string disk_uuid = 4;
+	bool cleanup_required = 5;
 }
 
 message InstanceGetRequest {

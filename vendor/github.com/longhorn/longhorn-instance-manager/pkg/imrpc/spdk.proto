@@ -22,19 +22,23 @@ service SPDKService {
     rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
 }
 
+message Lvol {
+    string name = 1;
+    string uuid = 2;
+    uint64 spec_size = 3;
+    uint64 actual_size = 4;
+    string parent = 5;
+    map<string, bool> children = 6;
+}
+
 message Replica {
     string name = 1;
     string uuid = 2;
-
-    string bdev_name = 3;
-    string lvstore_uuid = 4;
-
-    int64 total_size = 5;
-    int64 total_blocks = 6;
-    int64 block_size = 7;
-
-    int32 port = 9;
-    string state = 10;
+    uint64 spec_size = 3;
+    uint64 actual_size = 4;
+    map<string, Lvol> snapshots = 5;
+    bool rebuilding = 6;
+    int32 port = 7;
 }
 
 message Engine {
@@ -51,27 +55,26 @@ message Engine {
     int32 port = 11;
 }
 
-enum ReplicaMode {
-    WO = 0;
-    RW = 1;
-    ERR = 2;
-}
-
 message ReplicaCreateRequest {
     string name = 1;
-	string lvstore_uuid = 2;
-    int64 size = 3;
+    string lvs_uuid = 2;
+    uint64 size = 3;
     bool expose_required = 4;
-}
-
-message ReplicaGetRequest {
-    string name = 1;
-    string lvstore_uuid = 2;
 }
 
 message ReplicaDeleteRequest {
     string name = 1;
-    string lvstore_uuid = 2;
+    bool cleanup_required = 2;
+}
+
+message ReplicaGetRequest {
+    string name = 1;
+}
+
+enum ReplicaMode {
+    WO = 0;
+    RW = 1;
+    ERR = 2;
 }
 
 message ReplicaListResponse {
