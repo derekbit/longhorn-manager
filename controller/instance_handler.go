@@ -137,37 +137,54 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.StorageIP = ""
 		status.Port = 0
 	case longhorn.InstanceStateRunning:
-		status.CurrentState = longhorn.InstanceStateRunning
+		logrus.Infof("Debug ===> instance.Status.Type=%v, spec.BackendStoreDriver=%v, spec.DesireState=%v", instance.Status.Type, spec.BackendStoreDriver, spec.DesireState)
+		if instance.Status.Type == longhorn.InstanceTypeReplica &&
+			spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSpdkAio &&
+			spec.DesireState == longhorn.InstanceStateStopped {
+			// For SPDK-AIO replica, a lvol always exists even if the replica is stopped.
+			// We can mark the instance as stopped directly.
+			if status.Started {
+				status.CurrentState = longhorn.InstanceStateError
+			} else {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
+			status.CurrentImage = ""
+			status.IP = ""
+			status.StorageIP = ""
+			status.Port = 0
+		} else {
+			status.CurrentState = longhorn.InstanceStateRunning
 
-		imPod, err := h.ds.GetPod(im.Name)
-		if err != nil {
-			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
-			return
-		}
+			imPod, err := h.ds.GetPod(im.Name)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
+				return
+			}
 
-		if imPod == nil {
-			logrus.Debugf("Instance manager pod from %v not exist in datastore", im.Name)
-			return
-		}
+			if imPod == nil {
+				logrus.Debugf("Instance manager pod from %v not exist in datastore", im.Name)
+				return
+			}
 
-		storageIP := h.ds.GetStorageIPFromPod(imPod)
-		if status.StorageIP != storageIP {
-			status.StorageIP = storageIP
-			logrus.Debugf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
-		}
+			storageIP := h.ds.GetStorageIPFromPod(imPod)
+			if status.StorageIP != storageIP {
+				status.StorageIP = storageIP
+				logrus.Debugf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
+			}
 
-		if status.IP != im.Status.IP {
-			status.IP = im.Status.IP
-			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
-		}
-		if status.Port != int(instance.Status.PortStart) {
-			status.Port = int(instance.Status.PortStart)
-			logrus.Debugf("Instance %v starts running, Port %d", instanceName, status.Port)
-		}
-		// only set CurrentImage when first started, since later we may specify
-		// different spec.EngineImage for upgrade
-		if status.CurrentImage == "" {
-			status.CurrentImage = spec.EngineImage
+			if status.IP != im.Status.IP {
+				status.IP = im.Status.IP
+				logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
+			}
+			if status.Port != int(instance.Status.PortStart) {
+				status.Port = int(instance.Status.PortStart)
+				logrus.Debugf("Instance %v starts running, Port %d", instanceName, status.Port)
+			}
+			// only set CurrentImage when first started, since later we may specify
+			// different spec.EngineImage for upgrade
+			if status.CurrentImage == "" {
+				status.CurrentImage = spec.EngineImage
+			}
 		}
 	case longhorn.InstanceStateStopping:
 		if status.Started {
