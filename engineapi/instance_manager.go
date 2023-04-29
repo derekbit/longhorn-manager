@@ -382,8 +382,8 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(e.Name, e.Spec.VolumeName,
-		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", e.Spec.VolumeSize,
-		binary, args, frontend, imIP, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg})
+		string(longhorn.InstanceManagerTypeEngine), string(e.Spec.BackendStoreDriver), "", uint64(e.Spec.VolumeSize),
+		binary, args, frontend, imIP, replicaAddresses, DefaultEnginePortCount, []string{DefaultPortArg}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +392,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 // ReplicaInstanceCreate creates a new replica instance
 func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, exposeRequired bool, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -413,8 +413,8 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(r.Name, r.Spec.VolumeName,
-		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, r.Spec.VolumeSize,
-		binary, args, "", imIP, nil, DefaultReplicaPortCount, []string{DefaultPortArg})
+		string(longhorn.InstanceManagerTypeReplica), string(r.Spec.BackendStoreDriver), r.Spec.DiskID, uint64(r.Spec.VolumeSize),
+		binary, args, "", imIP, nil, DefaultReplicaPortCount, []string{DefaultPortArg}, exposeRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +429,7 @@ func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDr
 		return err
 	}
 
-	_, err := c.instanceServiceGrpcClient.InstanceDelete(name, kind, string(backendStoreDriver), diskUUID)
+	_, err := c.instanceServiceGrpcClient.InstanceDelete(name, kind, string(backendStoreDriver), diskUUID, false)
 	return err
 }
 
