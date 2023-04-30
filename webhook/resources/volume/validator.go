@@ -153,6 +153,11 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	if oldVolume.Spec.BackendStoreDriver != newVolume.Spec.BackendStoreDriver {
+		err := fmt.Errorf("changing backend store driver for volume %v is not supported", oldVolume.Name)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	return nil
 }
 

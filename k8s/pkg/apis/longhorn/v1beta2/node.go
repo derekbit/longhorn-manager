@@ -45,12 +45,22 @@ const (
 	ErrorReplicaScheduleSchedulingFailed                 = "replica scheduling failed"
 )
 
+type DiskType string
+
+const (
+	DiskTypeFilesystem = "filesystem"
+	DiskTypeBlock      = "block"
+)
+
 type SnapshotCheckStatus struct {
 	// +optional
 	LastPeriodicCheckedAt metav1.Time `json:"lastPeriodicCheckedAt"`
 }
 
 type DiskSpec struct {
+	// +kubebuilder:validation:Enum=filesystem;block
+	// +optional
+	Type DiskType `json:"type"`
 	// +optional
 	Path string `json:"path"`
 	// +optional
