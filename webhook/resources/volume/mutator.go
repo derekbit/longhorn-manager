@@ -224,6 +224,9 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, defaultCompressionMethod))
 	}
+	if string(volume.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+	}
 
 	return patchOps, nil
 }
@@ -264,6 +267,9 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	}
 	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+	}
+	if string(volume.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
