@@ -13,8 +13,10 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -365,13 +367,86 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	case types.SettingNameStorageNetwork:
 		volumesDetached, err := s.AreAllVolumesDetached()
 		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
 		}
-
 		if !volumesDetached {
-			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)
+		}
+	case types.SettingNameSpdk:
+		old, err := s.GetSetting(types.SettingNameSpdk)
+		if err != nil {
+			return err
+		}
+		if old.Value != value {
+			spdkEnabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return err
+			}
+			err = s.ValidateSpdk(spdkEnabled)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
+}
+
+func isNodeTaintNoExecute(taints []v1.Taint) bool {
+	for _, taint := range taints {
+		if taint.Effect == v1.TaintEffectNoExecute {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
+	// Check if all volumes are detached
+	volumesDetached, err := s.AreAllVolumesDetached()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
+	}
+	if !volumesDetached {
+		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameSpdk)
+	}
+
+	if !spdkEnabled {
+		return nil
+	}
+
+	// Check if there is enough hugepages-2Mi capacity for all nodes
+	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameSpdkHugepageLimit)
+	if err != nil {
+		return err
+	}
+	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+
+	kubeNodes, err := s.ListKubeNodesRO()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Kubernetes nodes for %v setting update", types.SettingNameSpdk)
+	}
+
+	for _, node := range kubeNodes {
+		if node.Spec.Taints == nil {
+			continue
+		}
+
+		if isNodeTaintNoExecute(node.Spec.Taints) {
+			continue
+		}
+
+		capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+		if !ok {
+			return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+		}
+
+		hugepageCapacity := resource.MustParse(capacity.String())
+
+		if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+			return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+		}
+	}
+
 	return nil
 }
 
@@ -2933,7 +3008,6 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		for _, im := range imMap {
 			return im, nil
 		}
-
 	}
 	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
 }
