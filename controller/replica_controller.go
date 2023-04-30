@@ -309,17 +309,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.Active && dataPath != "" {
-				// prevent accidentally deletion
-				if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
-					return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+				if replica.Spec.Active && dataPath != "" {
+					// prevent accidentally deletion
+					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
+						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+					}
+					if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
+						return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
+					}
+					log.Debug("Cleanup replica completed")
+				} else {
+					log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 				}
-				if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
-					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
-				}
-				log.Debug("Cleanup replica completed")
-			} else {
-				log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 			}
 		}
 
@@ -570,7 +572,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 
 	// No need to delete the instance if the replica is backed by a SPDK lvol
 	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
-		err = c.InstanceDelete(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID)
+		err = c.InstanceDelete(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID, true)
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return err
 		}

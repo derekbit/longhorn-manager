@@ -180,8 +180,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd/go.mod h1:dv4zxwHi5C/8AeI+4gX4dCWOIvNi7I6JCSX0HvlKPgE=
-github.com/derekbit/longhorn-instance-manager v0.0.0-20230429164021-3987145aa498 h1:AALTMF5fNYe+5kK2hAdcPOpypoQKdpxWJXp9Vy8bTDs=
-github.com/derekbit/longhorn-instance-manager v0.0.0-20230429164021-3987145aa498/go.mod h1:m26o9sEDgqfyQiB9MpzQ7HlLO69rqYP5e4GRu7X/aIc=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20230430083329-d5980c54ee10 h1:LP7j6kFLjcz2b+vy9uXRNGFt8msbhg6UMJvtq6/IvEU=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20230430083329-d5980c54ee10/go.mod h1:m26o9sEDgqfyQiB9MpzQ7HlLO69rqYP5e4GRu7X/aIc=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=

@@ -422,7 +422,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 }
 
 // InstanceDelete deletes the instance
-func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, diskUUID string) error {
+func (c *InstanceManagerClient) InstanceDelete(name, kind string, backendStoreDriver longhorn.BackendStoreDriverType, diskUUID string, cleanupRequired bool) error {
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of deleting process */
 		_, err := c.processManagerGrpcClient.ProcessDelete(name)
