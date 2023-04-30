@@ -7,7 +7,7 @@ import (
 )
 
 func (p *Proxy) VolumeGet(e *longhorn.Engine) (volume *Volume, err error) {
-	recv, err := p.grpcClient.VolumeGet(p.DirectToURL(e))
+	recv, err := p.grpcClient.VolumeGet(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver))
 	if err != nil {
 		return nil, err
 	}
@@ -16,7 +16,7 @@ func (p *Proxy) VolumeGet(e *longhorn.Engine) (volume *Volume, err error) {
 }
 
 func (p *Proxy) VolumeExpand(e *longhorn.Engine) (err error) {
-	return p.grpcClient.VolumeExpand(p.DirectToURL(e), e.Spec.VolumeSize)
+	return p.grpcClient.VolumeExpand(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver), e.Spec.VolumeSize)
 }
 
 func (p *Proxy) VolumeFrontendStart(e *longhorn.Engine) (err error) {
@@ -29,13 +29,13 @@ func (p *Proxy) VolumeFrontendStart(e *longhorn.Engine) (err error) {
 		return fmt.Errorf("cannot start empty frontend")
 	}
 
-	return p.grpcClient.VolumeFrontendStart(p.DirectToURL(e), frontendName)
+	return p.grpcClient.VolumeFrontendStart(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver), frontendName)
 }
 
 func (p *Proxy) VolumeFrontendShutdown(e *longhorn.Engine) (err error) {
-	return p.grpcClient.VolumeFrontendShutdown(p.DirectToURL(e))
+	return p.grpcClient.VolumeFrontendShutdown(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver))
 }
 
 func (p *Proxy) VolumeUnmapMarkSnapChainRemovedSet(e *longhorn.Engine) error {
-	return p.grpcClient.VolumeUnmapMarkSnapChainRemovedSet(p.DirectToURL(e), e.Spec.UnmapMarkSnapChainRemovedEnabled)
+	return p.grpcClient.VolumeUnmapMarkSnapChainRemovedSet(e.Name, p.DirectToURL(e), string(e.Spec.BackendStoreDriver), e.Spec.UnmapMarkSnapChainRemovedEnabled)
 }
