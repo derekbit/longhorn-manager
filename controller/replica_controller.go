@@ -309,17 +309,19 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.Active && dataPath != "" {
-				// prevent accidentally deletion
-				if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
-					return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+				if replica.Spec.Active && dataPath != "" {
+					// prevent accidentally deletion
+					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
+						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+					}
+					if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
+						return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
+					}
+					log.Debug("Cleanup replica completed")
+				} else {
+					log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 				}
-				if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
-					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
-				}
-				log.Debug("Cleanup replica completed")
-			} else {
-				log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 			}
 		}
 
@@ -408,7 +410,12 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
+	exposeRequired := true
+	if v.Spec.NodeID == rc.controllerID {
+		exposeRequired = false
+	}
+
+	return c.ReplicaInstanceCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, exposeRequired, im.Status.IP, engineCLIAPIVersion)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
@@ -563,8 +570,12 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
-		return err
+	// No need to delete the instance if the replica is backed by a SPDK lvol
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		err = c.InstanceDelete(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID, true)
+		if err != nil && !types.ErrorIsNotFound(err) {
+			return err
+		}
 	}
 
 	if err := deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {
@@ -674,7 +685,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	return c.ProcessGet(r.Name)
+	return c.InstanceGet(r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver, r.Spec.DiskID)
 }
 
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -693,7 +704,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.ProcessLog(ctx, r.Name)
+	stream, err := c.InstanceLog(ctx, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.BackendStoreDriver)
 	return c, stream, err
 }
 
