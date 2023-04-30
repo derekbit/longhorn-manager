@@ -22,9 +22,52 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
+
 	if err := upgradeWebhookAndRecoveryService(namespace, kubeClient); err != nil {
 		return err
 	}
+
+	if err := upgradeNodes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeInstanceManagers(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeEngines(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeReplicas(namespace, lhClient, resourceMaps)
+}
+
+func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade node failed")
+	}()
+
+	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn nodes during the node upgrade")
+	}
+
+	for _, n := range nodeMap {
+		if n.Spec.Disks == nil {
+			continue
+		}
+
+		for name, disk := range n.Spec.Disks {
+			if disk.Type == "" {
+				disk.Type = longhorn.DiskTypeFilesystem
+				n.Spec.Disks[name] = disk
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -48,6 +91,9 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 			v.Spec.RevisionCounterDisabled = true
 		}
+		if v.Spec.BackendStoreDriver == "" {
+			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
 	}
 
 	return nil
@@ -69,6 +115,101 @@ func upgradeWebhookAndRecoveryService(namespace string, kubeClient *clientset.Cl
 			if err != nil {
 				return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the deployment with label %v during the upgrade", selector)
 			}
+		}
+	}
+	return nil
+}
+
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade InstanceManagers failed")
+	}()
+
+	instanceManagerMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to list all existing Longhorn InstanceManagers")
+	}
+
+	for _, im := range instanceManagerMap {
+		for name, instance := range im.Status.Instances {
+			if instance.Spec.BackendStoreDriver == "" {
+				instance.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+				im.Status.Instances[name] = instance
+			}
+		}
+	}
+
+	engineList, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn Engines")
+	}
+	for _, engine := range engineList.Items {
+		for _, instanceManager := range instanceManagerMap {
+			if engine.Status.InstanceManagerName != instanceManager.Name {
+				continue
+			}
+			instanceManager.Status.InstanceEngines = instanceManager.Status.Instances
+			instanceManager.Status.Instances = nil
+			break
+		}
+	}
+
+	replicaList, err := lhClient.LonghornV1beta2().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn Replicas")
+	}
+	for _, engine := range replicaList.Items {
+		for _, instanceManager := range instanceManagerMap {
+			if engine.Status.InstanceManagerName != instanceManager.Name {
+				continue
+			}
+			instanceManager.Status.InstanceReplicas = instanceManager.Status.Instances
+			instanceManager.Status.Instances = nil
+			break
+		}
+	}
+
+	return nil
+}
+
+func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
+	}()
+
+	replicaMap, err := upgradeutil.ListAndUpdateReplicasInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
+	}
+
+	for _, r := range replicaMap {
+		if r.Spec.BackendStoreDriver == "" {
+			r.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
+	}
+
+	return nil
+}
+
+func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine failed")
+	}()
+
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn engines during the engine upgrade")
+	}
+
+	for _, e := range engineMap {
+		if e.Spec.BackendStoreDriver == "" {
+			e.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
 		}
 	}
 
