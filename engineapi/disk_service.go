@@ -10,7 +10,6 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/util"
 )
 
 type DiskInfo struct {
@@ -27,7 +26,7 @@ type DiskInfo struct {
 	Readonly    bool
 }
 
-func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c DiskServiceClient, err error) {
+func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger) (c DiskServiceClient, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to get disk service client")
 	}()
@@ -50,25 +49,21 @@ func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		return nil, err
 	}
 
-	proxyConnCounter.IncreaseCount()
-
 	return &DiskService{
-		logger:           logger,
-		grpcClient:       client,
-		proxyConnCounter: proxyConnCounter,
+		logger:     logger,
+		grpcClient: client,
 	}, nil
 }
 
 type DiskService struct {
 	logger     logrus.FieldLogger
 	grpcClient *imclient.DiskServiceClient
-
-	proxyConnCounter util.Counter
 }
 
 type DiskServiceClient interface {
 	DiskCreate(string, string, string, int64) (*DiskInfo, error)
 	DiskGet(string, string, string) (*DiskInfo, error)
+	DiskDelete(string, string) error
 	Close()
 }
 
@@ -81,11 +76,6 @@ func (s *DiskService) Close() {
 	if err := s.grpcClient.Close(); err != nil {
 		s.logger.WithError(err).Warn("failed to close disk service client")
 	}
-
-	// The only potential returning error from Close() is
-	// "grpc: the client connection is closing". This means we should still
-	// decrease the connection count.
-	s.proxyConnCounter.DecreaseCount()
 }
 
 func (s *DiskService) DiskCreate(diskType, diskName, diskPath string, blockSize int64) (*DiskInfo, error) {
@@ -96,4 +86,8 @@ func (s *DiskService) DiskCreate(diskType, diskName, diskPath string, blockSize 
 func (s *DiskService) DiskGet(diskType, diskName, diskPath string) (*DiskInfo, error) {
 	info, err := s.grpcClient.DiskGet(diskType, diskName, diskPath)
 	return (*DiskInfo)(unsafe.Pointer(info)), err
+}
+
+func (s *DiskService) DiskDelete(diskName, diskUUID string) error {
+	return s.grpcClient.DiskDelete(diskName, diskUUID)
 }

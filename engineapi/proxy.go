@@ -80,7 +80,7 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	client, err := imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyDefaultPort)
+	client, err := imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort)
 	if err != nil {
 		return nil, err
 	}

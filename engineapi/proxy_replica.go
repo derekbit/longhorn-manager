@@ -13,7 +13,7 @@ func (p *Proxy) ReplicaRemove(e *longhorn.Engine, address string) (err error) {
 }
 
 func (p *Proxy) ReplicaList(e *longhorn.Engine) (replicas map[string]*Replica, err error) {
-	resp, err := p.grpcClient.ReplicaList(p.DirectToURL(e))
+	resp, err := p.grpcClient.ReplicaList(string(e.Spec.BackendStoreDriver), e.Name, p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (p *Proxy) ReplicaList(e *longhorn.Engine) (replicas map[string]*Replica, e
 }
 
 func (p *Proxy) ReplicaRebuildStatus(e *longhorn.Engine) (status map[string]*longhorn.RebuildStatus, err error) {
-	recv, err := p.grpcClient.ReplicaRebuildingStatus(p.DirectToURL(e))
+	recv, err := p.grpcClient.ReplicaRebuildingStatus(string(e.Spec.BackendStoreDriver), e.Name, p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}
