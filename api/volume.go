@@ -177,6 +177,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		SnapshotDataIntegrity:     volume.SnapshotDataIntegrity,
 		BackupCompressionMethod:   volume.BackupCompressionMethod,
 		UnmapMarkSnapChainRemoved: volume.UnmapMarkSnapChainRemoved,
+		BackendStoreDriver:        volume.BackendStoreDriver,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
