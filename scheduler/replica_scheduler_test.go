@@ -146,6 +146,7 @@ func newCondition(conditionType string, status longhorn.ConditionStatus) longhor
 
 func newDisk(path string, allowScheduling bool, storageReserved int64) longhorn.DiskSpec {
 	return longhorn.DiskSpec{
+		Type:            longhorn.DiskTypeFilesystem,
 		Path:            path,
 		AllowScheduling: allowScheduling,
 		StorageReserved: storageReserved,

@@ -2286,8 +2286,8 @@ func (vc *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, node
 		if err != nil {
 			continue
 		}
-		for fsid, diskStatus := range node.Status.DiskStatus {
-			diskSpec, exists := node.Spec.Disks[fsid]
+		for diskID, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskID]
 			if !exists {
 				continue
 			}
