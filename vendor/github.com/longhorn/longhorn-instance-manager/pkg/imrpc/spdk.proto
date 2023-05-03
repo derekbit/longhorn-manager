@@ -1,0 +1,100 @@
+syntax="proto3";
+
+package imrpc;
+
+import "google/protobuf/empty.proto";
+import "imrpc.proto";
+
+service SPDKService {
+    rpc ReplicaCreate(ReplicaCreateRequest) returns (Replica);
+    rpc ReplicaDelete(ReplicaDeleteRequest) returns (google.protobuf.Empty);
+    rpc ReplicaGet(ReplicaGetRequest) returns (Replica);
+    rpc ReplicaList(google.protobuf.Empty) returns (ReplicaListResponse);
+    rpc ReplicaWatch(google.protobuf.Empty) returns (stream Replica) {}
+
+    rpc EngineCreate(EngineCreateRequest) returns (Engine);
+    rpc EngineDelete(EngineDeleteRequest) returns (google.protobuf.Empty);
+    rpc EngineGet(EngineGetRequest) returns (Engine);
+    rpc EngineList(google.protobuf.Empty) returns (EngineListResponse);
+    rpc EngineWatch(google.protobuf.Empty) returns (stream Engine) {}
+
+    rpc VersionGet(google.protobuf.Empty) returns(VersionResponse);
+}
+
+message Lvol {
+    string name = 1;
+    string uuid = 2;
+    uint64 spec_size = 3;
+    uint64 actual_size = 4;
+    string parent = 5;
+    map<string, bool> children = 6;
+}
+
+message Replica {
+    string name = 1;
+    string uuid = 2;
+    uint64 spec_size = 3;
+    uint64 actual_size = 4;
+    map<string, Lvol> snapshots = 5;
+    bool rebuilding = 6;
+    int32 port = 7;
+}
+
+message ReplicaCreateRequest {
+    string name = 1;
+    string lvs_uuid = 2;
+    uint64 size = 3;
+    bool expose_required = 4;
+}
+
+message ReplicaDeleteRequest {
+    string name = 1;
+    bool cleanup_required = 2;
+}
+
+message ReplicaGetRequest {
+    string name = 1;
+}
+
+message ReplicaListResponse {
+	map<string, Replica> replicas = 1;
+}
+
+enum ReplicaMode {
+    WO = 0;
+    RW = 1;
+    ERR = 2;
+}
+
+message EngineCreateRequest {
+    string name = 1;
+    string volume_name = 2;
+    map<string, string> replica_address_map = 3;
+    string frontend = 4;
+}
+
+message Engine {
+    string name = 1;
+    string uuid = 2;
+    string volume_name = 3;
+    uint64 size = 4;
+    string ip = 5;
+    int32 port = 6;
+    map<string, string> replica_address_map = 7;
+    map<string, ReplicaMode> replica_mode_map = 8;
+    string endpoint = 9;
+    string frontend = 10;
+    string frontend_state = 11;
+}
+
+message EngineDeleteRequest {
+    string name = 1;
+}
+
+message EngineGetRequest {
+    string name = 1;
+}
+
+message EngineListResponse {
+	map<string, Engine> engines = 1;
+}

@@ -77,4 +77,7 @@ message VersionResponse {
 
     int64 instanceManagerProxyAPIVersion = 6;
     int64 instanceManagerProxyAPIMinVersion = 7;
+
+    int64 instanceManagerDiskServiceAPIVersion = 8;
+    int64 instanceManagerDiskServiceAPIMinVersion = 9;
 }

@@ -23,3 +23,14 @@ const (
 	RetryInterval = 3 * time.Second
 	RetryCounts   = 3
 )
+
+const (
+	InstanceTypeEngine  = "engine"
+	InstanceTypeReplica = "replica"
+)
+
+const (
+	BackendStoreDriverTypeUndefined = ""
+	BackendStoreDriverTypeLonghorn  = "longhorn"
+	BackendStoreDriverTypeSpdkAio   = "spdk-aio"
+)
