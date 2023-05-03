@@ -5,6 +5,7 @@ package imrpc;
 import "google/protobuf/empty.proto";
 import "github.com/longhorn/longhorn-engine/proto/ptypes/controller.proto";
 import "github.com/longhorn/longhorn-engine/proto/ptypes/syncagent.proto";
+import "imcommon.proto";
 
 service ProxyEngineService {
 	rpc ServerVersionGet(ProxyEngineRequest) returns (EngineVersionProxyResponse);
@@ -42,7 +43,9 @@ service ProxyEngineService {
 }
 
 message ProxyEngineRequest{
-	string address = 1;
+	BackendStoreDriver backend_store_driver = 1;
+	string address = 2;
+	string engine_name = 3;
 }
 
 message EngineVersionProxyResponse {

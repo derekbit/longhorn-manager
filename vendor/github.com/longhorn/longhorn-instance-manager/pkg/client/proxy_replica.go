@@ -1,12 +1,14 @@
 package client
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
+	"github.com/pkg/errors"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	eptypes "github.com/longhorn/longhorn-engine/proto/ptypes"
+
+	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
 func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int, fastSync bool) (err error) {
@@ -45,12 +47,18 @@ func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore 
 	return nil
 }
 
-func (c *ProxyClient) ReplicaList(serviceAddress string) (rInfoList []*etypes.ControllerReplicaInfo, err error) {
+func (c *ProxyClient) ReplicaList(backendStoreDriver, engineName, serviceAddress string) (rInfoList []*etypes.ControllerReplicaInfo, err error) {
 	input := map[string]string{
+		"engineName":     engineName,
 		"serviceAddress": serviceAddress,
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return nil, errors.Wrap(err, "failed to list replicas for volume")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	if !ok {
+		return nil, fmt.Errorf("failed to list replicas for volume: invalid backend store driver %v", backendStoreDriver)
 	}
 
 	defer func() {
@@ -58,7 +66,9 @@ func (c *ProxyClient) ReplicaList(serviceAddress string) (rInfoList []*etypes.Co
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address: serviceAddress,
+		Address:            serviceAddress,
+		EngineName:         engineName,
+		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 	}
 	resp, err := c.service.ReplicaList(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
@@ -75,12 +85,18 @@ func (c *ProxyClient) ReplicaList(serviceAddress string) (rInfoList []*etypes.Co
 	return rInfoList, nil
 }
 
-func (c *ProxyClient) ReplicaRebuildingStatus(serviceAddress string) (status map[string]*ReplicaRebuildStatus, err error) {
+func (c *ProxyClient) ReplicaRebuildingStatus(backendStoreDriver, engineName, serviceAddress string) (status map[string]*ReplicaRebuildStatus, err error) {
 	input := map[string]string{
+		"engineName":     engineName,
 		"serviceAddress": serviceAddress,
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return nil, errors.Wrap(err, "failed to get replicas rebuilding status")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	if !ok {
+		return nil, fmt.Errorf("failed to get replicas rebuilding status: invalid backend store driver %v", backendStoreDriver)
 	}
 
 	defer func() {
@@ -88,7 +104,9 @@ func (c *ProxyClient) ReplicaRebuildingStatus(serviceAddress string) (status map
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address: serviceAddress,
+		Address:            serviceAddress,
+		EngineName:         engineName,
+		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 	}
 	recv, err := c.service.ReplicaRebuildingStatus(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
