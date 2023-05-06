@@ -142,7 +142,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840
+# github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840 => github.com/derekbit/backupstore v0.0.0-20230506045245-5f00fa1a27d6
 ## explicit; go 1.17
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging

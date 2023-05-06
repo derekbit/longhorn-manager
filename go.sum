@@ -181,6 +181,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd/go.mod h1:dv4zxwHi5C/8AeI+4gX4dCWOIvNi7I6JCSX0HvlKPgE=
+github.com/derekbit/backupstore v0.0.0-20230506045245-5f00fa1a27d6 h1:ElsleayJhhlotw2ZWCBdh4z98UQAmE0K3sCXwbW6KIE=
+github.com/derekbit/backupstore v0.0.0-20230506045245-5f00fa1a27d6/go.mod h1:O5djnQWVRlFzng2R/603XM0stScpZnQXTgLDgjNmlFM=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=
@@ -512,8 +514,6 @@ github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z
 github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f h1:nvvJ/RZrUIgl2FrEcxRYtKh2V9mJjoHll/dK6bMBp7Q=
 github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f/go.mod h1:J6PTXyXw5Dvzx+0Aeixl+7TPBWPWQzdIQHh+GeSCjsg=
 github.com/longhorn/backupstore v0.0.0-20210817080617-8ea3843e6b0d/go.mod h1:FUjQNWqcEXSFIrQpfWLxFFHXywk14mM5w9TNRuBrKzY=
-github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840 h1:RoR9hDUdNTUQ+2yrStto7KvltuC8xmzu13T++cO9w2o=
-github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840/go.mod h1:08c2weOA6tSVyhDiu9k/XoBsFCZy/NujcLZ6HnG4mz4=
 github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524 h1:bqcufS0wAuXF0VGesCaGpim8wz0dNlTuKvgim0b9QFc=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524/go.mod h1:gjjEN5+gUyO1ooUaF7bVM0K+ZQ8vA9DiujVvoKWdT0k=
