@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -291,10 +292,15 @@ func (btc *BackupTargetClient) BackupDelete(backupURL string, credential map[str
 }
 
 // BackupCleanUpAllMounts clean up all mount points of backup store on the node
-func (btc *BackupTargetClient) BackupCleanUpAllMounts() (err error) {
-	_, err = btc.ExecuteEngineBinary("backup", "cleanup-all-mounts")
+func (btc *BackupTargetClient) BackupCleanUpUnusedMounts(inUseBackupTargets []string) (err error) {
+	args := []string{"backup", "clean-up-mounts"}
+	if len(inUseBackupTargets) > 0 {
+		args = append(args, "--in-use-backup-targets", strings.Join(inUseBackupTargets, " "))
+	}
+
+	_, err = btc.ExecuteEngineBinary(args...)
 	if err != nil {
-		return errors.Wrapf(err, "error clean up all mount points")
+		return errors.Wrapf(err, "failed to clean up unused mount points")
 	}
 	return nil
 }

@@ -275,10 +275,12 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 
 	// Every controller should do the clean up even it is not responsible for the CR
-	if backupTarget.Spec.BackupTargetURL == "" {
-		if err := btc.cleanUpAllMounts(backupTarget); err != nil {
-			log.WithError(err).Warn("Failed to clean up all mount points")
-		}
+	inUseBackupTargets := []string{}
+	if backupTarget.Spec.BackupTargetURL != "" {
+		inUseBackupTargets = append(inUseBackupTargets, backupTarget.Spec.BackupTargetURL)
+	}
+	if err := btc.cleanUpUnusedMounts(backupTarget, inUseBackupTargets); err != nil {
+		log.WithError(err).Warn("Failed to clean up all mount points")
 	}
 
 	// Check the responsible node
@@ -379,15 +381,15 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	return nil
 }
 
-func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.BackupTarget) (err error) {
+func (btc *BackupTargetController) cleanUpUnusedMounts(backupTarget *longhorn.BackupTarget, inUseBackupTargets []string) (err error) {
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 	engineClientProxy, backupTargetClient, err := getBackupTarget(btc.controllerID, backupTarget, btc.ds, log, btc.proxyConnCounter)
 	if err != nil {
 		return err
 	}
 	defer engineClientProxy.Close()
-	err = backupTargetClient.BackupCleanUpAllMounts()
-	return err
+
+	return backupTargetClient.BackupCleanUpUnusedMounts(inUseBackupTargets)
 }
 
 func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) error {
