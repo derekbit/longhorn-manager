@@ -1572,9 +1572,13 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	if err := ec.removeUnknownReplica(e); err != nil {
 		return err
 	}
-	if err := ec.rebuildNewReplica(e); err != nil {
-		return err
+
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		if err := ec.rebuildNewReplica(e); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }
 
