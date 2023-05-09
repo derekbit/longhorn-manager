@@ -494,6 +494,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
+	// To avoid hindering the startup of instance manager,
+	// sync instance managers before syncing disks.
+	if err := nc.syncInstanceManagers(node); err != nil {
+		return err
+	}
+
 	// Create a monitor for collecting disk information
 	if _, err := nc.createDiskMonitor(); err != nil {
 		return err
@@ -536,10 +542,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				return err
 			}
 		}
-	}
-
-	if err := nc.syncInstanceManagers(node); err != nil {
-		return err
 	}
 
 	if err := nc.cleanUpBackingImagesInDisks(node); err != nil {
