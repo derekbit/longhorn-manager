@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
@@ -1356,6 +1357,11 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 }
 
 func (nc *NodeController) deleteDisk(node *longhorn.Node, diskName, diskUUID string) error {
+	if diskUUID == "" {
+		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
+		return nil
+	}
+
 	engineIM, err := nc.ds.GetDefaultInstanceManagerByNode(nc.controllerID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get default engine instance manager")

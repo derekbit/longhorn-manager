@@ -451,7 +451,7 @@ func (c *InstanceManagerClient) InstanceDelete(backendStoreDriver longhorn.Backe
 		return err
 	}
 
-	_, err := c.instanceServiceGrpcClient.InstanceDelete(string(backendStoreDriver), name, kind, diskUUID, false)
+	_, err := c.instanceServiceGrpcClient.InstanceDelete(string(backendStoreDriver), name, kind, diskUUID, cleanupRequired)
 	return err
 }
 

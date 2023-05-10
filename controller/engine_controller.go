@@ -287,7 +287,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	if engine.DeletionTimestamp != nil {
 		if err := ec.DeleteInstance(engine); err != nil {
-			return errors.Wrapf(err, "failed to clean up the related engine process before deleting engine %v", engine.Name)
+			return errors.Wrapf(err, "failed to clean up the related engine instance before deleting engine %v", engine.Name)
 		}
 		return ec.ds.RemoveFinalizerForEngine(engine)
 	}
@@ -421,10 +421,10 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine process creation: %v", obj)
+		return nil, fmt.Errorf("BUG: invalid object for engine instance creation: %v", obj)
 	}
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
-		return nil, fmt.Errorf("missing parameters for engine process creation: %v", e)
+		return nil, fmt.Errorf("missing parameters for engine instance creation: %v", e)
 	}
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
@@ -467,7 +467,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
+		return fmt.Errorf("BUG: invalid object for engine instance deletion: %v", obj)
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
@@ -480,15 +480,15 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	// Not assigned or not updated, try best to delete
 	if e.Status.InstanceManagerName == "" {
 		if e.Spec.NodeID == "" {
-			log.Warn("Engine does not set instance manager name and node ID, will skip the actual process deletion")
+			log.Warn("Engine does not set instance manager name and node ID, will skip the actual instance deletion")
 			return nil
 		}
 		im, err = ec.ds.GetInstanceManagerByInstance(obj)
 		if err != nil {
-			log.WithError(err).Warn("Failed to detect instance manager for engine, will skip the actual process deletion")
+			log.WithError(err).Warn("Failed to detect instance manager for engine, will skip the actual instance deletion")
 			return nil
 		}
-		log.Infof("Trying best to clean up the process for engine in instance manager %v", im.Name)
+		log.Infof("Trying best to clean up the instance for engine in instance manager %v", im.Name)
 	} else {
 		im, err = ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
 		if err != nil {
@@ -516,7 +516,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod deletion/recreation
 	// and volume detachment/attachment.
 	// Then, the newly created share-manager pod blindly mounts the longhorn volume inside /dev/longhorn/<pvc-name> and exports it.
-	// To avoid mounting a dead and orphaned volume, try to clean up the engine process as well as the orphaned iscsi device
+	// To avoid mounting a dead and orphaned volume, try to clean up the engine instance as well as the orphaned iscsi device
 	// regardless of the instance-manager status.
 	if !isRWXVolume {
 		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
@@ -543,13 +543,13 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// If the network of the node A gets back to normal, the SM can be shifted back to node A.
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
-			// problematic engine process and block device. The next reattachment then will succeed.
+			// problematic engine instance and block device. The next reattachment then will succeed.
 			logrus.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
 			err = nil
 		}
 	}()
 
-	// For the engine process in instance manager v0.7.0, we need to use the cmdline to delete the process
+	// For the engine instance in instance manager v0.7.0, we need to use the cmdline to delete the instance
 	// and stop the iscsi
 	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
 		url := imutil.GetURL(im.Status.IP, engineapi.InstanceManagerProcessManagerServiceDefaultPort)
@@ -644,7 +644,7 @@ func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) 
 func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for engine process get: %v", obj)
+		return nil, fmt.Errorf("BUG: invalid object for engine instance get: %v", obj)
 	}
 
 	var (
@@ -674,7 +674,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, nil, fmt.Errorf("BUG: invalid object for engine process log: %v", obj)
+		return nil, nil, fmt.Errorf("BUG: invalid object for engine instance log: %v", obj)
 	}
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
@@ -856,9 +856,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
+	logrus.Infof("Debug ===> replicaURLModeMap=%+v", replicaURLModeMap)
+	logrus.Infof("Debug ===> addressReplicaMap=%+v", addressReplicaMap)
 	currentReplicaModeMap := map[string]longhorn.ReplicaMode{}
 	for url, r := range replicaURLModeMap {
 		addr := engineapi.GetAddressFromBackendReplicaURL(url)
+		logrus.Infof("Debug ===> addr=%+v", addr)
 		replica, exists := addressReplicaMap[addr]
 		if !exists {
 			// we have a entry doesn't exist in our spec
@@ -1668,7 +1671,7 @@ func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy
 	}
 
 	for url := range replicaURLModeMap {
-		// the replica has been rebuilt or in the process already
+		// the replica has been rebuilt or in the instance already
 		if addr == engineapi.GetAddressFromBackendReplicaURL(url) {
 			return true, nil
 		}
@@ -2000,10 +2003,10 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 
 	processBinary, err := c.InstanceGetBinary(e.Spec.BackendStoreDriver, e.Name, string(longhorn.InstanceManagerTypeEngine), "")
 	if err != nil {
-		return errors.Wrapf(err, "failed to get the binary of the current engine process")
+		return errors.Wrapf(err, "failed to get the binary of the current engine instance")
 	}
 	if strings.Contains(processBinary, types.GetImageCanonicalName(e.Spec.EngineImage)) {
-		log.Infof("The existing engine process already has the new engine image %v", e.Spec.EngineImage)
+		log.Infof("The existing engine instance already has the new engine image %v", e.Spec.EngineImage)
 		return nil
 	}
 
@@ -2017,7 +2020,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 }
 
 // isResponsibleFor picks a running node that has e.Status.CurrentImage deployed.
-// We need e.Status.CurrentImage deployed on the node to make request to the corresponding engine process.
+// We need e.Status.CurrentImage deployed on the node to make request to the corresponding engine instance.
 // Prefer picking the node e.Spec.NodeID if it meet the above requirement.
 func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineImage string) (bool, error) {
 	var err error
