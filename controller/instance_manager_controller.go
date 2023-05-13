@@ -1161,6 +1161,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Name:  "TLS_DIR",
 			Value: types.TLSDirectoryInContainer,
 		},
+		{
+			Name: types.EnvPodIP,
+			ValueFrom: &v1.EnvVarSource{
+				FieldRef: &v1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
+				},
+			},
+		},
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
