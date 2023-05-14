@@ -43,7 +43,7 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
-	github.com/longhorn/go-spdk-helper v0.0.0-20230428184001-b185b2f90a72
+	github.com/longhorn/go-spdk-helper v0.0.0-20230511072325-7af99589dd44
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230503033304-7f1c1a149269
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230503044402-c6ea135a161b
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a
@@ -58,7 +58,7 @@ require (
 	github.com/urfave/cli v1.22.13
 	golang.org/x/mod v0.8.0
 	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.54.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -126,7 +126,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
-	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 // indirect
+	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

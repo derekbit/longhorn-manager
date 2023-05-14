@@ -241,12 +241,20 @@ func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
 	return nil
 }
 
-func GetEngineProcessFrontend(volumeFrontend longhorn.VolumeFrontend) (string, error) {
+func GetEngineInstanceFrontend(backendStoreDriver longhorn.BackendStoreDriverType, volumeFrontend longhorn.VolumeFrontend) (string, error) {
 	frontend := ""
 	if volumeFrontend == longhorn.VolumeFrontendBlockDev {
-		frontend = string(iscsidevtypes.FrontendTGTBlockDev)
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			frontend = string(iscsidevtypes.FrontendTGTBlockDev)
+		} else {
+			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
+		}
 	} else if volumeFrontend == longhorn.VolumeFrontendISCSI {
-		frontend = string(iscsidevtypes.FrontendTGTISCSI)
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			frontend = string(iscsidevtypes.FrontendTGTISCSI)
+		} else {
+			frontend = string(spdkdevtypes.FrontendSPDKTCPNvmf)
+		}
 	} else if volumeFrontend == longhorn.VolumeFrontend("") {
 		frontend = ""
 	} else {
@@ -262,9 +270,9 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 	}
 
 	switch volume.Frontend {
-	case iscsidevtypes.FrontendTGTBlockDev, spdkdevtypes.FrontendSPDKTCPBlockDev:
+	case iscsidevtypes.FrontendTGTBlockDev, spdkdevtypes.FrontendSPDKTCPBlockdev:
 		return volume.Endpoint, nil
-	case iscsidevtypes.FrontendTGTISCSI:
+	case iscsidevtypes.FrontendTGTISCSI, spdkdevtypes.FrontendSPDKTCPNvmf:
 		if ip == "" {
 			return "", fmt.Errorf("iscsi endpoint %v is missing ip", volume.Endpoint)
 		}

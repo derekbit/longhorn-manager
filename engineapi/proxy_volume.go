@@ -20,7 +20,7 @@ func (p *Proxy) VolumeExpand(e *longhorn.Engine) (err error) {
 }
 
 func (p *Proxy) VolumeFrontendStart(e *longhorn.Engine) (err error) {
-	frontendName, err := GetEngineProcessFrontend(e.Spec.Frontend)
+	frontendName, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, e.Spec.Frontend)
 	if err != nil {
 		return err
 	}

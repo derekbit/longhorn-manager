@@ -266,13 +266,9 @@ func getTypeForProcess(portCount int32) longhorn.InstanceType {
 }
 
 func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
-	volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
+	frontend string, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
 	dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string, error) {
 
-	frontend, err := GetEngineProcessFrontend(volumeFrontend)
-	if err != nil {
-		return "", nil, err
-	}
 	args := []string{"controller", e.Spec.VolumeName,
 		"--frontend", frontend,
 	}
@@ -357,9 +353,14 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 	var err error
 
+	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
+	if err != nil {
+		return nil, err
+	}
+
 	switch e.Spec.BackendStoreDriver {
 	case longhorn.BackendStoreDriverTypeLonghorn:
-		binary, args, err = getBinaryAndArgsForEngineProcessCreation(e, volumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout, dataLocality, engineCLIAPIVersion)
+		binary, args, err = getBinaryAndArgsForEngineProcessCreation(e, frontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout, dataLocality, engineCLIAPIVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -389,6 +390,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
+			Frontend:          frontend,
 		},
 	})
 
@@ -565,7 +567,7 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	frontend, err := GetEngineProcessFrontend(volumeFrontend)
+	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
 	if err != nil {
 		return nil, err
 	}

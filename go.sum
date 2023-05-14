@@ -519,8 +519,8 @@ github.com/longhorn/backupstore v0.0.0-20230502155402-f71b33a72840/go.mod h1:08c
 github.com/longhorn/go-iscsi-helper v0.0.0-20210330030558-49a327fb024e/go.mod h1:9z/y9glKmWEdV50tjlUPxFwi1goQfIrrsoZbnMyIZbY=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524 h1:bqcufS0wAuXF0VGesCaGpim8wz0dNlTuKvgim0b9QFc=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524/go.mod h1:gjjEN5+gUyO1ooUaF7bVM0K+ZQ8vA9DiujVvoKWdT0k=
-github.com/longhorn/go-spdk-helper v0.0.0-20230428184001-b185b2f90a72 h1:dx1e3XODraVDvJcDp0dKNwpyOtvU7hqIzYKm/F4On/M=
-github.com/longhorn/go-spdk-helper v0.0.0-20230428184001-b185b2f90a72/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
+github.com/longhorn/go-spdk-helper v0.0.0-20230511072325-7af99589dd44 h1:dooaHnEbsdp+JYmbM8RrcuWKLbyGdBxFT0Io8iSgeZ4=
+github.com/longhorn/go-spdk-helper v0.0.0-20230511072325-7af99589dd44/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
 github.com/longhorn/longhorn-engine v1.2.0-preview1.0.20210818142058-32cb7dfd0630/go.mod h1:mtvBHZBmXJIHBcLL828FY5mGq4hoh7bV2EFK6LFLmhE=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230503033304-7f1c1a149269 h1:Og1XohIqyd3Tl1Arz8PjKgnxmPt2UC/UKSKMjxm8x3k=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230503033304-7f1c1a149269/go.mod h1:C/ZIV9ynA/r91p9UCiXZAFVL+yiNEmW4EY/uaOD3EQI=
@@ -1101,8 +1101,9 @@ golang.org/x/sys v0.0.0-20211025201205-69cdffdb9359/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.0.0-20211116061358-0a5406a5449c/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220408201424-a24fb2fb8a0f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
-golang.org/x/sys v0.7.0 h1:3jlCCIQZPdOYu1h8BkNvLz8Kgwtae2cagcG/VamtZRU=
 golang.org/x/sys v0.7.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.8.0 h1:EBmGv8NaZBZTWvrbjNoL6HVt+IVy3QDQpJs7VRIw3tU=
+golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=

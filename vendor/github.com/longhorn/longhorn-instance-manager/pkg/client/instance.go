@@ -74,6 +74,7 @@ func NewInstanceServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peer
 
 type EngineCreateRequest struct {
 	ReplicaAddressMap map[string]string
+	Frontend          string
 }
 
 type ReplicaCreateRequest struct {

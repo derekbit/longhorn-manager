@@ -1361,6 +1361,7 @@ func (m *InstanceManagerMonitor) Run() {
 				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
+				logrus.Infof("Debug ===> receive notify")
 				m.lock.Lock()
 				m.updateNotification = true
 				m.lock.Unlock()
@@ -1392,6 +1393,7 @@ func (m *InstanceManagerMonitor) Run() {
 			if !needUpdate {
 				continue
 			}
+			logrus.Infof("Debug ===> update instance map")
 			if needStop := m.pollAndUpdateInstanceMap(); needStop {
 				return
 			}
@@ -1422,6 +1424,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false
 	}
+	logrus.Infof("Debug ===> resp: %+v", resp)
 
 	if !m.updateInstanceMap(im, resp) {
 		return false
