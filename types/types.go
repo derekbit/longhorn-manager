@@ -653,6 +653,10 @@ func ErrorIsNotFound(err error) bool {
 	return strings.Contains(err.Error(), "cannot find")
 }
 
+func ErrorIsStopped(err error) bool {
+	return strings.Contains(err.Error(), "is stopped")
+}
+
 func ErrorIsNotSupport(err error) bool {
 	return strings.Contains(err.Error(), "not support")
 }
