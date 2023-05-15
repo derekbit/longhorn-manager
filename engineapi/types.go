@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	devtypes "github.com/longhorn/go-iscsi-helper/types"
+	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
+	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -21,8 +22,11 @@ const (
 	CLIVersionFour = 4
 	CLIVersionFive = 5
 
-	InstanceManagerDefaultPort      = 8500
-	InstanceManagerProxyDefaultPort = InstanceManagerDefaultPort + 1
+	InstanceManagerProcessManagerServiceDefaultPort = 8500
+	InstanceManagerProxyServiceDefaultPort          = InstanceManagerProcessManagerServiceDefaultPort + 1 // 8501
+	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2 // 8502
+	InstanceManagerInstanceServiceDefaultPort       = InstanceManagerProcessManagerServiceDefaultPort + 3 // 8503
+	InstanceManagerSpdkServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 4 // 8504
 
 	BackingImageManagerDefaultPort    = 8000
 	BackingImageDataSourceDefaultPort = 8000
@@ -238,12 +242,20 @@ func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
 	return nil
 }
 
-func GetEngineProcessFrontend(volumeFrontend longhorn.VolumeFrontend) (string, error) {
+func GetEngineInstanceFrontend(backendStoreDriver longhorn.BackendStoreDriverType, volumeFrontend longhorn.VolumeFrontend) (string, error) {
 	frontend := ""
 	if volumeFrontend == longhorn.VolumeFrontendBlockDev {
-		frontend = string(devtypes.FrontendTGTBlockDev)
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			frontend = string(iscsidevtypes.FrontendTGTBlockDev)
+		} else {
+			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
+		}
 	} else if volumeFrontend == longhorn.VolumeFrontendISCSI {
-		frontend = string(devtypes.FrontendTGTISCSI)
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			frontend = string(iscsidevtypes.FrontendTGTISCSI)
+		} else {
+			frontend = string(spdkdevtypes.FrontendSPDKTCPNvmf)
+		}
 	} else if volumeFrontend == longhorn.VolumeFrontend("") {
 		frontend = ""
 	} else {
@@ -259,9 +271,9 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 	}
 
 	switch volume.Frontend {
-	case devtypes.FrontendTGTBlockDev:
+	case iscsidevtypes.FrontendTGTBlockDev, spdkdevtypes.FrontendSPDKTCPBlockdev:
 		return volume.Endpoint, nil
-	case devtypes.FrontendTGTISCSI:
+	case iscsidevtypes.FrontendTGTISCSI, spdkdevtypes.FrontendSPDKTCPNvmf:
 		if ip == "" {
 			return "", fmt.Errorf("iscsi endpoint %v is missing ip", volume.Endpoint)
 		}

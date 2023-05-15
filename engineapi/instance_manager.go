@@ -39,16 +39,23 @@ type InstanceManagerClient struct {
 	apiMinVersion int
 	apiVersion    int
 
+	// TODO: After eliminating all old instance manager pods, this process manager client can be removed.
 	// The gRPC client supports backward compatibility.
-	grpcClient *imclient.ProcessManagerClient
+	instanceServiceGrpcClient *imclient.InstanceServiceClient
+	processManagerGrpcClient  *imclient.ProcessManagerClient
+	diskServiceGrpcClient     *imclient.DiskServiceClient
+}
+
+func (c *InstanceManagerClient) GetAPIVersion() int {
+	return c.apiVersion
 }
 
 func (c *InstanceManagerClient) Close() error {
-	if c.grpcClient == nil {
+	if c.processManagerGrpcClient == nil {
 		return nil
 	}
 
-	return c.grpcClient.Close()
+	return c.processManagerGrpcClient.Close()
 }
 
 func GetDeprecatedInstanceManagerBinary(image string) string {
@@ -71,15 +78,14 @@ func CheckInstanceManagerProxySupport(im *longhorn.InstanceManager) error {
 	return nil
 }
 
+// NewInstanceManagerClient creates a new instance manager client
 func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
 	// Do not check the major version here. Since IM cannot get the major version without using this client to call VersionGet().
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v, state: %v, IP: %v", im.Name, im.Status.CurrentState, im.Status.IP)
 	}
-	// HACK: TODO: fix me
-	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDefaultPort)
 
-	initTLSClient := func() (*imclient.ProcessManagerClient, error) {
+	initProcessManagerTLSClient := func(endpoint string) (*imclient.ProcessManagerClient, error) {
 		// check for tls cert file presence
 		pmClient, err := imclient.NewProcessManagerClientWithTLS(endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
@@ -98,18 +104,86 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		return pmClient, nil
 	}
 
-	pmClient, err := initTLSClient()
+	initInstanceServiceTLSClient := func(endpoint string) (*imclient.InstanceServiceClient, error) {
+		// check for tls cert file presence
+		instanceClient, err := imclient.NewInstanceServiceClientWithTLS(endpoint,
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+			"longhorn-backend.longhorn-system",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load Instance Manager Instance Service Client TLS files Error: %w", err)
+		}
+
+		if _, err = instanceClient.VersionGet(); err != nil {
+			return nil, fmt.Errorf("failed to check check version of Instance Manager Instance Service Client with TLS connection Error: %w", err)
+		}
+
+		return instanceClient, nil
+	}
+
+	initDiskServiceTLSClient := func(endpoint string) (*imclient.DiskServiceClient, error) {
+		// check for tls cert file presence
+		diskClient, err := imclient.NewDiskServiceClientWithTLS(endpoint,
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+			"longhorn-backend.longhorn-system",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load Instance Manager Disk Service Client TLS files Error: %w", err)
+		}
+
+		return diskClient, nil
+	}
+
+	// Create a new process manager client
+	// HACK: TODO: fix me
+	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
+	processManagerClient, err := initProcessManagerTLSClient(endpoint)
 	if err != nil {
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-		pmClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+		processManagerClient, err = imclient.NewProcessManagerClient(endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
 				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
 		}
 
-		if _, err = pmClient.VersionGet(); err != nil {
-			return nil, fmt.Errorf("failed to get Version of Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+		if _, err = processManagerClient.VersionGet(); err != nil {
+			return nil, fmt.Errorf("failed to get Version of Instance Manager Process Manager Service Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+		}
+	}
+
+	// Create a new instance service  client
+	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerInstanceServiceDefaultPort)
+	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
+	if err != nil {
+		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
+		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+		instanceServiceClient, err = imclient.NewInstanceServiceClient(endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Instance Manager Instance Service Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+		}
+
+		if _, err = instanceServiceClient.VersionGet(); err != nil {
+			return nil, fmt.Errorf("failed to get Version of Instance Manager Instance Service Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
+				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+		}
+	}
+
+	// Create a new disk service client
+	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
+	diskServiceClient, err := initDiskServiceTLSClient(endpoint)
+	if err != nil {
+		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
+		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+		diskServiceClient, err = imclient.NewDiskServiceClient(endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
 				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
 		}
 	}
@@ -118,11 +192,37 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	//  This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibility`
 
 	return &InstanceManagerClient{
-		ip:            im.Status.IP,
-		apiMinVersion: im.Status.APIMinVersion,
-		apiVersion:    im.Status.APIVersion,
-		grpcClient:    pmClient,
+		ip:                        im.Status.IP,
+		apiMinVersion:             im.Status.APIMinVersion,
+		apiVersion:                im.Status.APIVersion,
+		instanceServiceGrpcClient: instanceServiceClient,
+		processManagerGrpcClient:  processManagerClient,
+		diskServiceGrpcClient:     diskServiceClient,
 	}, nil
+}
+
+func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
+	if p == nil {
+		return nil
+	}
+
+	return &longhorn.InstanceProcess{
+		Spec: longhorn.InstanceProcessSpec{
+			Name:               p.Name,
+			BackendStoreDriver: longhorn.BackendStoreDriverType(p.BackendStoreDriver),
+		},
+		Status: longhorn.InstanceProcessStatus{
+			Type:      getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
+			State:     longhorn.InstanceState(p.InstanceStatus.State),
+			ErrorMsg:  p.InstanceStatus.ErrorMsg,
+			PortStart: p.InstanceStatus.PortStart,
+			PortEnd:   p.InstanceStatus.PortEnd,
+
+			// These fields are not used, maybe we can deprecate them later.
+			Listen:   "",
+			Endpoint: "",
+		},
+	}
 }
 
 func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
@@ -130,39 +230,47 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 		return nil
 	}
 
-	processType := longhorn.InstanceTypeReplica
-	if p.PortCount == DefaultEnginePortCount {
-		processType = longhorn.InstanceTypeEngine
-	}
-
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
-			Name: p.Name,
+			Name:               p.Name,
+			BackendStoreDriver: longhorn.BackendStoreDriverTypeLonghorn,
 		},
 		Status: longhorn.InstanceProcessStatus{
+			Type:      getTypeForProcess(p.PortCount),
 			State:     longhorn.InstanceState(p.ProcessStatus.State),
 			ErrorMsg:  p.ProcessStatus.ErrorMsg,
 			PortStart: p.ProcessStatus.PortStart,
 			PortEnd:   p.ProcessStatus.PortEnd,
-			Type:      processType,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
 			Endpoint: "",
 		},
 	}
-
 }
 
-func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend,
-	engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
-		return nil, err
+func getTypeForInstance(instanceType longhorn.InstanceType, portCount int32) longhorn.InstanceType {
+	if instanceType != longhorn.InstanceType("") {
+		return instanceType
 	}
-	frontend, err := GetEngineProcessFrontend(volumeFrontend)
-	if err != nil {
-		return nil, err
+
+	if portCount == DefaultEnginePortCount {
+		return longhorn.InstanceTypeEngine
 	}
+	return longhorn.InstanceTypeReplica
+}
+
+func getTypeForProcess(portCount int32) longhorn.InstanceType {
+	if portCount == DefaultEnginePortCount {
+		return longhorn.InstanceTypeEngine
+	}
+	return longhorn.InstanceTypeReplica
+}
+
+func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
+	frontend string, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
+	dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string, error) {
+
 	args := []string{"controller", e.Spec.VolumeName,
 		"--frontend", frontend,
 	}
@@ -200,117 +308,274 @@ func (c *InstanceManagerClient) EngineProcessCreate(e *longhorn.Engine, volumeFr
 	}
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
 
-	engineProcess, err := c.grpcClient.ProcessCreate(
-		e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
-	if err != nil {
-		return nil, err
-	}
-	return c.parseProcess(engineProcess), nil
+	return binary, args, nil
 }
 
-func (c *InstanceManagerClient) ReplicaProcessCreate(replica *longhorn.Replica, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
-		return nil, err
-	}
+func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string) {
+
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
-		"--size", strconv.FormatInt(replica.Spec.VolumeSize, 10),
+		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
 	}
 	if backingImagePath != "" {
 		args = append(args, "--backing-file", backingImagePath)
 	}
-	if replica.Spec.RevisionCounterDisabled {
+	if r.Spec.RevisionCounterDisabled {
 		args = append(args, "--disableRevCounter")
 	}
-
 	if engineCLIAPIVersion >= 7 {
-		args = append(args, "--volume-name", replica.Spec.VolumeName)
+		args = append(args, "--volume-name", r.Spec.VolumeName)
 
 		if dataLocality == longhorn.DataLocalityStrictLocal {
 			args = append(args, "--data-server-protocol", "unix")
 		}
 
-		if replica.Spec.UnmapMarkDiskChainRemovedEnabled {
+		if r.Spec.UnmapMarkDiskChainRemovedEnabled {
 			args = append(args, "--unmap-mark-disk-chain-removed")
 		}
 	}
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(replica.Spec.EngineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.EngineImage), types.EngineBinaryName)
 
-	replicaProcess, err := c.grpcClient.ProcessCreate(
-		replica.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+	return binary, args
+}
+
+// EngineInstanceCreate creates a new engine instance
+func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
+	volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
+	dataLocality longhorn.DataLocality, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	binary := ""
+	args := []string{}
+	replicaAddresses := map[string]string{}
+
+	var err error
+
+	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
 	if err != nil {
 		return nil, err
 	}
-	return c.parseProcess(replicaProcess), nil
+
+	switch e.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeLonghorn:
+		binary, args, err = getBinaryAndArgsForEngineProcessCreation(e, frontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout, dataLocality, engineCLIAPIVersion)
+		if err != nil {
+			return nil, err
+		}
+	case longhorn.BackendStoreDriverTypeSPDK:
+		replicaAddresses = e.Status.CurrentReplicaAddressMap
+	}
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of creating engine process */
+		process, err := c.processManagerGrpcClient.ProcessCreate(e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
+		if err != nil {
+			return nil, err
+		}
+		return c.parseProcess(imapi.RPCToProcess(process)), nil
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(e.Spec.BackendStoreDriver),
+		Name:               e.Name,
+		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
+		VolumeName:         e.Spec.VolumeName,
+		Size:               uint64(e.Spec.VolumeSize),
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+
+		Binary:     binary,
+		BinaryArgs: args,
+
+		Engine: imclient.EngineCreateRequest{
+			ReplicaAddressMap: replicaAddresses,
+			Frontend:          frontend,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
 }
 
-func (c *InstanceManagerClient) ProcessDelete(name string) error {
-	if _, err := c.grpcClient.ProcessDelete(name); err != nil {
+// ReplicaInstanceCreate creates a new replica instance
+func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
+	diskName, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, exposeRequired bool, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	binary := ""
+	args := []string{}
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(r, dataPath, backingImagePath, dataLocality, engineCLIAPIVersion)
+	}
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of creating replica process */
+		process, err := c.processManagerGrpcClient.ProcessCreate(r.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+		if err != nil {
+			return nil, err
+		}
+		return c.parseProcess(imapi.RPCToProcess(process)), nil
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(r.Spec.BackendStoreDriver),
+		Name:               r.Name,
+		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
+		VolumeName:         r.Spec.VolumeName,
+		Size:               uint64(r.Spec.VolumeSize),
+		PortCount:          DefaultReplicaPortCount,
+		PortArgs:           []string{DefaultPortArg},
+
+		Binary:     binary,
+		BinaryArgs: args,
+
+		Replica: imclient.ReplicaCreateRequest{
+			DiskName:       diskName,
+			DiskUUID:       r.Spec.DiskID,
+			ExposeRequired: exposeRequired,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// InstanceDelete deletes the instance
+func (c *InstanceManagerClient) InstanceDelete(backendStoreDriver longhorn.BackendStoreDriverType, name, kind, diskUUID string, cleanupRequired bool) error {
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of deleting process */
+		_, err := c.processManagerGrpcClient.ProcessDelete(name)
 		return err
 	}
-	return nil
+
+	_, err := c.instanceServiceGrpcClient.InstanceDelete(string(backendStoreDriver), name, kind, diskUUID, cleanupRequired)
+	return err
 }
 
-func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProcess, error) {
+// InstanceGet returns the instance process
+func (c *InstanceManagerClient) InstanceGet(backendStoreDriver longhorn.BackendStoreDriverType, name, kind string) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	process, err := c.grpcClient.ProcessGet(name)
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of getting process */
+		process, err := c.processManagerGrpcClient.ProcessGet(name)
+		if err != nil {
+			return nil, err
+		}
+		return c.parseProcess(imapi.RPCToProcess(process)), nil
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(backendStoreDriver), name, kind)
 	if err != nil {
 		return nil, err
 	}
-	return c.parseProcess(process), nil
+	return parseInstance(instance), nil
 }
 
-func (c *InstanceManagerClient) ProcessGetBinary(name string) (string, error) {
+// InstanceGetBinary returns the binary name of the instance
+func (c *InstanceManagerClient) InstanceGetBinary(backendStoreDriver longhorn.BackendStoreDriverType, name, kind, diskUUID string) (string, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return "", err
 	}
-	process, err := c.grpcClient.ProcessGet(name)
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of getting binary name */
+		process, err := c.processManagerGrpcClient.ProcessGet(name)
+		if err != nil {
+			return "", err
+		}
+		return imapi.RPCToProcess(process).Binary, nil
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(backendStoreDriver), name, kind)
 	if err != nil {
 		return "", err
 	}
-	return process.Binary, nil
+
+	if instance.InstanceProccessSpecific == nil {
+		return "", fmt.Errorf("InstanceProccessSpecific is nil")
+	}
+	return instance.InstanceProccessSpecific.Binary, nil
 }
 
-// ProcessLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
-func (c *InstanceManagerClient) ProcessLog(ctx context.Context, name string) (*imapi.LogStream, error) {
+// InstanceLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
+func (c *InstanceManagerClient) InstanceLog(ctx context.Context, backendStoreDriver longhorn.BackendStoreDriverType, name, kind string) (*imapi.LogStream, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	return c.grpcClient.ProcessLog(ctx, name)
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of logging process */
+		return c.processManagerGrpcClient.ProcessLog(ctx, name)
+	}
+
+	return c.instanceServiceGrpcClient.InstanceLog(ctx, string(backendStoreDriver), name, kind)
 }
 
-// ProcessWatch returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
-func (c *InstanceManagerClient) ProcessWatch(ctx context.Context) (*imapi.ProcessStream, error) {
+// InstanceWatch returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
+func (c *InstanceManagerClient) InstanceWatch(ctx context.Context) (interface{}, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	return c.grpcClient.ProcessWatch(ctx)
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of creating replica process */
+		return c.processManagerGrpcClient.ProcessWatch(ctx)
+	}
+
+	return c.instanceServiceGrpcClient.InstanceWatch(ctx)
 }
 
-func (c *InstanceManagerClient) ProcessList() (map[string]longhorn.InstanceProcess, error) {
+// InstanceList returns a map of instance name to instance process
+func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	processes, err := c.grpcClient.ProcessList()
-	if err != nil {
-		return nil, err
-	}
+
 	result := map[string]longhorn.InstanceProcess{}
-	for name, process := range processes {
-		result[name] = *c.parseProcess(process)
+
+	if c.GetAPIVersion() < 4 {
+		/* Fall back to the old way of listing processes */
+		processes, err := c.processManagerGrpcClient.ProcessList()
+		if err != nil {
+			return nil, err
+		}
+		result := map[string]longhorn.InstanceProcess{}
+		for name, process := range processes {
+			result[name] = *c.parseProcess(imapi.RPCToProcess(process))
+		}
+		return result, nil
 	}
+
+	instances, err := c.instanceServiceGrpcClient.InstanceList()
+	if err != nil {
+		return nil, err
+	}
+	for name, instance := range instances {
+		result[name] = *parseInstance(instance)
+	}
+
 	return result, nil
 }
 
+// EngineProcessUpgrade upgrades the engine process
 func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend,
 	engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
-	frontend, err := GetEngineProcessFrontend(volumeFrontend)
+	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
 	if err != nil {
 		return nil, err
 	}
@@ -342,16 +607,17 @@ func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeF
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
 
-	engineProcess, err := c.grpcClient.ProcessReplace(
-		e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(e.Spec.BackendStoreDriver), e.Name,
+		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err
 	}
-	return c.parseProcess(engineProcess), nil
+	return parseInstance(instance), nil
 }
 
+// VersionGet returns the version of the instance manager
 func (c *InstanceManagerClient) VersionGet() (int, int, int, int, error) {
-	output, err := c.grpcClient.VersionGet()
+	output, err := c.instanceServiceGrpcClient.VersionGet()
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
