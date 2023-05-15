@@ -401,6 +401,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		TestDiskID1: {
+			Type:            longhorn.DiskTypeFilesystem,
 			Path:            TestDefaultDataPath,
 			AllowScheduling: true,
 			StorageReserved: 0,

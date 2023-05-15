@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
@@ -26,6 +27,7 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
@@ -35,7 +37,7 @@ import (
 var (
 	nodeControllerResyncPeriod = 30 * time.Second
 
-	unknownFsid = "UNKNOWN_FSID"
+	unknownDiskID = "UNKNOWN_DISKID"
 
 	snapshotChangeEventQueueMax = 1048576
 )
@@ -492,6 +494,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
+	// To avoid hindering the startup of instance manager,
+	// sync instance managers before syncing disks.
+	if err := nc.syncInstanceManagers(node); err != nil {
+		return err
+	}
+
 	// Create a monitor for collecting disk information
 	if _, err := nc.createDiskMonitor(); err != nil {
 		return err
@@ -534,10 +542,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				return err
 			}
 		}
-	}
-
-	if err := nc.syncInstanceManagers(node); err != nil {
-		return err
 	}
 
 	if err := nc.cleanUpBackingImagesInDisks(node); err != nil {
@@ -1335,9 +1339,45 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 
 	for diskName := range node.Status.DiskStatus {
 		if _, exists := node.Spec.Disks[diskName]; !exists {
+			diskStatus, ok := node.Status.DiskStatus[diskName]
+			if !ok {
+				continue
+			}
+
+			// Blindingly send disk deletion request to instance manager regardless of the disk type,
+			// because the disk type is not recorded in the disk status.
+			err := nc.deleteDisk(node, diskName, diskStatus.DiskUUID)
+			if err != nil {
+				nc.logger.WithError(err).Errorf("Failed to delete disk %v", diskName)
+				continue
+			}
 			delete(node.Status.DiskStatus, diskName)
 		}
 	}
+}
+
+func (nc *NodeController) deleteDisk(node *longhorn.Node, diskName, diskUUID string) error {
+	if diskUUID == "" {
+		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
+		return nil
+	}
+
+	engineIM, err := nc.ds.GetDefaultInstanceManagerByNode(nc.controllerID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default engine instance manager")
+	}
+
+	diskServiceClient, err := engineapi.NewDiskServiceClient(engineIM, nc.logger)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create disk service client")
+	}
+	defer diskServiceClient.Close()
+
+	if err := monitor.DeleteDisk(diskName, diskUUID, diskServiceClient); err != nil {
+		return errors.Wrapf(err, "failed to delete disk %v", diskName)
+	}
+
+	return nil
 }
 
 func isReadyDiskFound(diskInfoMap map[string]*monitor.CollectedDiskInfo) bool {
