@@ -146,6 +146,7 @@ func newCondition(conditionType string, status longhorn.ConditionStatus) longhor
 
 func newDisk(path string, allowScheduling bool, storageReserved int64) longhorn.DiskSpec {
 	return longhorn.DiskSpec{
+		Type:            longhorn.DiskTypeFilesystem,
 		Path:            path,
 		AllowScheduling: allowScheduling,
 		StorageReserved: storageReserved,
@@ -167,6 +168,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			EngineImage:                 TestEngineImage,
 			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
 			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
+			BackendStoreDriver:          longhorn.BackendStoreDriverTypeLonghorn,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
