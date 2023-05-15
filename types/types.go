@@ -656,7 +656,7 @@ func GetReplicaMountedDataPath(dataPath string) string {
 }
 
 func ErrorIsNotFound(err error) bool {
-	return strings.Contains(err.Error(), "cannot find")
+	return strings.Contains(err.Error(), "cannot find") || strings.Contains(err.Error(), "No such device") || strings.Contains(err.Error(), "NotFound")
 }
 
 func ErrorIsNotSupport(err error) bool {
