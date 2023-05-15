@@ -318,6 +318,12 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleDiskNotFound))
 			continue
 		}
+
+		if !(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && diskSpec.Type == longhorn.DiskTypeBlock) {
+			continue
+		}
+
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
