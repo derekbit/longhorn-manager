@@ -105,6 +105,8 @@ const (
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
+	SettingNameSpdk                                                     = SettingName("spdk")
+	SettingNameSpdkHugepageLimit                                        = SettingName("spdk-hugepage-limit")
 )
 
 var (
