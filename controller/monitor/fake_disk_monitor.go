@@ -2,11 +2,13 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
 )
@@ -31,10 +33,10 @@ func NewFakeNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 
 		syncCallback: syncCallback,
 
-		getDiskStatHandler:               fakeGetDiskStat,
-		getDiskConfig:                    fakeGetDiskConfig,
-		generateDiskConfig:               fakeGenerateDiskConfig,
-		getPossibleReplicaDirectoryNames: fakeGetPossibleReplicaDirectoryNames,
+		getDiskStatHandler:                      fakeGetDiskStat,
+		getDiskConfigHandler:                    fakeGetDiskConfig,
+		generateDiskConfigHandler:               fakeGenerateDiskConfig,
+		getPossibleReplicaDirectoryNamesHandler: fakeGetPossibleReplicaDirectoryNames,
 	}
 
 	return m, nil
@@ -46,27 +48,53 @@ func fakeGetPossibleReplicaDirectoryNames(node *longhorn.Node, diskName, diskUUI
 	}
 }
 
-func fakeGetDiskStat(directory string) (*util.DiskStat, error) {
-	return &util.DiskStat{
-		Fsid:       "fsid",
-		Path:       directory,
-		Type:       "ext4",
-		FreeBlock:  0,
-		TotalBlock: 0,
-		BlockSize:  0,
+func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client engineapi.DiskServiceClient) (*util.DiskStat, error) {
+	switch diskType {
+	case longhorn.DiskTypeFilesystem:
+		return &util.DiskStat{
+			DiskID:      "fsid",
+			Path:        directory,
+			Type:        "ext4",
+			FreeBlocks:  0,
+			TotalBlocks: 0,
+			BlockSize:   0,
 
-		StorageMaximum:   0,
-		StorageAvailable: 0,
-	}, nil
+			StorageMaximum:   0,
+			StorageAvailable: 0,
+		}, nil
+	case longhorn.DiskTypeBlock:
+		return &util.DiskStat{
+			DiskID:      "block",
+			Path:        directory,
+			Type:        "ext4",
+			FreeBlocks:  0,
+			TotalBlocks: 0,
+			BlockSize:   0,
+
+			StorageMaximum:   0,
+			StorageAvailable: 0,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown disk type %v", diskType)
+	}
 }
 
-func fakeGetDiskConfig(path string) (*util.DiskConfig, error) {
-	return &util.DiskConfig{
-		DiskUUID: TestDiskID1,
-	}, nil
+func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
+	switch diskType {
+	case longhorn.DiskTypeFilesystem:
+		return &util.DiskConfig{
+			DiskUUID: TestDiskID1,
+		}, nil
+	case longhorn.DiskTypeBlock:
+		return &util.DiskConfig{
+			DiskUUID: TestDiskID1,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown disk type %v", diskType)
+	}
 }
 
-func fakeGenerateDiskConfig(path string) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskUUID: TestDiskID1,
 	}, nil
