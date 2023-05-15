@@ -19,6 +19,8 @@ type Node struct {
 
 	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
 
+	InstanceManagerCPURequest int64 `json:"instanceManagerCPURequest,omitempty" yaml:"instance_manager_cpurequest,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Region string `json:"region,omitempty" yaml:"region,omitempty"`
