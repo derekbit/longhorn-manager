@@ -49,6 +49,7 @@ type Volume struct {
 	BackupCompressionMethod     longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
+	BackendStoreDriver          longhorn.BackendStoreDriverType        `json:"backendStoreDriver"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`

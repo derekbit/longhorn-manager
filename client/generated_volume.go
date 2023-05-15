@@ -94,6 +94,8 @@ type Volume struct {
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
+
+	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
 }
 
 type VolumeCollection struct {
