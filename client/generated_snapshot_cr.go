@@ -7,6 +7,8 @@ const (
 type SnapshotCR struct {
 	Resource `yaml:"-"`
 
+	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
+
 	Checksum string `json:"checksum,omitempty" yaml:"checksum,omitempty"`
 
 	Children map[string]interface{} `json:"children,omitempty" yaml:"children,omitempty"`

@@ -54,6 +54,7 @@ type Volume struct {
 	BackupCompressionMethod     longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
+	BackendStoreDriver          longhorn.BackendStoreDriverType        `json:"backendStoreDriver"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -94,10 +95,11 @@ type Snapshot struct {
 // SnapshotCR struct is used for the snapshotCR* actions
 type SnapshotCR struct {
 	client.Resource
-	Name           string `json:"name"`
-	CRCreationTime string `json:"crCreationTime"`
-	Volume         string `json:"volume"`
-	CreateSnapshot bool   `json:"createSnapshot"`
+	Name               string `json:"name"`
+	CRCreationTime     string `json:"crCreationTime"`
+	Volume             string `json:"volume"`
+	CreateSnapshot     bool   `json:"createSnapshot"`
+	BackendStoreDriver string `json:"backendStoreDriver"`
 
 	Parent       string            `json:"parent"`
 	Children     map[string]bool   `json:"children"`
@@ -188,11 +190,12 @@ type Controller struct {
 type Replica struct {
 	Instance
 
-	DiskID   string `json:"diskID"`
-	DiskPath string `json:"diskPath"`
-	DataPath string `json:"dataPath"`
-	Mode     string `json:"mode"`
-	FailedAt string `json:"failedAt"`
+	DiskID             string `json:"diskID"`
+	DiskPath           string `json:"diskPath"`
+	DataPath           string `json:"dataPath"`
+	Mode               string `json:"mode"`
+	FailedAt           string `json:"failedAt"`
+	BackendStoreDriver string `json:"backendStoreDriver"`
 }
 
 type Attachment struct {
@@ -1032,6 +1035,12 @@ func volumeSchema(volume *client.Schema) {
 	replicaZoneSoftAntiAffinity.Default = longhorn.ReplicaZoneSoftAntiAffinityDefault
 	volume.ResourceFields["replicaZoneSoftAntiAffinity"] = replicaZoneSoftAntiAffinity
 
+	backendStoreDriver := volume.ResourceFields["backendStoreDriver"]
+	backendStoreDriver.Required = true
+	backendStoreDriver.Create = true
+	backendStoreDriver.Default = longhorn.BackendStoreDriverTypeLonghorn
+	volume.ResourceFields["backendStoreDriver"] = backendStoreDriver
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1283,11 +1292,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				CurrentImage:        r.Status.CurrentImage,
 				InstanceManagerName: r.Status.InstanceManagerName,
 			},
-			DiskID:   r.Spec.DiskID,
-			DiskPath: r.Spec.DiskPath,
-			DataPath: types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
-			Mode:     mode,
-			FailedAt: r.Spec.FailedAt,
+			DiskID:             r.Spec.DiskID,
+			DiskPath:           r.Spec.DiskPath,
+			DataPath:           types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
+			Mode:               mode,
+			FailedAt:           r.Spec.FailedAt,
+			BackendStoreDriver: string(r.Spec.BackendStoreDriver),
 		})
 	}
 
@@ -1387,6 +1397,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
+		BackendStoreDriver:          v.Spec.BackendStoreDriver,
 		Ready:                       ready,
 
 		AccessMode:    v.Spec.AccessMode,
@@ -1506,22 +1517,23 @@ func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
 			Id:   s.Name,
 			Type: "snapshotCR",
 		},
-		Name:           s.Name,
-		CRCreationTime: s.CreationTimestamp.Format(time.RFC3339),
-		Volume:         s.Spec.Volume,
-		CreateSnapshot: s.Spec.CreateSnapshot,
-		Parent:         s.Status.Parent,
-		Children:       s.Status.Children,
-		MarkRemoved:    s.Status.MarkRemoved,
-		UserCreated:    s.Status.UserCreated,
-		CreationTime:   s.Status.CreationTime,
-		Size:           s.Status.Size,
-		Labels:         getLabels(),
-		OwnerID:        s.Status.OwnerID,
-		Error:          s.Status.Error,
-		RestoreSize:    s.Status.RestoreSize,
-		ReadyToUse:     s.Status.ReadyToUse,
-		Checksum:       s.Status.Checksum,
+		Name:               s.Name,
+		CRCreationTime:     s.CreationTimestamp.Format(time.RFC3339),
+		Volume:             s.Spec.Volume,
+		CreateSnapshot:     s.Spec.CreateSnapshot,
+		BackendStoreDriver: string(s.Spec.BackendStoreDriver),
+		Parent:             s.Status.Parent,
+		Children:           s.Status.Children,
+		MarkRemoved:        s.Status.MarkRemoved,
+		UserCreated:        s.Status.UserCreated,
+		CreationTime:       s.Status.CreationTime,
+		Size:               s.Status.Size,
+		Labels:             getLabels(),
+		OwnerID:            s.Status.OwnerID,
+		Error:              s.Status.Error,
+		RestoreSize:        s.Status.RestoreSize,
+		ReadyToUse:         s.Status.ReadyToUse,
+		Checksum:           s.Status.Checksum,
 	}
 }
 

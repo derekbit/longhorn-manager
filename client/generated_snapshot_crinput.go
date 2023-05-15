@@ -7,6 +7,8 @@ const (
 type SnapshotCRInput struct {
 	Resource `yaml:"-"`
 
+	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
+
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
