@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -99,4 +100,23 @@ func Now() string {
 
 func UUID() string {
 	return uuid.New().String()
+}
+
+func ParsePortRange(portRange string) (int32, int32, error) {
+	parts := strings.Split(portRange, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid format for SPDK port range %s", portRange)
+	}
+
+	portStart, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	portEnd, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return int32(portStart), int32(portEnd), nil
 }

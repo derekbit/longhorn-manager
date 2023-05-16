@@ -8,6 +8,10 @@ const (
 	// InstanceManagerProxyAPIVersion is used for compatibility check for longhorn-manager
 	InstanceManagerProxyAPIVersion    = 4
 	InstanceManagerProxyAPIMinVersion = 1
+
+	// InstanceManagerDiskServiceAPIVersion used to communicate with the user e.g. longhorn-manager
+	InstanceManagerDiskServiceAPIVersion    = 1
+	InstanceManagerDiskServiceAPIMinVersion = 1
 )
 
 // Following variables are filled in by main.go
@@ -27,6 +31,9 @@ type VersionOutput struct {
 
 	InstanceManagerProxyAPIVersion    int `json:"instanceManagerProxyAPIVersion"`
 	InstanceManagerProxyAPIMinVersion int `json:"instanceManagerProxyAPIMinVersion"`
+
+	InstanceManagerDiskServiceAPIVersion    int `json:"instanceManagerDiskServiceAPIVersion"`
+	InstanceManagerDiskServiceAPIMinVersion int `json:"instanceManagerDiskServiceAPIMinVersion"`
 }
 
 func GetVersion() VersionOutput {
@@ -40,5 +47,8 @@ func GetVersion() VersionOutput {
 
 		InstanceManagerProxyAPIVersion:    InstanceManagerProxyAPIVersion,
 		InstanceManagerProxyAPIMinVersion: InstanceManagerProxyAPIMinVersion,
+
+		InstanceManagerDiskServiceAPIVersion:    InstanceManagerDiskServiceAPIVersion,
+		InstanceManagerDiskServiceAPIMinVersion: InstanceManagerDiskServiceAPIMinVersion,
 	}
 }

@@ -43,7 +43,8 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20230505042557-0f585f513869
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230505031224-c02fde759c53
+	github.com/longhorn/go-spdk-helper v0.0.0-20230516012233-dab44845b40d
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230505045918-1f57dd9a235c
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230505033346-9228ec0ee161
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a
 	github.com/pkg/errors v0.9.1
@@ -57,7 +58,7 @@ require (
 	github.com/urfave/cli v1.22.13
 	golang.org/x/mod v0.8.0
 	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.54.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -82,6 +83,7 @@ require (
 	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/google/fscrypt v0.3.4 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230515041643-87f84c66936e // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
@@ -125,7 +127,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
-	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 // indirect
+	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
@@ -149,3 +151,5 @@ require (
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
+
+replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230505033346-9228ec0ee161 => github.com/derekbit/longhorn-instance-manager v0.0.0-20230516055255-6e395c46131e
