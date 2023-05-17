@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -114,6 +115,17 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		spdk, err := v.ds.GetSettingAsBool(types.SettingNameSpdk)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get spdk setting")
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if !spdk {
+			return werror.NewInvalidError("SPDK feature is not enabled", "")
+		}
+	}
+
 	return nil
 }
 
@@ -172,6 +184,28 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	if oldVolume.Spec.BackupCompressionMethod != "" {
 		if oldVolume.Spec.BackupCompressionMethod != newVolume.Spec.BackupCompressionMethod {
 			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if oldVolume.Spec.BackendStoreDriver != "" {
+		if oldVolume.Spec.BackendStoreDriver != newVolume.Spec.BackendStoreDriver {
+			err := fmt.Errorf("changing backend store driver for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		// TODO: remove this check when we support the following features for other backend store drivers
+		if oldVolume.Spec.Size != newVolume.Spec.Size {
+			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.NumberOfReplicas != newVolume.Spec.NumberOfReplicas {
+			err := fmt.Errorf("changing number of replicas for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}

@@ -81,6 +81,10 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/labels", "value": %s}`, string(valueBackupLabels)))
 
+	if string(backup.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+	}
+
 	return patchOps, nil
 }
 
@@ -94,6 +98,10 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 
 	if backup.Spec.Labels == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
+	}
+
+	if string(backup.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	return patchOps, nil

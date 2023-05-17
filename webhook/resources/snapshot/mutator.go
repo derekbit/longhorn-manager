@@ -3,6 +3,7 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -54,6 +55,8 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")
 	}
 
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, volume.Spec.BackendStoreDriver))
+
 	patchOp, err := common.GetLonghornLabelsPatchOp(snapshot, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get labels patch for snapshot %v", snapshot.Name)
@@ -76,6 +79,10 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/ownerReferences", "value": %v}`, string(bytes)))
+	}
+
+	if string(snapshot.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	return patchOps, nil

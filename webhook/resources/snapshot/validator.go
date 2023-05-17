@@ -2,14 +2,18 @@ package snapshot
 
 import (
 	"fmt"
+	"reflect"
+
+	"github.com/pkg/errors"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"reflect"
 )
 
 type snapshotValidator struct {
@@ -36,9 +40,20 @@ func (o *snapshotValidator) Resource() admission.Resource {
 }
 
 func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	_, ok := newObj.(*longhorn.Snapshot)
+	snapshot, ok := newObj.(*longhorn.Snapshot)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	}
+
+	if snapshot.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		spdkEnabled, err := o.ds.GetSettingAsBool(types.SettingNameSpdk)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get spdk setting")
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if !spdkEnabled {
+			return werror.NewInvalidError("SPDK feature is not enabled", "")
+		}
 	}
 
 	return nil
@@ -55,15 +70,22 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 	}
 
 	if newSnapshot.Spec.Volume != oldSnapshot.Spec.Volume {
-		return werror.NewInvalidError(fmt.Sprintf("spec.volume field is immutable"), "spec.volume")
+		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
 	}
 
 	if len(oldSnapshot.OwnerReferences) != 0 && !reflect.DeepEqual(newSnapshot.OwnerReferences, oldSnapshot.OwnerReferences) {
-		return werror.NewInvalidError(fmt.Sprintf("snapshot OwnerReferences field is immutable"), "metadata.ownerReferences")
+		return werror.NewInvalidError("snapshot OwnerReferences field is immutable", "metadata.ownerReferences")
 	}
 
 	if _, ok := oldSnapshot.Labels[types.LonghornLabelVolume]; ok && newSnapshot.Labels[types.LonghornLabelVolume] != oldSnapshot.Labels[types.LonghornLabelVolume] {
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
+	}
+
+	if oldSnapshot.Spec.BackendStoreDriver != "" {
+		if oldSnapshot.Spec.BackendStoreDriver != newSnapshot.Spec.BackendStoreDriver {
+			err := fmt.Errorf("changing backend store driver for snapshot %v is not supported", oldSnapshot.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	return nil
