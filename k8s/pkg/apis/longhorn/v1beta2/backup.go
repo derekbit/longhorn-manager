@@ -33,6 +33,9 @@ type BackupSpec struct {
 	// The labels of snapshot backup.
 	// +optional
 	Labels map[string]string `json:"labels"`
+	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup

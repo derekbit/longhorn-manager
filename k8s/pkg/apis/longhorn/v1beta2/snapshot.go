@@ -22,6 +22,9 @@ type SnapshotSpec struct {
 	// require creating a new snapshot
 	// +optional
 	CreateSnapshot bool `json:"createSnapshot"`
+	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// The labels of snapshot
 	// +optional
 	// +nullable

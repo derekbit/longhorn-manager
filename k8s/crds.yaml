@@ -617,6 +617,11 @@ spec:
           spec:
             description: BackupSpec defines the desired state of the Longhorn backup
             properties:
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               labels:
                 additionalProperties:
                   type: string
@@ -1337,6 +1342,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backupVolume:
                 type: string
               desireState:
@@ -1700,6 +1710,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1733,6 +1745,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1766,6 +1780,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1925,6 +1941,11 @@ spec:
                   properties:
                     allowScheduling:
                       type: boolean
+                    diskType:
+                      enum:
+                      - filesystem
+                      - block
+                      type: string
                     evictionRequested:
                       type: boolean
                     path:
@@ -2420,6 +2441,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backingImage:
                 type: string
               baseImage:
@@ -2784,6 +2810,11 @@ spec:
           spec:
             description: SnapshotSpec defines the desired state of Longhorn Snapshot
             properties:
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               createSnapshot:
                 description: require creating a new snapshot
                 type: boolean
@@ -3438,6 +3469,11 @@ spec:
                 enum:
                 - rwo
                 - rwx
+                type: string
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
                 type: string
               backingImage:
                 type: string
