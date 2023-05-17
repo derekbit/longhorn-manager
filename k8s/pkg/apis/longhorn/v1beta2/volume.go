@@ -147,6 +147,13 @@ const (
 	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
 )
 
+type BackendStoreDriverType string
+
+const (
+	BackendStoreDriverTypeLonghorn = BackendStoreDriverType("longhorn")
+	BackendStoreDriverTypeSPDK     = BackendStoreDriverType("spdk")
+)
+
 // Deprecated: This field is useless and has been replaced by the RecurringJob CRD
 type VolumeRecurringJobSpec struct {
 	// +optional
@@ -263,6 +270,9 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
+	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

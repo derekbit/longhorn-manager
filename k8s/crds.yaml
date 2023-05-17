@@ -1334,6 +1334,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backupVolume:
                 type: string
               desireState:
@@ -1697,6 +1702,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1730,6 +1737,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1763,6 +1772,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1922,6 +1933,11 @@ spec:
                   properties:
                     allowScheduling:
                       type: boolean
+                    diskType:
+                      enum:
+                      - filesystem
+                      - block
+                      type: string
                     evictionRequested:
                       type: boolean
                     path:
@@ -2423,6 +2439,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backingImage:
                 type: string
               baseImage:
@@ -3441,6 +3462,11 @@ spec:
                 enum:
                 - rwo
                 - rwx
+                type: string
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
                 type: string
               backingImage:
                 type: string
