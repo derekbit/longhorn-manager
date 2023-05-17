@@ -176,6 +176,28 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	if oldVolume.Spec.BackendStoreDriver != "" {
+		if oldVolume.Spec.BackendStoreDriver != newVolume.Spec.BackendStoreDriver {
+			err := fmt.Errorf("changing backend store driver for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if newVolume.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeLonghorn {
+		// TODO: remove this check when we support the following features for other backend store drivers
+		if oldVolume.Spec.Size != newVolume.Spec.Size {
+			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.NumberOfReplicas != newVolume.Spec.NumberOfReplicas {
+			err := fmt.Errorf("changing number of replicas for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
 	if newVolume.Status.CurrentMigrationNodeID != "" &&
 		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
