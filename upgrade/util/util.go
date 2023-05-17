@@ -423,6 +423,26 @@ func ListAndUpdateBackupsInProvidedCache(namespace string, lhClient *lhclientset
 	return backups, nil
 }
 
+// ListAndUpdateSnapshotsInProvidedCache list all snapshots and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateSnapshotsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.Snapshot, error) {
+	if v, ok := resourceMaps[types.LonghornKindSnapshot]; ok {
+		return v.(map[string]*v1beta2.Snapshot), nil
+	}
+
+	snapshots := map[string]*v1beta2.Snapshot{}
+	snapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, snapshot := range snapshotList.Items {
+		snapshots[snapshot.Name] = &snapshotList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindSnapshot] = snapshots
+
+	return snapshots, nil
+}
+
 // ListAndUpdateEngineImagesInProvidedCache list all engineImages and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateEngineImagesInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.EngineImage, error) {
 	if v, ok := resourceMaps[types.LonghornKindEngineImage]; ok {
@@ -708,6 +728,8 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob))
 		case types.LonghornKindSetting:
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
+		case types.LonghornKindSnapshot:
+			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1024,6 +1046,35 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 
 		if !reflect.DeepEqual(existingSetting.Value, setting.Value) {
 			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot) error {
+	existingSnapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, existingSnapshot := range existingSnapshotList.Items {
+		snapshot, ok := snapshots[existingSnapshot.Name]
+		if !ok {
+			continue
+		}
+
+		if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).UpdateStatus(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+
+		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
+			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				return err
 			}
 		}

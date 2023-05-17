@@ -23,6 +23,7 @@ const (
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackup              = "Backup"
+	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
 	LonghornKindShareManager        = "ShareManager"
