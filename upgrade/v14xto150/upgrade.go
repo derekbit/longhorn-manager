@@ -47,7 +47,11 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	return upgradeReplicas(namespace, lhClient, resourceMaps)
+	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeOrphans(namespace, lhClient, resourceMaps)
 }
 
 func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -268,6 +272,32 @@ func upgradeSnapshots(namespace string, lhClient *lhclientset.Clientset, resourc
 	for _, s := range snapshotMap {
 		if s.Spec.BackendStoreDriver == "" {
 			s.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+		}
+	}
+
+	return nil
+}
+
+func upgradeOrphans(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade orphan failed")
+	}()
+
+	orphanMap, err := upgradeutil.ListAndUpdateOrphansInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn orphans during the orphan upgrade")
+	}
+
+	for _, o := range orphanMap {
+		if o.Spec.Parameters == nil {
+			continue
+		}
+
+		if _, ok := o.Spec.Parameters[longhorn.OrphanDiskType]; !ok {
+			o.Spec.Parameters[longhorn.OrphanDiskType] = string(longhorn.DiskTypeFilesystem)
 		}
 	}
 

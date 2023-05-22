@@ -22,7 +22,7 @@ const (
 )
 
 // GetDiskStat returns the disk stat of the given directory
-func GetDiskStat(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (stat *util.DiskStat, err error) {
+func getDiskStat(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (stat *util.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskStat(path)
@@ -59,7 +59,7 @@ func getBlockTypeDiskStat(client engineapi.DiskServiceClient, name, path string)
 }
 
 // GetDiskConfig returns the disk config of the given directory
-func GetDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
+func getDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskConfig(path)
@@ -107,7 +107,7 @@ func getBlockTypeDiskConfig(client engineapi.DiskServiceClient, name, path strin
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func GenerateDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, name, path string, client engineapi.DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(path)
@@ -180,4 +180,23 @@ func DeleteDisk(name, uuid string, client engineapi.DiskServiceClient) error {
 	}
 
 	return client.DiskDelete(name, uuid)
+}
+
+// getSpdkReplicaInstanceNames returns the replica lvol names of the given disk
+func getSpdkReplicaInstanceNames(client engineapi.DiskServiceClient, diskType, diskName string) (map[string]string, error) {
+	if client == nil {
+		return nil, errors.New("disk service client is nil")
+	}
+
+	instances, err := client.DiskReplicaInstanceList(diskType, diskName)
+	if err != nil {
+		return nil, err
+	}
+
+	instanceNames := map[string]string{}
+	for name := range instances {
+		instanceNames[name] = name
+	}
+
+	return instanceNames, nil
 }

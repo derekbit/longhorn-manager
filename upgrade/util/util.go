@@ -323,6 +323,26 @@ func ListAndUpdateNodesInProvidedCache(namespace string, lhClient *lhclientset.C
 	return nodes, nil
 }
 
+// ListAndUpdateOrphansInProvidedCache list all orphans and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateOrphansInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.Orphan, error) {
+	if v, ok := resourceMaps[types.LonghornKindOrphan]; ok {
+		return v.(map[string]*v1beta2.Orphan), nil
+	}
+
+	orphans := map[string]*v1beta2.Orphan{}
+	orphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, orphan := range orphanList.Items {
+		orphans[orphan.Name] = &orphanList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindOrphan] = orphans
+
+	return orphans, nil
+}
+
 // ListAndUpdateInstanceManagersInProvidedCache list all instanceManagers and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateInstanceManagersInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.InstanceManager, error) {
 	if v, ok := resourceMaps[types.LonghornKindInstanceManager]; ok {
@@ -543,123 +563,6 @@ func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhcli
 	return recurringJobs, nil
 }
 
-// GetNodeFromProvidedCache gets the node from the provided cached `resourceMap`. This method is not thread-safe.
-func GetNodeFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Node, error) {
-	nodes, err := ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	node, ok := nodes[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("node"), name)
-	}
-	return node, nil
-}
-
-// GetSettingFromProvidedCache gets the setting from the provided cached `resourceMap`. This method is not thread-safe.
-func GetSettingFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Setting, error) {
-	settings, err := ListAndUpdateSettingsInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	setting, ok := settings[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("setting"), name)
-	}
-	return setting, nil
-}
-
-// GetEngineImageFromProvidedCache gets the engineImage from the provided cached `resourceMap`. This method is not thread-safe.
-func GetEngineImageFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.EngineImage, error) {
-	eis, err := ListAndUpdateEngineImagesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	ei, ok := eis[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("engineimage"), name)
-	}
-	return ei, nil
-}
-
-// GetInstanceManagerFromProvidedCache gets the instanceManager from the provided cached `resourceMap`. This method is not thread-safe.
-func GetInstanceManagerFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.InstanceManager, error) {
-	ims, err := ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	im, ok := ims[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("instancemanager"), name)
-	}
-	return im, nil
-}
-
-// GetShareManagerFromProvidedCache gets the shareManager from the provided cached `resourceMap`. This method is not thread-safe.
-func GetShareManagerFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.ShareManager, error) {
-	sms, err := ListAndUpdateShareManagersInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	sm, ok := sms[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("sharemanager"), name)
-	}
-	return sm, nil
-}
-
-// GetVolumeFromProvidedCache gets the volume from the provided cached `resourceMap`. This method is not thread-safe.
-func GetVolumeFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Volume, error) {
-	volumes, err := ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	volume, ok := volumes[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("volume"), name)
-	}
-	return volume, nil
-}
-
-// GetBackingImageFromProvidedCache gets the backingImage from the provided cached `resourceMap`. This method is not thread-safe.
-func GetBackingImageFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.BackingImage, error) {
-	bis, err := ListAndUpdateBackingImagesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	bi, ok := bis[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("backingimage"), name)
-	}
-	return bi, nil
-}
-
-// GetBackingImageDataSourceFromProvidedCache gets the backingImageDataSource from the provided cached `resourceMap`. This method is not thread-safe.
-func GetBackingImageDataSourceFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.BackingImageDataSource, error) {
-	bidss, err := ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	bids, ok := bidss[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("backingimagedatasource"), name)
-	}
-	return bids, nil
-}
-
-// GetRecurringJobFromProvidedCache gets the recurringJob from the provided cached `resourceMap`. This method is not thread-safe.
-func GetRecurringJobFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.RecurringJob, error) {
-	recurringJobs, err := ListAndUpdateRecurringJobsInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	recurringJob, ok := recurringJobs[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("recurringjob"), name)
-	}
-	return recurringJob, nil
-}
-
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*v1beta2.RecurringJob, error) {
 	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
@@ -730,6 +633,8 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
 		case types.LonghornKindSnapshot:
 			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
+		case types.LonghornKindOrphan:
+			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1075,6 +980,35 @@ func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshot
 		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
 			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan) error {
+	existingOrphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, existingOrphan := range existingOrphanList.Items {
+		orphan, ok := orphans[existingOrphan.Name]
+		if !ok {
+			continue
+		}
+
+		if !reflect.DeepEqual(existingOrphan.Status, orphan.Status) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).UpdateStatus(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+
+		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
+			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				return err
 			}
 		}

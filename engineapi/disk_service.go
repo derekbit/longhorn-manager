@@ -1,30 +1,15 @@
 package engineapi
 
 import (
-	"unsafe"
-
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
-
-type DiskInfo struct {
-	ID          string
-	UUID        string
-	Path        string
-	Type        string
-	TotalSize   int64
-	FreeSize    int64
-	TotalBlocks int64
-	FreeBlocks  int64
-	BlockSize   int64
-	ClusterSize int64
-	Readonly    bool
-}
 
 func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger) (c DiskServiceClient, err error) {
 	defer func() {
@@ -61,9 +46,11 @@ type DiskService struct {
 }
 
 type DiskServiceClient interface {
-	DiskCreate(string, string, string, int64) (*DiskInfo, error)
-	DiskGet(string, string, string) (*DiskInfo, error)
+	DiskCreate(string, string, string, int64) (*imapi.DiskInfo, error)
+	DiskGet(string, string, string) (*imapi.DiskInfo, error)
 	DiskDelete(string, string) error
+	DiskReplicaInstanceList(string, string) (map[string]*imapi.ReplicaInstance, error)
+	DiskReplicaInstanceDelete(string, string, string, string) error
 	Close()
 }
 
@@ -78,16 +65,22 @@ func (s *DiskService) Close() {
 	}
 }
 
-func (s *DiskService) DiskCreate(diskType, diskName, diskPath string, blockSize int64) (*DiskInfo, error) {
-	info, err := s.grpcClient.DiskCreate(diskType, diskName, diskPath, blockSize)
-	return (*DiskInfo)(unsafe.Pointer(info)), err
+func (s *DiskService) DiskCreate(diskType, diskName, diskPath string, blockSize int64) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskCreate(diskType, diskName, diskPath, blockSize)
 }
 
-func (s *DiskService) DiskGet(diskType, diskName, diskPath string) (*DiskInfo, error) {
-	info, err := s.grpcClient.DiskGet(diskType, diskName, diskPath)
-	return (*DiskInfo)(unsafe.Pointer(info)), err
+func (s *DiskService) DiskGet(diskType, diskName, diskPath string) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskGet(diskType, diskName, diskPath)
 }
 
 func (s *DiskService) DiskDelete(diskName, diskUUID string) error {
 	return s.grpcClient.DiskDelete(diskName, diskUUID)
+}
+
+func (s *DiskService) DiskReplicaInstanceList(diskType, diskName string) (map[string]*imapi.ReplicaInstance, error) {
+	return s.grpcClient.DiskReplicaInstanceList(diskType, diskName)
+}
+
+func (s *DiskService) DiskReplicaInstanceDelete(diskType, diskName, diskUUID, replciaInstanceName string) error {
+	return s.grpcClient.DiskReplicaInstanceDelete(diskType, diskName, diskUUID, replciaInstanceName)
 }

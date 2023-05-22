@@ -1277,6 +1277,7 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDir
 				longhorn.OrphanDiskName: diskName,
 				longhorn.OrphanDiskUUID: node.Status.DiskStatus[diskName].DiskUUID,
 				longhorn.OrphanDiskPath: node.Spec.Disks[diskName].Path,
+				longhorn.OrphanDiskType: string(node.Spec.Disks[diskName].Type),
 			},
 		},
 	}
