@@ -323,6 +323,26 @@ func ListAndUpdateNodesInProvidedCache(namespace string, lhClient *lhclientset.C
 	return nodes, nil
 }
 
+// ListAndUpdateOrphansInProvidedCache list all orphans and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateOrphansInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.Orphan, error) {
+	if v, ok := resourceMaps[types.LonghornKindOrphan]; ok {
+		return v.(map[string]*v1beta2.Orphan), nil
+	}
+
+	orphans := map[string]*v1beta2.Orphan{}
+	orphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, orphan := range orphanList.Items {
+		orphans[orphan.Name] = &orphanList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindOrphan] = orphans
+
+	return orphans, nil
+}
+
 // ListAndUpdateInstanceManagersInProvidedCache list all instanceManagers and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateInstanceManagersInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.InstanceManager, error) {
 	if v, ok := resourceMaps[types.LonghornKindInstanceManager]; ok {
@@ -680,6 +700,19 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 	return obj, nil
 }
 
+// GetOrphanFromProvidedCache gets the orphan from the provided cached `resourceMap`. This method is not thread-safe.
+func GetOrphanFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Orphan, error) {
+	orphans, err := ListAndUpdateOrphansInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return nil, err
+	}
+	orphan, ok := orphans[name]
+	if !ok {
+		return nil, apierrors.NewNotFound(v1beta2.Resource("orphan"), name)
+	}
+	return orphan, nil
+}
+
 // UpdateResources persists all the resources in provided cached `resourceMap`. This method is not thread-safe.
 func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
 	var err error
@@ -708,6 +741,8 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob))
 		case types.LonghornKindSetting:
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
+		case types.LonghornKindOrphan:
+			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1024,6 +1059,35 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 
 		if !reflect.DeepEqual(existingSetting.Value, setting.Value) {
 			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan) error {
+	existingOrphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, existingOrphan := range existingOrphanList.Items {
+		orphan, ok := orphans[existingOrphan.Name]
+		if !ok {
+			continue
+		}
+
+		if !reflect.DeepEqual(existingOrphan.Status, orphan.Status) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).UpdateStatus(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+				return err
+			}
+		}
+
+		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
+			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				return err
 			}
 		}

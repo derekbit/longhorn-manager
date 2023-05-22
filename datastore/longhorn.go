@@ -1222,7 +1222,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	}
 
 	obj, err := verifyCreation(ret.Name, "replica", func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -1255,7 +1255,7 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	return obj, nil
 }
@@ -1271,7 +1271,7 @@ func (s *DataStore) UpdateReplicaStatus(r *longhorn.Replica) (*longhorn.Replica,
 		return nil, err
 	}
 	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	return obj, nil
 }
@@ -1305,7 +1305,7 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 // GetReplica gets Replica for the given name and namespace and returns
 // a new Replica object
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
-	resultRO, err := s.getReplicaRO(name)
+	resultRO, err := s.GetReplicaRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1313,7 +1313,7 @@ func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
 	return resultRO.DeepCopy(), nil
 }
 
-func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
+func (s *DataStore) GetReplicaRO(name string) (*longhorn.Replica, error) {
 	return s.rLister.Replicas(s.namespace).Get(name)
 }
 
