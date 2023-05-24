@@ -339,10 +339,18 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	return binary, args
 }
 
+type EngineInstanceCreateRequest struct {
+	Engine                           *longhorn.Engine
+	VolumeFrontend                   longhorn.VolumeFrontend
+	EngineReplicaTimeout             int64
+	ReplicaFileSyncHTTPClientTimeout int64
+	DataLocality                     longhorn.DataLocality
+	ImIP                             string
+	EngineCLIAPIVersion              int
+}
+
 // EngineInstanceCreate creates a new engine instance
-func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
-	volumeFrontend longhorn.VolumeFrontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
-	dataLocality longhorn.DataLocality, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -353,24 +361,24 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 
 	var err error
 
-	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
+	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.BackendStoreDriver, req.VolumeFrontend)
 	if err != nil {
 		return nil, err
 	}
 
-	switch e.Spec.BackendStoreDriver {
+	switch req.Engine.Spec.BackendStoreDriver {
 	case longhorn.BackendStoreDriverTypeLonghorn:
-		binary, args, err = getBinaryAndArgsForEngineProcessCreation(e, frontend, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout, dataLocality, engineCLIAPIVersion)
+		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
 		if err != nil {
 			return nil, err
 		}
 	case longhorn.BackendStoreDriverTypeSPDK:
-		replicaAddresses = e.Status.CurrentReplicaAddressMap
+		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 	}
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating engine process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(e.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Engine.Name, binary, DefaultEnginePortCount, args, []string{DefaultPortArg})
 		if err != nil {
 			return nil, err
 		}
@@ -378,11 +386,11 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(e.Spec.BackendStoreDriver),
-		Name:               e.Name,
+		BackendStoreDriver: string(req.Engine.Spec.BackendStoreDriver),
+		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
-		VolumeName:         e.Spec.VolumeName,
-		Size:               uint64(e.Spec.VolumeSize),
+		VolumeName:         req.Engine.Spec.VolumeName,
+		Size:               uint64(req.Engine.Spec.VolumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
 
@@ -401,22 +409,32 @@ func (c *InstanceManagerClient) EngineInstanceCreate(e *longhorn.Engine,
 	return parseInstance(instance), nil
 }
 
+type ReplicaInstanceCreateRequest struct {
+	Replica             *longhorn.Replica
+	DiskName            string
+	DataPath            string
+	BackingImagePath    string
+	DataLocality        longhorn.DataLocality
+	ExposeRequired      bool
+	ImIP                string
+	EngineCLIAPIVersion int
+}
+
 // ReplicaInstanceCreate creates a new replica instance
-func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
-	diskName, dataPath, backingImagePath string, dataLocality longhorn.DataLocality, exposeRequired bool, imIP string, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
 
 	binary := ""
 	args := []string{}
-	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(r, dataPath, backingImagePath, dataLocality, engineCLIAPIVersion)
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, req.EngineCLIAPIVersion)
 	}
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating replica process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(r.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
 		if err != nil {
 			return nil, err
 		}
@@ -424,11 +442,11 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(r.Spec.BackendStoreDriver),
-		Name:               r.Name,
+		BackendStoreDriver: string(req.Replica.Spec.BackendStoreDriver),
+		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
-		VolumeName:         r.Spec.VolumeName,
-		Size:               uint64(r.Spec.VolumeSize),
+		VolumeName:         req.Replica.Spec.VolumeName,
+		Size:               uint64(req.Replica.Spec.VolumeSize),
 		PortCount:          DefaultReplicaPortCount,
 		PortArgs:           []string{DefaultPortArg},
 
@@ -436,9 +454,9 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(r *longhorn.Replica,
 		BinaryArgs: args,
 
 		Replica: imclient.ReplicaCreateRequest{
-			DiskName:       diskName,
-			DiskUUID:       r.Spec.DiskID,
-			ExposeRequired: exposeRequired,
+			DiskName:       req.DiskName,
+			DiskUUID:       req.Replica.Spec.DiskID,
+			ExposeRequired: req.ExposeRequired,
 		},
 	})
 	if err != nil {
@@ -563,45 +581,76 @@ func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProc
 	return result, nil
 }
 
+type EngineInstanceUpgradeRequest struct {
+	Engine                           *longhorn.Engine
+	VolumeFrontend                   longhorn.VolumeFrontend
+	EngineReplicaTimeout             int64
+	ReplicaFileSyncHTTPClientTimeout int64
+	DataLocality                     longhorn.DataLocality
+	EngineCLIAPIVersion              int
+}
+
 // EngineProcessUpgrade upgrades the engine process
-func (c *InstanceManagerClient) EngineProcessUpgrade(e *longhorn.Engine, volumeFrontend longhorn.VolumeFrontend,
-	engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (*longhorn.InstanceProcess, error) {
-	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
-		return nil, err
+func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+	engine := req.Engine
+	switch engine.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeLonghorn:
+		return c.engineInstanceUpgrade(req)
+	case longhorn.BackendStoreDriverTypeSPDK:
+		return c.spdkEngineInstanceUpgrade(req)
+	default:
+		return nil, fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
 	}
-	frontend, err := GetEngineInstanceFrontend(e.Spec.BackendStoreDriver, volumeFrontend)
+}
+
+func (c *InstanceManagerClient) spdkEngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+	// SPDK engine is a SPDK raid bdev, so we don't need to upgrade it.
+	// Just get the instance process from instance-manager and return it.
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(req.Engine.Spec.BackendStoreDriver), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine), "")
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"controller", e.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
-	for _, addr := range e.Spec.UpgradedReplicaAddressMap {
+	return parseInstance(instance), nil
+}
+
+func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.BackendStoreDriver, req.VolumeFrontend)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"controller", req.Engine.Spec.VolumeName, "--frontend", frontend, "--upgrade"}
+	for _, addr := range req.Engine.Spec.UpgradedReplicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
 
-	if engineCLIAPIVersion >= 6 {
+	if req.EngineCLIAPIVersion >= 6 {
 		args = append(args,
-			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
-			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
+			"--size", strconv.FormatInt(req.Engine.Spec.VolumeSize, 10),
+			"--current-size", strconv.FormatInt(req.Engine.Status.CurrentSize, 10))
 	}
 
-	if engineCLIAPIVersion >= 7 {
+	if req.EngineCLIAPIVersion >= 7 {
 		args = append(args,
-			"--engine-replica-timeout", strconv.FormatInt(engineReplicaTimeout, 10),
-			"--file-sync-http-client-timeout", strconv.FormatInt(replicaFileSyncHTTPClientTimeout, 10))
+			"--engine-replica-timeout", strconv.FormatInt(req.EngineReplicaTimeout, 10),
+			"--file-sync-http-client-timeout", strconv.FormatInt(req.ReplicaFileSyncHTTPClientTimeout, 10))
 
-		if dataLocality == longhorn.DataLocalityStrictLocal {
+		if req.DataLocality == longhorn.DataLocalityStrictLocal {
 			args = append(args,
 				"--data-server-protocol", "unix")
 		}
 
-		if e.Spec.UnmapMarkSnapChainRemovedEnabled {
+		if req.Engine.Spec.UnmapMarkSnapChainRemovedEnabled {
 			args = append(args, "--unmap-mark-snap-chain-removed")
 		}
 	}
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.EngineImage), types.EngineBinaryName)
 
-	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(e.Spec.BackendStoreDriver), e.Name,
+	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.BackendStoreDriver), req.Engine.Name,
 		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err

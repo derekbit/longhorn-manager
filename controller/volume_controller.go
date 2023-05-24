@@ -2674,81 +2674,86 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	unknownReplicas := map[string]*longhorn.Replica{}
-	dataPathToOldRunningReplica := map[string]*longhorn.Replica{}
-	dataPathToNewReplica := map[string]*longhorn.Replica{}
-	for _, r := range rs {
-		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateRunning && r.Spec.HealthyAt != "" {
-			dataPathToOldRunningReplica[dataPath] = r
-		} else if r.Spec.EngineImage == v.Spec.EngineImage {
-			dataPathToNewReplica[dataPath] = r
-		} else {
-			log.Warnf("Found unknown replica with image %v for live upgrade", r.Spec.EngineImage)
-			unknownReplicas[r.Name] = r
+	// Replicas of a SPDK volume are SPDK lvols, so no need to upgrade it.
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		unknownReplicas := map[string]*longhorn.Replica{}
+		dataPathToOldRunningReplica := map[string]*longhorn.Replica{}
+		dataPathToNewReplica := map[string]*longhorn.Replica{}
+		for _, r := range rs {
+			dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
+			if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateRunning && r.Spec.HealthyAt != "" {
+				dataPathToOldRunningReplica[dataPath] = r
+			} else if r.Spec.EngineImage == v.Spec.EngineImage {
+				dataPathToNewReplica[dataPath] = r
+			} else {
+				log.Warnf("Found unknown replica with image %v for live upgrade", r.Spec.EngineImage)
+				unknownReplicas[r.Name] = r
+			}
 		}
-	}
 
-	// Skip checking and creating new replicas for the 2 cases:
-	//   1. Volume is degraded.
-	//   2. The new replicas is activated and all old replicas are already purged.
-	if len(dataPathToOldRunningReplica) >= v.Spec.NumberOfReplicas {
-		if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
-			r.Spec.EngineImage = engineImage
+		// Skip checking and creating new replicas for the 2 cases:
+		//   1. Volume is degraded.
+		//   2. The new replicas is activated and all old replicas are already purged.
+		//
+		if len(dataPathToOldRunningReplica) >= v.Spec.NumberOfReplicas {
+			if err := vc.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
+				r.Spec.EngineImage = engineImage
+			}, v.Spec.EngineImage); err != nil {
+				return err
+			}
+		}
+
+		if e.Spec.EngineImage != v.Spec.EngineImage {
+			replicaAddressMap := map[string]string{}
+			for _, r := range dataPathToNewReplica {
+				// wait for all potentially healthy replicas become running
+				if r.Status.CurrentState != longhorn.InstanceStateRunning {
+					return nil
+				}
+				if r.Status.IP == "" {
+					log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
+					continue
+				}
+				if r.Status.StorageIP == "" {
+					log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
+					continue
+				}
+				if r.Status.Port == 0 {
+					log.WithField("replica", r.Name).Error("BUG: replica is running but port is 0")
+					continue
+				}
+				replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
+			}
+			// Only upgrade e.Spec.EngineImage if there are enough new upgraded replica.
+			// This prevent the deadlock in the case that an upgrade from engine image
+			// is followed immediately by an other upgrade.
+			// More specifically, after the 1st upgrade, e.Status.ReplicaModeMap empty.
+			// Therefore, dataPathToOldRunningReplica, dataPathToOldRunningReplica, and replicaAddressMap are also empty.
+			// Now, if we set e.Spec.UpgradedReplicaAddressMap to an empty map in the second upgrade,
+			// the second engine upgrade will be blocked since len(e.Spec.UpgradedReplicaAddressMap) == 0.
+			// On the other hand, the engine controller blocks the engine's status from being refreshed
+			// and keep the e.Status.ReplicaModeMap to be empty map. The system enter a deadlock for the volume.
+			if len(replicaAddressMap) == v.Spec.NumberOfReplicas {
+				e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
+				e.Spec.EngineImage = v.Spec.EngineImage
+			}
+		}
+		if e.Status.CurrentImage != v.Spec.EngineImage ||
+			e.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil
+		}
+
+		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
+			return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
 		}, v.Spec.EngineImage); err != nil {
 			return err
 		}
+
+		e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
+		e.Spec.UpgradedReplicaAddressMap = map[string]string{}
+		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	}
 
-	if e.Spec.EngineImage != v.Spec.EngineImage {
-		replicaAddressMap := map[string]string{}
-		for _, r := range dataPathToNewReplica {
-			// wait for all potentially healthy replicas become running
-			if r.Status.CurrentState != longhorn.InstanceStateRunning {
-				return nil
-			}
-			if r.Status.IP == "" {
-				log.WithField("replica", r.Name).Error("BUG: replica is running but IP is empty")
-				continue
-			}
-			if r.Status.StorageIP == "" {
-				log.WithField("replica", r.Name).Debug("Replica is running but storage IP is empty, need to wait for update")
-				continue
-			}
-			if r.Status.Port == 0 {
-				log.WithField("replica", r.Name).Error("BUG: replica is running but port is 0")
-				continue
-			}
-			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
-		}
-		// Only upgrade e.Spec.EngineImage if there are enough new upgraded replica.
-		// This prevent the deadlock in the case that an upgrade from engine image
-		// is followed immediately by an other upgrade.
-		// More specifically, after the 1st upgrade, e.Status.ReplicaModeMap empty.
-		// Therefore, dataPathToOldRunningReplica, dataPathToOldRunningReplica, and replicaAddressMap are also empty.
-		// Now, if we set e.Spec.UpgradedReplicaAddressMap to an empty map in the second upgrade,
-		// the second engine upgrade will be blocked since len(e.Spec.UpgradedReplicaAddressMap) == 0.
-		// On the other hand, the engine controller blocks the engine's status from being refreshed
-		// and keep the e.Status.ReplicaModeMap to be empty map. The system enter a deadlock for the volume.
-		if len(replicaAddressMap) == v.Spec.NumberOfReplicas {
-			e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
-			e.Spec.EngineImage = v.Spec.EngineImage
-		}
-	}
-	if e.Status.CurrentImage != v.Spec.EngineImage ||
-		e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil
-	}
-
-	if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
-		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
-	}, v.Spec.EngineImage); err != nil {
-		return err
-	}
-
-	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
-	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
-	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	log.Infof("Engine %v has been upgraded from %v to %v", e.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	v.Status.CurrentImage = v.Spec.EngineImage
 

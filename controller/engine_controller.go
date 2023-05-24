@@ -461,7 +461,15 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	return c.EngineInstanceCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, im.Status.IP, engineCLIAPIVersion)
+	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
+		Engine:                           e,
+		VolumeFrontend:                   frontend,
+		EngineReplicaTimeout:             engineReplicaTimeout,
+		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
+		DataLocality:                     v.Spec.DataLocality,
+		ImIP:                             im.Status.IP,
+		EngineCLIAPIVersion:              engineCLIAPIVersion,
+	})
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
@@ -1969,7 +1977,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		log.Debugf("Trying to upgrade engine from %v to %v",
 			e.Status.CurrentImage, e.Spec.EngineImage)
-		if err := ec.UpgradeEngineProcess(e, log); err != nil {
+		if err := ec.UpgradeEngineInstance(e, log); err != nil {
 			return err
 		}
 	}
@@ -1983,7 +1991,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	return nil
 }
 
-func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus.Entry) error {
+func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
 		frontend = longhorn.VolumeFrontendEmpty
@@ -2028,12 +2036,19 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 		return nil
 	}
 
-	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
+	engineInstance, err := c.EngineInstanceUpgrade(&engineapi.EngineInstanceUpgradeRequest{
+		Engine:                           e,
+		VolumeFrontend:                   frontend,
+		EngineReplicaTimeout:             engineReplicaTimeout,
+		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
+		DataLocality:                     v.Spec.DataLocality,
+		EngineCLIAPIVersion:              engineCLIAPIVersion,
+	})
 	if err != nil {
 		return err
 	}
 
-	e.Status.Port = int(engineProcess.Status.PortStart)
+	e.Status.Port = int(engineInstance.Status.PortStart)
 	return nil
 }
 
