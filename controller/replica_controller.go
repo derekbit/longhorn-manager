@@ -420,7 +420,16 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		exposeRequired = false
 	}
 
-	return c.ReplicaInstanceCreate(r, diskName, dataPath, backingImagePath, v.Spec.DataLocality, exposeRequired, im.Status.IP, engineCLIAPIVersion)
+	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
+		Replica:             r,
+		DiskName:            diskName,
+		DataPath:            dataPath,
+		BackingImagePath:    backingImagePath,
+		DataLocality:        v.Spec.DataLocality,
+		ExposeRequired:      exposeRequired,
+		ImIP:                im.Status.IP,
+		EngineCLIAPIVersion: engineCLIAPIVersion,
+	})
 }
 
 func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, error) {
