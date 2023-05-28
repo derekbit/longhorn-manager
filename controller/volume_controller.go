@@ -1993,10 +1993,16 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		replenishCount = 1
 	}
 	for i := 0; i < replenishCount; i++ {
-		reusableFailedReplica, err := vc.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
-		if err != nil {
-			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
+		var reusableFailedReplica *longhorn.Replica
+
+		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			reusableFailedReplica, err = vc.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
+			if err != nil {
+				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
+			}
 		}
+
 		if reusableFailedReplica != nil {
 			if !vc.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
 				log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
@@ -3219,7 +3225,13 @@ func (vc *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine
 		},
 	}
 	if isRebuildingReplica {
-		log.Debugf("A new replica %v will be replenished during rebuilding", replica.Name)
+		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+			log.Warnf("Rebuilding replica %v is not supported for SPDK volumes", replica.Name)
+			return nil
+		}
+
+		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
 		// Prevent this new replica from being reused after rebuilding failure.
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 	}
