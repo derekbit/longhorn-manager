@@ -33,6 +33,7 @@ func (n *nodeValidator) Resource() admission.Resource {
 		APIVersion: longhorn.SchemeGroupVersion.Version,
 		ObjectType: &longhorn.Node{},
 		OperationTypes: []admissionregv1.OperationType{
+			admissionregv1.Create,
 			admissionregv1.Update,
 		},
 	}
