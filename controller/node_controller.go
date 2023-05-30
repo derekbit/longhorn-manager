@@ -1336,6 +1336,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		// When condition are not ready, the old storage data should be cleaned.
 		diskStatus.StorageMaximum = 0
 		diskStatus.StorageAvailable = 0
+		diskStatus.Type = node.Spec.Disks[diskName].Type
 		node.Status.DiskStatus[diskName] = diskStatus
 	}
 
@@ -1348,7 +1349,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 
 			// Blindingly send disk deletion request to instance manager regardless of the disk type,
 			// because the disk type is not recorded in the disk status.
-			if err := nc.deleteDisk(node, diskName, diskStatus.DiskUUID); err != nil {
+			if err := nc.deleteDisk(node, diskStatus.Type, diskName, diskStatus.DiskUUID); err != nil {
 				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
 			}
 			delete(node.Status.DiskStatus, diskName)
@@ -1356,7 +1357,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 	}
 }
 
-func (nc *NodeController) deleteDisk(node *longhorn.Node, diskName, diskUUID string) error {
+func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID string) error {
 	if diskUUID == "" {
 		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
 		return nil
@@ -1373,7 +1374,7 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskName, diskUUID str
 	}
 	defer diskServiceClient.Close()
 
-	if err := monitor.DeleteDisk(diskName, diskUUID, diskServiceClient); err != nil {
+	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskServiceClient); err != nil {
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 

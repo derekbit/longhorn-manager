@@ -49,6 +49,7 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
+					Type:     longhorn.DiskTypeFilesystem,
 				},
 				TestDiskID2: {
 					Conditions: []longhorn.Condition{
@@ -56,6 +57,7 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID2,
+					Type:     longhorn.DiskTypeFilesystem,
 				},
 				TestDiskID3: {
 					Conditions: []longhorn.Condition{
@@ -63,6 +65,7 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID3,
+					Type:     longhorn.DiskTypeFilesystem,
 				},
 			},
 		},

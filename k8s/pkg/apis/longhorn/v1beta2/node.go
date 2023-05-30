@@ -88,6 +88,8 @@ type DiskStatus struct {
 	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
 	// +optional
 	DiskUUID string `json:"diskUUID"`
+	// +optional
+	Type DiskType `json:"diskType"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node

@@ -1207,6 +1207,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
+					Type:     longhorn.DiskTypeFilesystem,
 				},
 			},
 		},

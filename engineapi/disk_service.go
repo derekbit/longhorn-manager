@@ -11,7 +11,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger) (c DiskServiceClient, err error) {
+func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger) (c *DiskService, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to get disk service client")
 	}()
@@ -45,15 +45,6 @@ type DiskService struct {
 	grpcClient *imclient.DiskServiceClient
 }
 
-type DiskServiceClient interface {
-	DiskCreate(string, string, string, int64) (*imapi.DiskInfo, error)
-	DiskGet(string, string, string) (*imapi.DiskInfo, error)
-	DiskDelete(string, string) error
-	DiskReplicaInstanceList(string, string) (map[string]*imapi.ReplicaInstance, error)
-	DiskReplicaInstanceDelete(string, string, string, string) error
-	Close()
-}
-
 func (s *DiskService) Close() {
 	if s.grpcClient == nil {
 		s.logger.WithError(errors.New("gRPC client not exist")).Debugf("cannot close disk service client")
@@ -73,11 +64,11 @@ func (s *DiskService) DiskGet(diskType, diskName, diskPath string) (*imapi.DiskI
 	return s.grpcClient.DiskGet(diskType, diskName, diskPath)
 }
 
-func (s *DiskService) DiskDelete(diskName, diskUUID string) error {
-	return s.grpcClient.DiskDelete(diskName, diskUUID)
+func (s *DiskService) DiskDelete(diskType, diskName, diskUUID string) error {
+	return s.grpcClient.DiskDelete(diskType, diskName, diskUUID)
 }
 
-func (s *DiskService) DiskReplicaInstanceList(diskType, diskName string) (map[string]*imapi.ReplicaInstance, error) {
+func (s *DiskService) DiskReplicaInstanceList(diskType, diskName string) (map[string]*imapi.ReplicaStorageInstance, error) {
 	return s.grpcClient.DiskReplicaInstanceList(diskType, diskName)
 }
 

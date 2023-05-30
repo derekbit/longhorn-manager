@@ -2024,6 +2024,8 @@ spec:
                         type: object
                       nullable: true
                       type: array
+                    diskType:
+                      type: string
                     diskUUID:
                       type: string
                     scheduledReplica:

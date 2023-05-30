@@ -521,10 +521,10 @@ func (c *InstanceManagerClient) InstanceGetBinary(backendStoreDriver longhorn.Ba
 		return "", err
 	}
 
-	if instance.InstanceProccessSpecific == nil {
-		return "", fmt.Errorf("InstanceProccessSpecific is nil")
+	if instance.InstanceProccessSpec == nil {
+		return "", fmt.Errorf("InstanceProccessSpec is nil")
 	}
-	return instance.InstanceProccessSpecific.Binary, nil
+	return instance.InstanceProccessSpec.Binary, nil
 }
 
 // InstanceLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed

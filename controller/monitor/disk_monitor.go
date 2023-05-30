@@ -53,10 +53,10 @@ type CollectedDiskInfo struct {
 	OrphanedReplicaDirectoryNames map[string]string
 }
 
-type GetDiskStatHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskStat, error)
-type GetDiskConfigHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskConfig, error)
-type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, engineapi.DiskServiceClient) (*util.DiskConfig, error)
-type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, engineapi.DiskServiceClient) (map[string]string, error)
+type GetDiskStatHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskStat, error)
+type GetDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
+type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
+type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, *engineapi.DiskService) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
@@ -137,7 +137,7 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (engineapi.DiskServiceClient, error) {
+func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.DiskService, error) {
 	im, err := m.ds.GetDefaultInstanceManagerByNode(m.nodeName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
@@ -235,7 +235,7 @@ func isNodeOrDiskEvicted(node *longhorn.Node, disk longhorn.DiskSpec) bool {
 	return node.Spec.EvictionRequested || disk.EvictionRequested
 }
 
-func getReplicaInstanceNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client engineapi.DiskServiceClient) (map[string]string, error) {
+func getReplicaInstanceNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *engineapi.DiskService) (map[string]string, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getReplicaDirectoryNames(node, diskName, diskUUID, diskPath)
