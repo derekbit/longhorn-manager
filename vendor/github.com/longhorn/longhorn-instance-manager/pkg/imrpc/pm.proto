@@ -3,7 +3,7 @@ syntax="proto3";
 package imrpc;
 
 import "google/protobuf/empty.proto";
-import "imcommon.proto";
+import "github.com/longhorn/longhorn-instance-manager/pkg/imrpc/imcommon.proto";
 
 service ProcessManagerService {
 	rpc ProcessCreate(ProcessCreateRequest) returns (ProcessResponse) {}

@@ -113,23 +113,23 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	var processSpecific *rpc.ProcessSpecific
-	var spdkSpecific *rpc.SpdkSpecific
+	var processInstanceSpec *rpc.ProcessInstanceSpec
+	var spdkInstanceSpec *rpc.SpdkInstanceSpec
 	if rpc.BackendStoreDriver(driver) == rpc.BackendStoreDriver_longhorn {
-		processSpecific = &rpc.ProcessSpecific{
+		processInstanceSpec = &rpc.ProcessInstanceSpec{
 			Binary: req.Binary,
 			Args:   req.BinaryArgs,
 		}
 	} else {
 		switch req.InstanceType {
 		case types.InstanceTypeEngine:
-			spdkSpecific = &rpc.SpdkSpecific{
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
 				Size:              req.Size,
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
 			}
 		case types.InstanceTypeReplica:
-			spdkSpecific = &rpc.SpdkSpecific{
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
 				Size:           req.Size,
 				DiskName:       req.Replica.DiskName,
 				DiskUuid:       req.Replica.DiskUUID,
@@ -149,8 +149,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 			PortCount:          int32(req.PortCount),
 			PortArgs:           req.PortArgs,
 
-			ProcessSpecific: processSpecific,
-			SpdkSpecific:    spdkSpecific,
+			ProcessInstanceSpec: processInstanceSpec,
+			SpdkInstanceSpec:    spdkInstanceSpec,
 		},
 	})
 	if err != nil {
@@ -279,7 +279,7 @@ func (c *InstanceServiceClient) InstanceReplace(backendStoreDriver, name, instan
 			Name:               name,
 			Type:               instanceType,
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
-			ProcessSpecific: &rpc.ProcessSpecific{
+			ProcessInstanceSpec: &rpc.ProcessInstanceSpec{
 				Binary: binary,
 				Args:   args,
 			},

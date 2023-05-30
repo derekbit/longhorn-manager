@@ -13,7 +13,9 @@ type DiskInfo struct {
 	ClusterSize int64
 }
 
-type ReplicaInstance struct {
+// ReplicaStorageInstance is utilized to represent a replica directory of a legacy volume and
+// a replica logical volume (lvol) of a SPDK volume.
+type ReplicaStorageInstance struct {
 	Name       string
 	UUID       string
 	DiskName   string

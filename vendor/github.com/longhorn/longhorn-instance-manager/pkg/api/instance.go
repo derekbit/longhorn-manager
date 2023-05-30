@@ -2,11 +2,13 @@ package api
 
 import (
 	"github.com/golang/protobuf/ptypes/empty"
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
+
 	"github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc"
+
+	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
-type InstanceProcessSpecific struct {
+type InstanceProcessSpec struct {
 	Binary string   `json:"binary"`
 	Args   []string `json:"args"`
 }
@@ -20,7 +22,7 @@ type Instance struct {
 	InstanceStatus     InstanceStatus `json:"instanceStatus"`
 	Deleted            bool           `json:"deleted"`
 
-	InstanceProccessSpecific *InstanceProcessSpecific
+	InstanceProccessSpec *InstanceProcessSpec
 }
 
 func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
@@ -33,10 +35,10 @@ func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 		InstanceStatus:     RPCToInstanceStatus(obj.Status),
 	}
 
-	if obj.Spec.ProcessSpecific != nil {
-		instance.InstanceProccessSpecific = &InstanceProcessSpecific{
-			Binary: obj.Spec.ProcessSpecific.Binary,
-			Args:   obj.Spec.ProcessSpecific.Args,
+	if obj.Spec.ProcessInstanceSpec != nil {
+		instance.InstanceProccessSpec = &InstanceProcessSpec{
+			Binary: obj.Spec.ProcessInstanceSpec.Binary,
+			Args:   obj.Spec.ProcessInstanceSpec.Args,
 		}
 	}
 

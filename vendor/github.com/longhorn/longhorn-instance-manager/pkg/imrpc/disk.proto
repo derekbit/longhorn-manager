@@ -60,8 +60,10 @@ message DiskGetRequest {
 }
 
 message DiskDeleteRequest {
-    string disk_name = 1;
-    string disk_uuid = 2;
+    DiskType disk_type = 1;
+
+    string disk_name = 2;
+    string disk_uuid = 3;
 }
 
 message DiskReplicaInstanceListRequest {
