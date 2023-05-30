@@ -68,14 +68,21 @@ func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMap
 	}
 
 	for _, n := range nodeMap {
-		if n.Spec.Disks == nil {
-			continue
+		if n.Spec.Disks != nil {
+			for name, disk := range n.Spec.Disks {
+				if disk.Type == "" {
+					disk.Type = longhorn.DiskTypeFilesystem
+					n.Spec.Disks[name] = disk
+				}
+			}
 		}
 
-		for name, disk := range n.Spec.Disks {
-			if disk.Type == "" {
-				disk.Type = longhorn.DiskTypeFilesystem
-				n.Spec.Disks[name] = disk
+		if n.Status.DiskStatus != nil {
+			for name, disk := range n.Status.DiskStatus {
+				if disk.Type == "" {
+					disk.Type = longhorn.DiskTypeFilesystem
+					n.Status.DiskStatus[name] = disk
+				}
 			}
 		}
 	}

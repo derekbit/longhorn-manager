@@ -648,98 +648,139 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 }
 
 func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[string]*longhorn.Node) error {
+	// Update Spec
 	existingNodeList, err := lhClient.LonghornV1beta2().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingNode := range existingNodeList.Items {
 		node, ok := nodes[existingNode.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingNode.Status, node.Status) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingNode.Spec, node.Spec) ||
 			!reflect.DeepEqual(existingNode.ObjectMeta, node.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingNodeList, err = lhClient.LonghornV1beta2().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingNode := range existingNodeList.Items {
+		node, ok := nodes[existingNode.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingNode.Status, node.Status) {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes map[string]*longhorn.Volume) error {
+	// Update Spec
 	existingVolumeList, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingVolume := range existingVolumeList.Items {
 		volume, ok := volumes[existingVolume.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), volume, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingVolume.Spec, volume.Spec) ||
 			!reflect.DeepEqual(existingVolume.ObjectMeta, volume.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingVolumeList, err = lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingVolume := range existingVolumeList.Items {
+		volume, ok := volumes[existingVolume.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
+			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), volume, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas map[string]*longhorn.Replica) error {
+	// Update Spec
 	existingReplicaList, err := lhClient.LonghornV1beta2().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingReplica := range existingReplicaList.Items {
 		replica, ok := replicas[existingReplica.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingReplica.Status, replica.Status) {
-			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).UpdateStatus(context.TODO(), replica, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingReplica.Spec, replica.Spec) ||
 			!reflect.DeepEqual(existingReplica.ObjectMeta, replica.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingReplicaList, err = lhClient.LonghornV1beta2().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingReplica := range existingReplicaList.Items {
+		replica, ok := replicas[existingReplica.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingReplica.Status, replica.Status) {
+			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).UpdateStatus(context.TODO(), replica, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines map[string]*longhorn.Engine) error {
+	// Update Spec
 	existingEngineList, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
+	for _, existingEngine := range existingEngineList.Items {
+		engine, ok := engines[existingEngine.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
+			!reflect.DeepEqual(existingEngine.ObjectMeta, engine.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+	// Update Status
+	existingEngineList, err = lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
 	for _, existingEngine := range existingEngineList.Items {
 		engine, ok := engines[existingEngine.Name]
 		if !ok {
@@ -747,23 +788,16 @@ func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines ma
 		}
 
 		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
-			if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
-		if !reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
-			!reflect.DeepEqual(existingEngine.ObjectMeta, engine.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
 func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups map[string]*longhorn.Backup) error {
+	// Update Spec
 	existingBackupList, err := lhClient.LonghornV1beta2().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -774,117 +808,166 @@ func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups ma
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingBackup.Spec, backup.Spec) ||
 			!reflect.DeepEqual(existingBackup.ObjectMeta, backup.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingBackupList, err = lhClient.LonghornV1beta2().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingBackup := range existingBackupList.Items {
+		backup, ok := backups[existingBackup.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
+			if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engineImages map[string]*longhorn.EngineImage) error {
+	// Update Spec
 	existingEngineImageList, err := lhClient.LonghornV1beta2().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingEngineImage := range existingEngineImageList.Items {
 		engineImage, ok := engineImages[existingEngineImage.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
-			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingEngineImage.Spec, engineImage.Spec) ||
 			!reflect.DeepEqual(existingEngineImage.ObjectMeta, engineImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingEngineImageList, err = lhClient.LonghornV1beta2().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingEngineImage := range existingEngineImageList.Items {
+		engineImage, ok := engineImages[existingEngineImage.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
+			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, instanceManagers map[string]*longhorn.InstanceManager) error {
+	// Update Spec
 	existingInstanceManagerList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingInstanceManager := range existingInstanceManagerList.Items {
 		instanceManager, ok := instanceManagers[existingInstanceManager.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingInstanceManager.Status, instanceManager.Status) {
-			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).UpdateStatus(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingInstanceManager.Spec, instanceManager.Spec) ||
 			!reflect.DeepEqual(existingInstanceManager.ObjectMeta, instanceManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingInstanceManagerList, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingInstanceManager := range existingInstanceManagerList.Items {
+		instanceManager, ok := instanceManagers[existingInstanceManager.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingInstanceManager.Status, instanceManager.Status) {
+			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).UpdateStatus(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shareManagers map[string]*longhorn.ShareManager) error {
+	// Update Spec
 	existingShareManagerList, err := lhClient.LonghornV1beta2().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingShareManager := range existingShareManagerList.Items {
 		shareManager, ok := shareManagers[existingShareManager.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingShareManager.Status, shareManager.Status) {
-			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).UpdateStatus(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingShareManager.Spec, shareManager.Spec) ||
 			!reflect.DeepEqual(existingShareManager.ObjectMeta, shareManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingShareManagerList, err = lhClient.LonghornV1beta2().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingShareManager := range existingShareManagerList.Items {
+		shareManager, ok := shareManagers[existingShareManager.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingShareManager.Status, shareManager.Status) {
+			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).UpdateStatus(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, backingImages map[string]*longhorn.BackingImage) error {
+	// Update Spec
 	existingBackingImagesList, err := lhClient.LonghornV1beta2().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
+	for _, existingBackingImage := range existingBackingImagesList.Items {
+		backingImage, ok := backingImages[existingBackingImage.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
+			!reflect.DeepEqual(existingBackingImage.ObjectMeta, backingImage.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+	// Update Status
+	existingBackingImagesList, err = lhClient.LonghornV1beta2().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
 	for _, existingBackingImage := range existingBackingImagesList.Items {
 		backingImage, ok := backingImages[existingBackingImage.Name]
 		if !ok {
@@ -892,48 +975,48 @@ func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, back
 		}
 
 		if !reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {
-			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
-		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
-			!reflect.DeepEqual(existingBackingImage.ObjectMeta, backingImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
 func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recurringJobs map[string]*longhorn.RecurringJob) error {
+	// Update Spec
 	existingRecurringJobList, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingRecurringJob := range existingRecurringJobList.Items {
 		recurringJob, ok := recurringJobs[existingRecurringJob.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingRecurringJob.Status, recurringJob.Status) {
-			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingRecurringJob.Spec, recurringJob.Spec) ||
 			!reflect.DeepEqual(existingRecurringJob.ObjectMeta, recurringJob.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingRecurringJobList, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingRecurringJob := range existingRecurringJobList.Items {
+		recurringJob, ok := recurringJobs[existingRecurringJob.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingRecurringJob.Status, recurringJob.Status) {
+			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -950,7 +1033,7 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 		}
 
 		if !reflect.DeepEqual(existingSetting.Value, setting.Value) {
-			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -960,59 +1043,75 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 }
 
 func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot) error {
+	// Update Spec
 	existingSnapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingSnapshot := range existingSnapshotList.Items {
 		snapshot, ok := snapshots[existingSnapshot.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
-			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).UpdateStatus(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
 			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingSnapshotList, err = lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingSnapshot := range existingSnapshotList.Items {
+		snapshot, ok := snapshots[existingSnapshot.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).UpdateStatus(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan) error {
+	// Update Spec
 	existingOrphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, existingOrphan := range existingOrphanList.Items {
 		orphan, ok := orphans[existingOrphan.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingOrphan.Status, orphan.Status) {
-			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).UpdateStatus(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
 			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
+	// Update Status
+	existingOrphanList, err = lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingOrphan := range existingOrphanList.Items {
+		orphan, ok := orphans[existingOrphan.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingOrphan.Status, orphan.Status) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).UpdateStatus(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
