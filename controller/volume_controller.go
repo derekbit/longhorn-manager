@@ -3340,7 +3340,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(v.Name),
+			Name:            types.GenerateReplicaNameForVolume(v.Spec.BackendStoreDriver, v.Name, e.Name),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.ReplicaSpec{
@@ -3385,7 +3385,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 func (c *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Volume) *longhorn.Replica {
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(r.Spec.VolumeName),
+			Name:            types.GenerateReplicaNameForVolume(r.Spec.BackendStoreDriver, r.Spec.VolumeName, r.Spec.EngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: r.DeepCopy().Spec,

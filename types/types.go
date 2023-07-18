@@ -291,20 +291,24 @@ const (
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"
 )
 
-func GenerateEngineNameForVolume(vName string) string {
-	return vName + engineSuffix + "-" + util.RandomID()
+func GenerateEngineNameForVolume(volumeName string) string {
+	return volumeName + engineSuffix + "-" + util.RandomID()
 }
 
-func GenerateReplicaNameForVolume(vName string) string {
-	return vName + replicaSuffix + "-" + util.RandomID()
+func GenerateReplicaNameForVolume(backendStoreDriver longhorn.BackendStoreDriverType, volumeName, engineName string) string {
+	name := volumeName + replicaSuffix + "-" + util.RandomID()
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return name
+	}
+	return name + "-" + engineName
 }
 
 func GetCronJobNameForRecurringJob(name string) string {
 	return name + recurringSuffix
 }
 
-func GetCronJobNameForVolumeAndJob(vName, job string) string {
-	return vName + "-" + job + recurringSuffix
+func GetCronJobNameForVolumeAndJob(volumeName, job string) string {
+	return volumeName + "-" + job + recurringSuffix
 }
 
 func GetAPIServerAddressFromIP(ip string) string {
