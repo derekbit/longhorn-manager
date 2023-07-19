@@ -9,6 +9,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -54,6 +55,11 @@ func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOp
 	if labels == nil {
 		labels = map[string]string{}
 	}
+
+	if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		labels[types.GetLonghornLabelKey(types.LonghornLabelLogicalVolume)] = types.GenerateReplicaDataDirectoryName(replica.Spec.BackendStoreDriver, replica.Spec.VolumeName, replica.Name)
+	}
+
 	patchOp, err := common.GetLonghornLabelsPatchOp(replica, labels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for replica %v", replica.Name)

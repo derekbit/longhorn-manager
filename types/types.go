@@ -172,6 +172,7 @@ const (
 	LonghornLabelLastSystemRestoreAt        = "last-system-restored-at"
 	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
 	LonghornLabelVersion                    = "version"
+	LonghornLabelLogicalVolume              = "logical-volume"
 
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
@@ -494,6 +495,12 @@ func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]s
 func GetBackupVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelBackupVolume: volumeName,
+	}
+}
+
+func GetLogicalVolumeLabels(logicalVolumeName string) map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelLogicalVolume): logicalVolumeName,
 	}
 }
 
