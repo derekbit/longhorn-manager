@@ -1476,7 +1476,19 @@ func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager,
 			case longhorn.InstanceTypeEngine:
 				engineProcess[name] = process
 			case longhorn.InstanceTypeReplica:
-				replicaProcess[name] = process
+				if process.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+					// List replicas by logical volume for a v2 volume
+					replicas, err := m.ds.ListReplicasByLogicalVolume(name)
+					if err != nil {
+						logrus.WithError(err).Errorf("Failed to list replicas by logical volume %v", name)
+						continue
+					}
+					for _, r := range replicas {
+						replicaProcess[r.Name] = process
+					}
+				} else {
+					replicaProcess[name] = process
+				}
 			}
 		}
 		if reflect.DeepEqual(im.Status.InstanceEngines, engineProcess) && reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess) {

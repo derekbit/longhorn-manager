@@ -3338,9 +3338,14 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	hardNodeAffinity string, isRebuildingReplica bool) error {
 	log := getLoggerForVolume(c.logger, v)
 
+	defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(v.Spec.BackendStoreDriver, v.Name, e.Name),
+			Name:            types.GenerateReplicaNameForVolume(v.Spec.BackendStoreDriver, v.Name, defaultInstanceManagerImage),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.ReplicaSpec{
@@ -3373,7 +3378,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 	}
 
-	replica, err := c.ds.CreateReplica(replica)
+	replica, err = c.ds.CreateReplica(replica)
 	if err != nil {
 		return err
 	}
@@ -3383,9 +3388,14 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 }
 
 func (c *VolumeController) duplicateReplica(r *longhorn.Replica, v *longhorn.Volume) *longhorn.Replica {
+	defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return nil
+	}
+
 	replica := &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(r.Spec.BackendStoreDriver, r.Spec.VolumeName, r.Spec.EngineName),
+			Name:            types.GenerateDuplicateReplicaNameForVolume(r.Spec.BackendStoreDriver, r.Spec.VolumeName, r.Name, defaultInstanceManagerImage),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: r.DeepCopy().Spec,

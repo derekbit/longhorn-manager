@@ -417,6 +417,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:             r,
+		Name:                types.GenerateReplicaInstanceName(r.Spec.BackendStoreDriver, r.Name),
 		DiskName:            diskName,
 		DataPath:            dataPath,
 		BackingImagePath:    backingImagePath,
@@ -594,7 +595,9 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	if canDeleteInstance(r) {
 		cleanupRequired = true
 	}
-	err = c.InstanceDelete(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
+
+	instanceName := types.GenerateReplicaInstanceName(r.Spec.BackendStoreDriver, r.Name)
+	err = c.InstanceDelete(r.Spec.BackendStoreDriver, instanceName, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -708,7 +711,8 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	instance, err := c.InstanceGet(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
+	instanceName := types.GenerateReplicaInstanceName(r.Spec.BackendStoreDriver, r.Name)
+	instance, err := c.InstanceGet(r.Spec.BackendStoreDriver, instanceName, string(longhorn.InstanceManagerTypeReplica))
 	if err != nil {
 		return nil, err
 	}
@@ -738,7 +742,8 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.InstanceLog(ctx, r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
+	instanceName := types.GenerateReplicaInstanceName(r.Spec.BackendStoreDriver, r.Name)
+	stream, err := c.InstanceLog(ctx, r.Spec.BackendStoreDriver, instanceName, string(longhorn.InstanceManagerTypeReplica))
 	return c, stream, err
 }
 

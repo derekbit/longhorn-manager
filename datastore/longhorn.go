@@ -601,6 +601,12 @@ func getVolumeSelector(volumeName string) (labels.Selector, error) {
 	})
 }
 
+func getLogicalVolumeSelector(volumeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetLogicalVolumeLabels(volumeName),
+	})
+}
+
 // GetOwnerReferencesForVolume returns a list contains single OwnerReference for the
 // given volume UID and name
 func GetOwnerReferencesForVolume(v *longhorn.Volume) []metav1.OwnerReference {
@@ -1318,6 +1324,15 @@ func (s *DataStore) ListReplicas() (map[string]*longhorn.Replica, error) {
 // ListReplicasRO returns a list of all replicas for the given namespace
 func (s *DataStore) ListReplicasRO() ([]*longhorn.Replica, error) {
 	return s.rLister.Replicas(s.namespace).List(labels.Everything())
+}
+
+// ListReplicasByLogicalVolume returns a list of all replicas for the given logical volume
+func (s *DataStore) ListReplicasByLogicalVolume(logicalVolumeName string) ([]*longhorn.Replica, error) {
+	selector, err := getLogicalVolumeSelector(logicalVolumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.rLister.Replicas(s.namespace).List(selector)
 }
 
 // ListVolumeReplicas returns an object contains all Replica with the given

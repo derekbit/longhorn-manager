@@ -424,6 +424,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
+	replicaInstanceAddress := map[string]string{}
+	for replicaName, address := range replicaAddresses {
+		lvolName := types.GenerateReplicaInstanceName(req.Engine.Spec.BackendStoreDriver, replicaName)
+		replicaInstanceAddress[lvolName] = address
+	}
+
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Engine.Spec.BackendStoreDriver),
 		Name:               req.Engine.Name,
@@ -437,7 +443,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		BinaryArgs: args,
 
 		Engine: imclient.EngineCreateRequest{
-			ReplicaAddressMap: replicaAddresses,
+			ReplicaAddressMap: replicaInstanceAddress,
 			Frontend:          frontend,
 		},
 	})
@@ -450,6 +456,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 type ReplicaInstanceCreateRequest struct {
 	Replica             *longhorn.Replica
+	Name                string
 	DiskName            string
 	DataPath            string
 	BackingImagePath    string
@@ -487,7 +494,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Replica.Spec.BackendStoreDriver),
-		Name:               req.Replica.Name,
+		Name:               req.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
 		Size:               uint64(req.Replica.Spec.VolumeSize),

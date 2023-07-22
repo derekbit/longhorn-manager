@@ -394,7 +394,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	replica.Spec.NodeID = disk.NodeID
 	replica.Spec.DiskID = disk.DiskUUID
 	replica.Spec.DiskPath = disk.Path
-	replica.Spec.DataDirectoryName = replica.Spec.VolumeName + "-" + util.RandomID()
+	replica.Spec.DataDirectoryName = types.GenerateReplicaDataDirectoryName(replica.Spec.BackendStoreDriver, replica.Spec.VolumeName, replica.Name)
 
 	logrus.WithFields(logrus.Fields{
 		"replica":           replica.Name,

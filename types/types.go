@@ -296,12 +296,46 @@ func GenerateEngineNameForVolume(volumeName string) string {
 	return volumeName + engineSuffix + "-" + util.RandomID()
 }
 
-func GenerateReplicaNameForVolume(backendStoreDriver longhorn.BackendStoreDriverType, volumeName, engineName string) string {
+func GenerateReplicaNameForVolume(backendStoreDriver longhorn.BackendStoreDriverType, volumeName, image string) string {
 	name := volumeName + replicaSuffix + "-" + util.RandomID()
 	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 		return name
 	}
-	return name + "-" + engineName
+	return name + "-" + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GenerateDuplicateReplicaNameForVolume(backendStoreDriver longhorn.BackendStoreDriverType, volumeName, replicaName, image string) string {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return volumeName + replicaSuffix + "-" + util.RandomID()
+	}
+
+	return truncateReplicaNameSuffix(replicaName) + "-" + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+func GenerateReplicaDataDirectoryName(backendStoreDriver longhorn.BackendStoreDriverType, volumeName, replicaName string) string {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return volumeName + "-" + util.RandomID()
+	}
+	return truncateReplicaNameSuffix(replicaName)
+}
+
+func GenerateReplicaInstanceName(backendStoreDriver longhorn.BackendStoreDriverType, replicaName string) string {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return replicaName
+	}
+	return truncateReplicaNameSuffix(replicaName)
+}
+
+func truncateReplicaNameSuffix(name string) string {
+	parts := strings.Split(name, "-")
+
+	for i := len(parts) - 1; i >= 0; i-- {
+		if i > 0 && len(parts[i]) > 0 {
+			truncated := strings.Join(parts[:i], "-")
+			return truncated
+		}
+	}
+	return name
 }
 
 func GetCronJobNameForRecurringJob(name string) string {
