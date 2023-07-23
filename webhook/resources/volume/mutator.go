@@ -212,12 +212,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(newSize, 10)))
 
-	defaultEngineImage, _ := v.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if defaultEngineImage == "" {
-		return nil, werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "")
-	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/engineImage", "value": "%s"}`, defaultEngineImage))
-
 	if volume.Spec.BackupCompressionMethod == "" {
 		defaultCompressionMethod, _ := v.ds.GetSettingValueExisted(types.SettingNameBackupCompressionMethod)
 		if defaultCompressionMethod == "" {
@@ -229,6 +223,20 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if string(volume.Spec.BackendStoreDriver) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
+
+	defaultImage := ""
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		defaultImage, err = v.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	} else {
+		defaultImage, err = v.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	}
+	if err != nil {
+		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get default image for volume %v", name).Error(), "")
+	}
+	if defaultImage == "" {
+		return nil, werror.NewInvalidError(fmt.Sprintf("invalid empty image for volume %v", name), "")
+	}
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/image", "value": "%s"}`, defaultImage))
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
