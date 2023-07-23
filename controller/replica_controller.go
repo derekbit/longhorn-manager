@@ -400,9 +400,12 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.Image)
-	if err != nil {
-		return nil, err
+	engineCLIAPIVersion := types.EngineCLIAPIVersionIgnored
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		engineCLIAPIVersion, err = rc.ds.GetEngineImageCLIAPIVersion(r.Spec.Image)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	diskName, err := rc.getDiskNameFromUUID(r)
@@ -629,10 +632,12 @@ func deleteUnixSocketFile(volumeName string) error {
 
 func (rc *ReplicaController) deleteInstanceWithCLIAPIVersionOne(r *longhorn.Replica) (err error) {
 	isCLIAPIVersionOne := false
-	if r.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = rc.ds.IsEngineImageCLIAPIVersionOne(r.Status.CurrentImage)
-		if err != nil {
-			return err
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if r.Status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = rc.ds.IsEngineImageCLIAPIVersionOne(r.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

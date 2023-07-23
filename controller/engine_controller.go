@@ -306,10 +306,12 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}()
 
 	isCLIAPIVersionOne := false
-	if engine.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
-		if err != nil {
-			return err
+	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if engine.Status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -458,9 +460,12 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
-	if err != nil {
-		return nil, err
+	engineCLIAPIVersion := types.EngineCLIAPIVersionIgnored
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		engineCLIAPIVersion, err = ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
@@ -594,10 +599,12 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 
 func (ec *EngineController) deleteInstanceWithCLIAPIVersionOne(e *longhorn.Engine) (err error) {
 	isCLIAPIVersionOne := false
-	if e.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(e.Status.CurrentImage)
-		if err != nil {
-			return err
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if e.Status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(e.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -907,11 +914,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	cliAPIVersion, err := m.ds.GetEngineImageCLIAPIVersion(engine.Status.CurrentImage)
-	if err != nil {
-		return err
+
+	engineCLIAPIVersion := types.EngineCLIAPIVersionIgnored
+	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		engineCLIAPIVersion, err = m.ds.GetEngineImageCLIAPIVersion(engine.Status.CurrentImage)
+		if err != nil {
+			return err
+		}
 	}
-	if cliAPIVersion >= engineapi.MinCLIVersion {
+	if engineCLIAPIVersion >= engineapi.MinCLIVersion || engineCLIAPIVersion == types.EngineCLIAPIVersionIgnored {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
@@ -961,7 +972,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.RebuildStatus = rebuildStatus
 
 		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
-		if cliAPIVersion >= 7 && im.Status.APIVersion >= 3 {
+		if engineCLIAPIVersion >= 7 && im.Status.APIVersion >= 3 {
 			// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
 			engine.Status.UnmapMarkSnapChainRemovedEnabled = volumeInfo.UnmapMarkSnapChainRemoved
 			if engine.Spec.UnmapMarkSnapChainRemovedEnabled != volumeInfo.UnmapMarkSnapChainRemoved {
@@ -995,7 +1006,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		existingEngine = engine.DeepCopy()
 	}
 
-	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
+	requireExpansion, err := IsValidForExpansion(engine, engineCLIAPIVersion, im.Status.APIVersion)
 	if err != nil {
 		engine.Status.LastExpansionError = err.Error()
 		engine.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -1054,7 +1065,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 	}()
 
-	needRestore, err := preRestoreCheckAndSync(m.logger, engine, rsMap, addressReplicaMap, cliAPIVersion, m.ds, engineClientProxy)
+	needRestore, err := preRestoreCheckAndSync(m.logger, engine, rsMap, addressReplicaMap, engineCLIAPIVersion, m.ds, engineClientProxy)
 	if err != nil {
 		return err
 	}
@@ -1079,7 +1090,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		if err = m.restoreBackup(engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
+		if err = m.restoreBackup(engine, rsMap, engineCLIAPIVersion, engineClientProxy); err != nil {
 			m.restoreBackoff.DeleteEntry(engine.Name)
 			if err := m.acquireRestoringCounter(false); err != nil {
 				m.logger.WithError(err).Warn("Failed to unacquire restoring counter")
@@ -1089,7 +1100,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if cliAPIVersion >= engineapi.CLIVersionFive {
+	if engineCLIAPIVersion >= engineapi.CLIVersionFive {
 		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
 			return err
 		}
@@ -2049,27 +2060,40 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	readyNodesWithEI, err := ec.ds.ListReadyNodesWithEngineImage(e.Status.CurrentImage)
-	if err != nil {
-		return false, err
-	}
-	// No node in the system has the e.Status.CurrentImage,
-	// Fall back to the default logic where we pick a running node to be the owner
-	if len(readyNodesWithEI) == 0 {
-		return isResponsible, nil
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		readyNodesWithEI, err := ec.ds.ListReadyNodesWithEngineImage(e.Status.CurrentImage)
+		if err != nil {
+			return false, err
+		}
+		// No node in the system has the e.Status.CurrentImage,
+		// Fall back to the default logic where we pick a running node to be the owner
+		if len(readyNodesWithEI) == 0 {
+			return isResponsible, nil
+		}
 	}
 
-	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Spec.NodeID)
-	if err != nil {
-		return false, err
+	preferredOwnerEngineAvailable := true
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		preferredOwnerEngineAvailable, err = ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Spec.NodeID)
+		if err != nil {
+			return false, err
+		}
 	}
-	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Status.OwnerID)
-	if err != nil {
-		return false, err
+
+	currentOwnerEngineAvailable := true
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		currentOwnerEngineAvailable, err = ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Status.OwnerID)
+		if err != nil {
+			return false, err
+		}
 	}
-	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
-	if err != nil {
-		return false, err
+
+	currentNodeEngineAvailable := true
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		currentNodeEngineAvailable, err = ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	isPreferredOwner := currentNodeEngineAvailable && isResponsible

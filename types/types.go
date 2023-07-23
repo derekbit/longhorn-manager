@@ -292,6 +292,10 @@ const (
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"
 )
 
+const (
+	EngineCLIAPIVersionIgnored = -1
+)
+
 func GenerateEngineNameForVolume(volumeName string) string {
 	return volumeName + engineSuffix + "-" + util.RandomID()
 }

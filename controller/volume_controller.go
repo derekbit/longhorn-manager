@@ -741,15 +741,18 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
 
-		cliAPIVersion, err := c.ds.GetEngineImageCLIAPIVersion(e.Status.CurrentImage)
-		if err != nil {
-			return err
+		engineCLIAPIVersion := types.EngineCLIAPIVersionIgnored
+		if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			engineCLIAPIVersion, err = c.ds.GetEngineImageCLIAPIVersion(e.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 		// Rebuild is not supported when:
 		//   1. the volume is being migrating to another node.
 		//   2. the volume is old restore/DR volumes.
 		//   3. the volume is expanding size.
-		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour
+		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) && (engineCLIAPIVersion != types.EngineCLIAPIVersionIgnored && engineCLIAPIVersion < engineapi.CLIVersionFour)
 		isInExpansion := v.Spec.Size != e.Status.CurrentSize
 		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
@@ -2273,9 +2276,11 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
-			log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-			continue
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
+				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
+				continue
+			}
 		}
 
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
@@ -2404,10 +2409,12 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
-			log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-			delete(readyNodes, nodeName)
-			continue
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
+				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
+				delete(readyNodes, nodeName)
+				continue
+			}
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
@@ -2586,10 +2593,12 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
-			// cannot use node, engine image is not ready
-			delete(readyNodes, nName)
-			continue
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
+				// cannot use node, engine image is not ready
+				delete(readyNodes, nName)
+				continue
+			}
 		}
 
 		for _, r := range rs {
@@ -2702,38 +2711,44 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	oldImage, err := c.getEngineImage(v.Status.CurrentImage)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
-		return nil
-	}
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		oldImage, err := c.getEngineImage(v.Status.CurrentImage)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
+			return nil
+		}
 
-	if isReady, err := c.ds.CheckEngineImageReadiness(oldImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
-		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
-		return nil
-	}
-	newImage, err := c.getEngineImage(v.Spec.Image)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
-		return nil
-	}
-	if isReady, err := c.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
-		log.WithError(err).Warnf("Engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
-		return nil
-	}
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if isReady, err := c.ds.CheckEngineImageReadiness(oldImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+				log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
+				return nil
+			}
+		}
+		newImage, err := c.getEngineImage(v.Spec.Image)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
+			return nil
+		}
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if isReady, err := c.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+				log.WithError(err).Warnf("Engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
+				return nil
+			}
+		}
 
-	if oldImage.Status.GitCommit == newImage.Status.GitCommit {
-		log.Warnf("Engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
-		return nil
-	}
+		if oldImage.Status.GitCommit == newImage.Status.GitCommit {
+			log.Warnf("Engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
+			return nil
+		}
 
-	if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
-		oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
-		log.Warnf("Failed to live upgrade from %v to %v: the old controller version %v "+
-			"is not compatible with the new controller version %v and the new controller minimal version %v",
-			oldImage.Spec.Image, newImage.Spec.Image,
-			oldImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIMinVersion)
-		return nil
+		if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
+			oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
+			log.Warnf("Failed to live upgrade from %v to %v: the old controller version %v "+
+				"is not compatible with the new controller version %v and the new controller minimal version %v",
+				oldImage.Spec.Image, newImage.Spec.Image,
+				oldImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIMinVersion)
+			return nil
+		}
 	}
 
 	unknownReplicas := map[string]*longhorn.Replica{}
@@ -2755,8 +2770,8 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	//   1. Volume is degraded.
 	//   2. The new replicas is activated and all old replicas are already purged.
 	if len(dataPathToOldRunningReplica) >= v.Spec.NumberOfReplicas {
-		if err := c.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
-			r.Spec.Image = engineImage
+		if err := c.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, image string) {
+			r.Spec.Image = image
 		}, v.Spec.Image); err != nil {
 			return err
 		}
@@ -4093,17 +4108,28 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		return isResponsible, nil
 	}
 
-	preferredOwnerEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Spec.NodeID)
-	if err != nil {
-		return false, err
+	preferredOwnerEngineAvailable := true
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		preferredOwnerEngineAvailable, err = c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Spec.NodeID)
+		if err != nil {
+			return false, err
+		}
 	}
-	currentOwnerEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Status.OwnerID)
-	if err != nil {
-		return false, err
+
+	currentOwnerEngineAvailable := true
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		currentOwnerEngineAvailable, err = c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Status.OwnerID)
+		if err != nil {
+			return false, err
+		}
 	}
-	currentNodeEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, c.controllerID)
-	if err != nil {
-		return false, err
+
+	currentNodeEngineAvailable := true
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		currentNodeEngineAvailable, err = c.ds.CheckEngineImageReadiness(defaultEngineImage, c.controllerID)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	isPreferredOwner := currentNodeEngineAvailable && isResponsible
