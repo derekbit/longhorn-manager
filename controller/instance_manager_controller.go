@@ -1168,6 +1168,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			Value: types.TLSDirectoryInContainer,
 		},
 		{
+			Name:  "INSTANCE_MANAGER_IMAGE",
+			Value: im.Spec.Image,
+		},
+		{
 			Name: types.EnvPodIP,
 			ValueFrom: &v1.EnvVarSource{
 				FieldRef: &v1.ObjectFieldSelector{
