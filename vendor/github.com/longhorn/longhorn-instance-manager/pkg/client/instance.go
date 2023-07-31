@@ -256,37 +256,103 @@ func (c *InstanceServiceClient) InstanceWatch(ctx context.Context) (*api.Instanc
 	return api.NewInstanceStream(stream), nil
 }
 
-func (c *InstanceServiceClient) InstanceReplace(backendStoreDriver, name, instanceType, binary string, portCount int, args, portArgs []string, terminateSignal string) (*api.Instance, error) {
-	if name == "" || binary == "" {
-		return nil, fmt.Errorf("failed to replace instance: missing required parameter")
-	}
+type EngineReplaceRequest struct {
+	ReplicaAddressMap map[string]string
+	Frontend          string
+}
 
-	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
-	if !ok {
-		return nil, fmt.Errorf("failed to replace instance: invalid backend store driver %v", backendStoreDriver)
-	}
+type InstanceReplaceRequest struct {
+	BackendStoreDriver string
+	Name               string
+	InstanceType       string
+	VolumeName         string
+	Size               uint64
+	PortCount          int
+	PortArgs           []string
 
-	if terminateSignal != "SIGHUP" {
-		return nil, fmt.Errorf("unsupported terminate signal %v", terminateSignal)
+	TerminateSignal string
+
+	Binary     string
+	BinaryArgs []string
+
+	Engine EngineReplaceRequest
+}
+
+func (c *InstanceServiceClient) InstanceReplaceStart(name string) error {
+	if name == "" {
+		return fmt.Errorf("failed to start replacing instance: missing required parameter")
 	}
 
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
+	_, err := client.InstanceReplaceStart(ctx, &rpc.InstanceReplaceStartRequest{
+		Name: name,
+	})
+	return err
+}
+
+func (c *InstanceServiceClient) InstanceReplaceFinish(name string) error {
+	if name == "" {
+		return fmt.Errorf("failed to finish replacing instance: missing required parameter")
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceReplaceFinish(ctx, &rpc.InstanceReplaceFinishRequest{
+		Name: name,
+	})
+	return err
+}
+
+func (c *InstanceServiceClient) InstanceReplace(req *InstanceReplaceRequest) (*api.Instance, error) {
+	if req.Name == "" || req.InstanceType == "" {
+		return nil, fmt.Errorf("failed to replace instance: missing required parameters")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[req.BackendStoreDriver]
+	if !ok {
+		return nil, fmt.Errorf("failed to replace instance: invalid backend store driver %v", req.BackendStoreDriver)
+	}
+
+	if req.TerminateSignal != "SIGHUP" {
+		return nil, fmt.Errorf("unsupported terminate signal %v", req.TerminateSignal)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	var processInstanceSpec *rpc.ProcessInstanceSpec
+	var spdkInstanceSpec *rpc.SpdkInstanceSpec
+	if rpc.BackendStoreDriver(driver) == rpc.BackendStoreDriver_v1 {
+		processInstanceSpec = &rpc.ProcessInstanceSpec{
+			Binary: req.Binary,
+			Args:   req.BinaryArgs,
+		}
+	} else {
+		spdkInstanceSpec = &rpc.SpdkInstanceSpec{
+			Size:              req.Size,
+			ReplicaAddressMap: req.Engine.ReplicaAddressMap,
+			Frontend:          req.Engine.Frontend,
+		}
+	}
 	p, err := client.InstanceReplace(ctx, &rpc.InstanceReplaceRequest{
 		Spec: &rpc.InstanceSpec{
-			Name:               name,
-			Type:               instanceType,
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
-			ProcessInstanceSpec: &rpc.ProcessInstanceSpec{
-				Binary: binary,
-				Args:   args,
-			},
-			PortCount: int32(portCount),
-			PortArgs:  portArgs,
+			Name:               req.Name,
+			Type:               req.InstanceType,
+			VolumeName:         req.VolumeName,
+			PortCount:          int32(req.PortCount),
+			PortArgs:           req.PortArgs,
+
+			ProcessInstanceSpec: processInstanceSpec,
+			SpdkInstanceSpec:    spdkInstanceSpec,
 		},
-		TerminateSignal: terminateSignal,
+		TerminateSignal: req.TerminateSignal,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to replace instance")

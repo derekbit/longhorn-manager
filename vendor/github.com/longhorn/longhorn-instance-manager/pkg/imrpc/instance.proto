@@ -13,7 +13,10 @@ service InstanceService {
 	rpc InstanceList(google.protobuf.Empty) returns (InstanceListResponse) {}
 	rpc InstanceLog(InstanceLogRequest) returns (stream LogResponse) {}
 	rpc InstanceWatch(google.protobuf.Empty) returns (stream google.protobuf.Empty) {}
+
+	rpc InstanceReplaceStart(InstanceReplaceStartRequest) returns (google.protobuf.Empty) {}
 	rpc InstanceReplace(InstanceReplaceRequest) returns (InstanceResponse) {}
+	rpc InstanceReplaceFinish(InstanceReplaceFinishRequest) returns (google.protobuf.Empty) {}
 
 	rpc VersionGet(google.protobuf.Empty) returns (VersionResponse);
 }
@@ -90,4 +93,12 @@ message InstanceLogRequest {
 message InstanceReplaceRequest {
 	InstanceSpec spec = 1;
 	string terminate_signal = 2;
+}
+
+message InstanceReplaceStartRequest {
+	string name = 1;
+}
+
+message InstanceReplaceFinishRequest {
+	string name = 1;
 }

@@ -160,6 +160,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/daviddengcn/go-colortext v1.0.0/go.mod h1:zDqEI5NVUop5QPpVJUxE9UO10hRnmkD5G4Pmri9+m4c=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20230731154258-f09f401361b5 h1:noXkmwK/aOLT0suXjmAJk0nIk501xf3Y3LWxlCkuYe0=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20230731154258-f09f401361b5/go.mod h1:Tcf+eBYX4S4BirWtXUt2uriKUxWYJySp60U34jfOSQs=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/docker/distribution v2.8.1+incompatible h1:Q50tZOPR6T/hjNsyc9g8/syEs6bk8XXApsHjKukMl68=
@@ -507,8 +509,6 @@ github.com/longhorn/go-spdk-helper v0.0.0-20230626041832-c611b61f6b36 h1:wUaSMEh
 github.com/longhorn/go-spdk-helper v0.0.0-20230626041832-c611b61f6b36/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230627154646-d1d6d308d37a h1:uYsXL6lIAzNNrffkaLIXYUPuKjVoh0LvkNC19UfqO4s=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230627154646-d1d6d308d37a/go.mod h1:OOjKIyGpTxmZFWkn8N1G+H4pga0niuMgzrR/h5HUJNo=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230627162235-cb966cd0f58a h1:EYQ4LGNr9oKHulqAJDdBvco01kN7lJTF20qOytw+DVA=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230627162235-cb966cd0f58a/go.mod h1:SL/ePLcAYD2x7n4d4D5WoKABiuai1HEomHtULZpJU3w=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6 h1:v+3TcQuWtUphsYWJ4Hr+PeEjEPHUVVOSnk1DMNSFI1E=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6/go.mod h1:Kq3D8tu8J1SED7XiVM6Yco6qkizxCjVhYzR78bqhUUI=
 github.com/longhorn/longhorn-spdk-engine v0.0.0-20230627161406-64cb30ad3cf1 h1:xygJgcpxNqOAI1B7ri33RsTSMHr6QPod1TVuQQqHe/4=
