@@ -636,6 +636,22 @@ func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProc
 	return result, nil
 }
 
+func (c *InstanceManagerClient) EngineInstanceUpgradeStart(name string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	return c.instanceServiceGrpcClient.InstanceReplaceStart(name)
+}
+
+func (c *InstanceManagerClient) EngineInstanceUpgradeFinish(name string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	return c.instanceServiceGrpcClient.InstanceReplaceFinish(name)
+}
+
 type EngineInstanceUpgradeRequest struct {
 	Engine                           *longhorn.Engine
 	VolumeFrontend                   longhorn.VolumeFrontend
@@ -645,21 +661,7 @@ type EngineInstanceUpgradeRequest struct {
 	EngineCLIAPIVersion              int
 }
 
-// EngineInstanceUpgrade upgrades the engine process
 func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
-	engine := req.Engine
-	switch engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeV1:
-		return c.engineInstanceUpgrade(req)
-	case longhorn.BackendStoreDriverTypeV2:
-		/* TODO: Handle SPDK engine upgrade */
-		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
-	default:
-		return nil, fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
-	}
-}
-
-func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -705,8 +707,32 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.BackendStoreDriver), req.Engine.Name,
-		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
+	replicaInstanceAddress := map[string]string{}
+	for replicaName, address := range req.Engine.Spec.UpgradedReplicaAddressMap {
+		lvolName := types.GenerateReplicaInstanceName(req.Engine.Spec.BackendStoreDriver, replicaName)
+		replicaInstanceAddress[lvolName] = address
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceReplace(&imclient.InstanceReplaceRequest{
+		BackendStoreDriver: string(req.Engine.Spec.BackendStoreDriver),
+		Name:               req.Engine.Name,
+		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
+		VolumeName:         req.Engine.Spec.VolumeName,
+		Size:               uint64(req.Engine.Spec.VolumeSize),
+
+		PortCount: DefaultEnginePortCount,
+		PortArgs:  []string{DefaultPortArg},
+
+		Binary:     binary,
+		BinaryArgs: args,
+
+		TerminateSignal: DefaultTerminateSignal,
+
+		Engine: imclient.EngineReplaceRequest{
+			ReplicaAddressMap: replicaInstanceAddress,
+			Frontend:          frontend,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

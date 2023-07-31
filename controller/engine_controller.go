@@ -1948,10 +1948,30 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 	}
 }
 
+func shouldUpgrade(e *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy) (bool, error) {
+	if e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV1 {
+		return true, nil
+	}
+
+	version, err := engineClientProxy.VersionGet(e, false)
+	if err != nil {
+		return false, err
+	}
+
+	// Don't use image with different image name but same commit here. It
+	// will cause live replica to be removed. Volume controller should filter those.
+	return version.ClientVersion.GitCommit != version.ServerVersion.GitCommit, nil
+}
+
 func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
 	}()
+
+	defaultInstanceManagerImage, err := ec.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
 
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
 	if err != nil {
@@ -1959,39 +1979,39 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	}
 	defer engineClientProxy.Close()
 
-	version, err := engineClientProxy.VersionGet(e, false)
+	shouldUpgrade, err := shouldUpgrade(e, engineClientProxy)
 	if err != nil {
 		return err
 	}
-
-	// Don't use image with different image name but same commit here. It
-	// will cause live replica to be removed. Volume controller should filter those.
-	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+	if shouldUpgrade {
 		log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 		if err := ec.UpgradeEngineInstance(e, log); err != nil {
 			return err
 		}
 	}
+
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
+
 	e.Status.CurrentImage = e.Spec.Image
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
+
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		e.Status.InstanceManagerName = defaultInstanceManagerImage
+	}
+
 	return nil
 }
 
-func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
-	frontend := e.Spec.Frontend
-	if e.Spec.DisableFrontend {
-		frontend = longhorn.VolumeFrontendEmpty
-	}
-
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+func (ec *EngineController) upgradeV1EngineInstance(e *longhorn.Engine, frontend longhorn.VolumeFrontend, log *logrus.Entry) error {
+	im, err := ec.getInstanceManager(e)
 	if err != nil {
 		return err
 	}
+
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return err
@@ -2041,6 +2061,108 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 
 	e.Status.Port = int(engineInstance.Status.PortStart)
 	return nil
+}
+
+func (ec *EngineController) startUpgradeV2EngineInstance(e *longhorn.Engine) error {
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceUpgradeStart(e.Name)
+}
+
+func (ec *EngineController) finishUpgradeV2EngineInstance(e *longhorn.Engine) error {
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceUpgradeFinish(e.Name)
+}
+
+func (ec *EngineController) upgradeV2EngineInstance(e *longhorn.Engine, frontend longhorn.VolumeFrontend) error {
+	im, err := ec.getInstanceManager(e)
+	if err != nil {
+		return err
+	}
+
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	engineInstance, err := c.EngineInstanceUpgrade(&engineapi.EngineInstanceUpgradeRequest{
+		Engine:         e,
+		VolumeFrontend: frontend,
+	})
+	if err != nil {
+		return err
+	}
+
+	e.Status.Port = int(engineInstance.Status.PortStart)
+	return nil
+}
+
+func (ec *EngineController) getInstanceManager(e *longhorn.Engine) (*longhorn.InstanceManager, error) {
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	}
+
+	defaultInstanceManagerImage, err := ec.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	ims, err := ec.ds.ListInstanceManagersByNodeAndInstanceManagerImage(ec.controllerID, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, im := range ims {
+		return im, nil
+	}
+
+	return nil, fmt.Errorf("cannot find instance manager for engine %v", e.Name)
+}
+
+func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
+	frontend := e.Spec.Frontend
+	if e.Spec.DisableFrontend {
+		frontend = longhorn.VolumeFrontendEmpty
+	}
+
+	switch e.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		return ec.upgradeV1EngineInstance(e, frontend, log)
+	case longhorn.BackendStoreDriverTypeV2:
+		log.Info("Starting upgrade engine instance")
+		err := ec.startUpgradeV2EngineInstance(e)
+		if err != nil {
+			return err
+		}
+		err = ec.upgradeV2EngineInstance(e, frontend)
+		if err != nil {
+			return err
+		}
+		log.Info("Finishing upgrade engine instance")
+		return ec.finishUpgradeV2EngineInstance(e)
+	default:
+		return fmt.Errorf("unknown backend store driver %v", e.Spec.BackendStoreDriver)
+	}
 }
 
 // isResponsibleFor picks a running node that has e.Status.CurrentImage deployed.

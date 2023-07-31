@@ -3014,6 +3014,11 @@ func (s *DataStore) ListInstanceManagersByNode(node string, imType longhorn.Inst
 	return s.ListInstanceManagersBySelector(node, "", imType)
 }
 
+// ListInstanceManagersByNodeAndInstanceManagerImage returns ListInstanceManagersBySelector
+func (s *DataStore) ListInstanceManagersByNodeAndInstanceManagerImage(node, instanceManagerImage string, imType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+	return s.ListInstanceManagersBySelector(node, instanceManagerImage, imType)
+}
+
 // ListInstanceManagers gets a list of InstanceManagers for the given namespace.
 // Returns a new InstanceManager object
 func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager, error) {
