@@ -318,6 +318,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.Image {
 		if err := ec.Upgrade(engine, log); err != nil {
+			if strings.Contains(err.Error(), engineapi.ErrInstanceMapNotUpdated) {
+				log.Infof("Engine instance map is not updated, will retry later")
+				return nil
+			}
 			// Engine live upgrade failure shouldn't block the following engine state update.
 			log.WithError(err).Error("Failed to run engine live upgrade")
 			// Sync replica address map as usual when the upgrade fails.
@@ -1963,12 +1967,44 @@ func shouldUpgrade(e *longhorn.Engine, engineClientProxy engineapi.EngineClientP
 	return version.ClientVersion.GitCommit != version.ServerVersion.GitCommit, nil
 }
 
+func (ec *EngineController) isInstanceMapUpdated(e *longhorn.Engine, instanceManagerImage string) (bool, error) {
+	im, err := ec.getInstanceManager(e)
+	if err != nil {
+		return false, err
+	}
+	/*
+		ims, err := ec.ds.ListInstanceManagersByNodeAndInstanceManagerImage(ec.controllerID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
+		if err != nil {
+			return false, err
+		}
+		if len(ims) == 0 {
+			return false, fmt.Errorf("cannot find instance manager %v", instanceManagerImage)
+		}
+
+		var im *longhorn.InstanceManager
+		for _, i := range ims {
+			im = i
+		}
+	*/
+	instances := types.ConsolidateInstances(im.Status.InstanceEngines)
+	if _, ok := instances[e.Name]; !ok {
+		return false, fmt.Errorf("instance manager %v instance map is not updated yet", im.Name)
+	}
+
+	return true, nil
+}
+
 func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
 	}()
 
 	defaultInstanceManagerImage, err := ec.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
+	im, err := ec.getInstanceManager(e)
 	if err != nil {
 		return err
 	}
@@ -1990,6 +2026,13 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 		}
 	}
 
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		updated, err := ec.isInstanceMapUpdated(e, defaultInstanceManagerImage)
+		if !updated {
+			return err
+		}
+	}
+
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 
 	e.Status.CurrentImage = e.Spec.Image
@@ -2000,7 +2043,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.RebuildStatus = nil
 
 	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		e.Status.InstanceManagerName = defaultInstanceManagerImage
+		e.Status.InstanceManagerName = im.Name
 	}
 
 	return nil
@@ -2139,6 +2182,49 @@ func (ec *EngineController) getInstanceManager(e *longhorn.Engine) (*longhorn.In
 	return nil, fmt.Errorf("cannot find instance manager for engine %v", e.Name)
 }
 
+func (ec *EngineController) isEngineExisting(backendStoreDriver longhorn.BackendStoreDriverType, engineName string, im *longhorn.InstanceManager) (bool, error) {
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return false, err
+	}
+	defer c.Close()
+
+	_, err = c.InstanceGet(backendStoreDriver, engineName, string(longhorn.InstanceManagerTypeEngine))
+	if err != nil {
+		if strings.Contains(err.Error(), "NotFound") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (ec *EngineController) isV2EngineUpgraded(e *longhorn.Engine) (bool, error) {
+	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	if err != nil {
+		return false, err
+	}
+	oldEngineExists, err := ec.isEngineExisting(e.Spec.BackendStoreDriver, e.Name, im)
+	if err != nil {
+		return false, err
+	}
+
+	im, err = ec.getInstanceManager(e)
+	if err != nil {
+		return false, err
+	}
+	newEngineExists, err := ec.isEngineExisting(e.Spec.BackendStoreDriver, e.Name, im)
+	if err != nil {
+		return false, err
+	}
+
+	if !oldEngineExists && newEngineExists {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
@@ -2147,19 +2233,46 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 
 	switch e.Spec.BackendStoreDriver {
 	case longhorn.BackendStoreDriverTypeV1:
+		log.Info("Starting upgrade v1 engine instance")
 		return ec.upgradeV1EngineInstance(e, frontend, log)
 	case longhorn.BackendStoreDriverTypeV2:
-		log.Info("Starting upgrade engine instance")
-		err := ec.startUpgradeV2EngineInstance(e)
+		upgraded, err := ec.isV2EngineUpgraded(e)
 		if err != nil {
+			log.WithError(err).Error("Failed to check if v2 engine is already upgraded")
 			return err
 		}
+		if upgraded {
+			log.Info("v2 engine is already upgraded")
+			return nil
+		}
+		log.Info("Starting upgrade v2 engine instance")
+		err = ec.startUpgradeV2EngineInstance(e)
+		if err != nil {
+			log.WithError(err).Error("Failed to start upgrade v2 engine instance")
+			return err
+		}
+
+		//time.Sleep(20 * time.Second)
+
+		log.Info("Finishing upgrade engine instance")
+		err = ec.finishUpgradeV2EngineInstance(e)
+		if err != nil {
+			log.WithError(err).Error("Failed to finish upgrade v2 engine instance")
+			return err
+		}
+
 		err = ec.upgradeV2EngineInstance(e, frontend)
 		if err != nil {
+			log.WithError(err).Error("Failed to upgrade v2 engine instance")
 			return err
 		}
-		log.Info("Finishing upgrade engine instance")
-		return ec.finishUpgradeV2EngineInstance(e)
+
+		/*
+			time.Sleep(10 * time.Second)
+			log.Info("Finishing upgrade engine instance")
+			return ec.finishUpgradeV2EngineInstance(e)
+		*/
+		return nil
 	default:
 		return fmt.Errorf("unknown backend store driver %v", e.Spec.BackendStoreDriver)
 	}

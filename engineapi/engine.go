@@ -23,7 +23,8 @@ const (
 	ProcessStateComplete   = "complete"
 	ProcessStateError      = "error"
 
-	ErrNotImplement = "not implemented"
+	ErrNotImplement          = "not implemented"
+	ErrInstanceMapNotUpdated = "instance map is not updated yet"
 )
 
 type EngineCollection struct{}
