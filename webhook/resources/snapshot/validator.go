@@ -4,11 +4,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/pkg/errors"
-
-	"k8s.io/apimachinery/pkg/runtime"
-
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -51,15 +48,6 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 
 	if snapshot.Spec.Volume == "" {
 		return werror.NewInvalidError("spec.volume is required", "spec.volume")
-	}
-	volume, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get volume %v", snapshot.Spec.Volume)
-		return werror.NewInvalidError(err.Error(), "")
-	}
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		err := errors.Errorf("creating snapshot for volume %v with backend store driver %v is not supported", volume.Name, volume.Spec.BackendStoreDriver)
-		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
