@@ -236,6 +236,7 @@ func newInstanceManager(
 	currentOwnerID, nodeID, ip string,
 	instanceEngines map[string]longhorn.InstanceProcess,
 	instanceReplicas map[string]longhorn.InstanceProcess,
+	backendStoreDriver longhorn.BackendStoreDriverType,
 	isDeleting bool) *longhorn.InstanceManager {
 
 	im := &longhorn.InstanceManager{
@@ -243,7 +244,7 @@ func newInstanceManager(
 			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
-			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne),
+			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver),
 		},
 		Spec: longhorn.InstanceManagerSpec{
 			Image:  TestInstanceManagerImage,
