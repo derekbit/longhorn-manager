@@ -540,6 +540,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			TestOwnerID1, TestNode1, TestIP1,
 			map[string]longhorn.InstanceProcess{},
 			map[string]longhorn.InstanceProcess{},
+			"",
 			false,
 		),
 	}
@@ -617,6 +618,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 		map[string]longhorn.InstanceProcess{},
+		"",
 		false,
 	)
 	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
@@ -627,6 +629,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			TestOwnerID1, TestNode1, TestIP1,
 			map[string]longhorn.InstanceProcess{},
 			map[string]longhorn.InstanceProcess{},
+			"",
 			false,
 		),
 		"extra-instance-manger-name": extraInstanceManager,
@@ -638,6 +641,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			TestOwnerID1, TestNode1, TestIP1,
 			map[string]longhorn.InstanceProcess{},
 			map[string]longhorn.InstanceProcess{},
+			"",
 			false,
 		),
 		"extra-instance-manger-name": extraInstanceManager,
@@ -695,7 +699,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					PortStart: TestPort1,
 				},
 			},
-		}, false)
+		}, "", false)
 	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
 
 	tc.instanceManagers = map[string]*longhorn.InstanceManager{
@@ -704,6 +708,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			TestOwnerID1, TestNode1, TestIP1,
 			map[string]longhorn.InstanceProcess{},
 			map[string]longhorn.InstanceProcess{},
+			"",
 			false,
 		),
 	}
@@ -714,6 +719,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			TestOwnerID1, TestNode1, TestIP1,
 			map[string]longhorn.InstanceProcess{},
 			map[string]longhorn.InstanceProcess{},
+			"",
 			false,
 		),
 	}
