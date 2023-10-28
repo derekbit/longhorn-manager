@@ -490,11 +490,12 @@ type RebuildStatus struct {
 
 type InstanceManager struct {
 	client.Resource
-	CurrentState longhorn.InstanceManagerState `json:"currentState"`
-	Image        string                        `json:"image"`
-	Name         string                        `json:"name"`
-	NodeID       string                        `json:"nodeID"`
-	ManagerType  string                        `json:"managerType"`
+	CurrentState       longhorn.InstanceManagerState `json:"currentState"`
+	Image              string                        `json:"image"`
+	Name               string                        `json:"name"`
+	NodeID             string                        `json:"nodeID"`
+	ManagerType        string                        `json:"managerType"`
+	BackendStoreDriver string                        `json:"backendStoreDriver"`
 
 	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
 	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
@@ -2047,14 +2048,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:     im.Status.CurrentState,
-		Image:            im.Spec.Image,
-		Name:             im.Name,
-		NodeID:           im.Spec.NodeID,
-		ManagerType:      string(im.Spec.Type),
-		InstanceEngines:  im.Status.InstanceEngines,
-		InstanceReplicas: im.Status.InstanceReplicas,
-		Instances:        im.Status.Instances,
+		CurrentState:       im.Status.CurrentState,
+		Image:              im.Spec.Image,
+		Name:               im.Name,
+		NodeID:             im.Spec.NodeID,
+		ManagerType:        string(im.Spec.Type),
+		BackendStoreDriver: string(im.Spec.BackendStoreDriver),
+		InstanceEngines:    im.Status.InstanceEngines,
+		InstanceReplicas:   im.Status.InstanceReplicas,
+		Instances:          im.Status.Instances,
 	}
 }
 
