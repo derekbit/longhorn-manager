@@ -262,6 +262,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestInstanceManagerName, tc.currentState,
 			tc.currentOwnerID, tc.nodeID, currentIP,
 			tc.currentEngines, tc.currentReplicas,
+			"",
 			false,
 		)
 		err = imIndexer.Add(im)
