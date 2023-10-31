@@ -326,7 +326,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
 		}
 		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify toleration setting before all volumes are detached")}
+			return &types.ErrorInvalidState{Reason: "cannot modify toleration setting before all volumes are detached"}
 		}
 	case types.SettingNameSystemManagedComponentsNodeSelector:
 		volumesDetached, err := s.AreAllVolumesDetachedState()
@@ -334,7 +334,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying node selector for managed components setting")
 		}
 		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify node selector for managed components setting before all volumes are detached")}
+			return &types.ErrorInvalidState{Reason: "cannot modify node selector for managed components setting before all volumes are detached"}
 		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
@@ -347,7 +347,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
 		}
 		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify priority class setting before all volumes are detached")}
+			return &types.ErrorInvalidState{Reason: "cannot modify priority class setting before all volumes are detached"}
 		}
 	case types.SettingNameGuaranteedInstanceManagerCPU:
 		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
