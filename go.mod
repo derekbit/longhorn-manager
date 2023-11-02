@@ -47,7 +47,7 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20231025000449-5316e8b5320d
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
-	github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8
+	github.com/longhorn/go-spdk-helper v0.0.0-20231101110227-d768622ad9d1
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231005131108-b629923cd5b4
@@ -60,7 +60,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli v1.22.13
-	golang.org/x/mod v0.10.0
+	golang.org/x/mod v0.11.0
 	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
@@ -83,7 +83,7 @@ require (
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
-	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
+	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691 // indirect
 	golang.org/x/tools v0.8.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230525234035-dd9d682886f9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230525234030-28d5490b6b19 // indirect
@@ -104,7 +104,7 @@ require (
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
@@ -147,7 +147,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
@@ -202,3 +202,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0 => github.com/derekbit/longhorn-instance-manager v0.0.0-20231102050731-fa9bc02bbcae

@@ -135,3 +135,48 @@ func IsSPDKTgtReady(timeout time.Duration) bool {
 	}
 	return false
 }
+
+func SplitHostPort(listen string) (string, int, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", -1, err
+	}
+	intPort, err := strconv.Atoi(port)
+	if err != nil {
+		return "", -1, err
+	}
+
+	return host, intPort, nil
+}
+
+func GetServiceAddress(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func GetProcessManagerServicePort(port int) int {
+	return port
+}
+
+func GetProxyServicePort(port int) int {
+	return port + 1
+}
+
+func GetDiskServicePort(port int) int {
+	return port + 2
+}
+
+func GetInstanceServicePort(port int) int {
+	return port + 3
+}
+
+func GetSpdkServicePort(port int) int {
+	return port + 4
+}
+
+func GetSpdkServiceAddressFromEngineAddress(engineAddress string, spdkServicePort int) (string, error) {
+	host, _, err := SplitHostPort(engineAddress)
+	if err != nil {
+		return "", err
+	}
+	return GetServiceAddress(host, spdkServicePort), nil
+}
