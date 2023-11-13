@@ -118,6 +118,17 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
+		if schedulingReplica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+			disabled, err := rcs.ds.IsV2VolumeDisabledForNode(node.Name)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to check if node %v is enabled for v2 volume", node.Name)
+				return nil, util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed)
+			}
+			if disabled {
+				continue
+			}
+		}
+
 		if isReady, _ := rcs.ds.CheckEngineImageReadiness(schedulingReplica.Spec.Image, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		}

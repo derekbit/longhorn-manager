@@ -4717,3 +4717,17 @@ func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAtta
 func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
+
+// IsV2VolumeDisabledForNode returns true if the node disables v2 volume
+func (s *DataStore) IsV2VolumeDisabledForNode(nodeName string) (bool, error) {
+	kubeNode, err := s.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	val, ok := kubeNode.Labels[types.NodeDisableV2VolumeLabelKey]
+	if ok && val == types.NodeDisableV2VolumeLabelKeyTrue {
+		return true, nil
+	}
+
+	return false, nil
+}

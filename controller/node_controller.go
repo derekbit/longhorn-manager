@@ -1029,22 +1029,40 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					return fmt.Errorf("instance manager %v NodeID %v is not consistent with the label %v=%v",
 						im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
 				}
+
+				runningOrStartingInstanceFound := false
+				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
+					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
+						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
+							runningOrStartingInstanceFound = true
+							break
+						}
+					}
+				}
+
 				cleanupRequired := true
 
 				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.BackendStoreDriver == backendStoreDriver {
 					// Create default instance manager if needed.
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
-				} else {
-					// Clean up old instance managers if there is no running instance.
-					if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
-						for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
-							if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
-								cleanupRequired = false
-								break
-							}
+
+					if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+						disabled, err := nc.ds.IsV2VolumeDisabledForNode(node.Name)
+						if err != nil {
+							return errors.Wrapf(err, "failed to check if node %v is enabled for v2 volume", node.Name)
+						}
+						if disabled && !runningOrStartingInstanceFound {
+							log.Infof("Cleaning up instance manager %v since v2 volume is disabled for node %v", im.Name, node.Name)
+							cleanupRequired = true
 						}
 					}
+				} else {
+					// Clean up old instance managers if there is no running instance.
+					if runningOrStartingInstanceFound {
+						cleanupRequired = false
+					}
+
 					if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
@@ -1062,6 +1080,17 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				if err != nil {
 					return err
 				}
+
+				if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+					disabled, err := nc.ds.IsV2VolumeDisabledForNode(node.Name)
+					if err != nil {
+						return errors.Wrapf(err, "failed to check if node %v is enabled for v2 volume", node.Name)
+					}
+					if disabled {
+						continue
+					}
+				}
+
 				log.Infof("Creating default instance manager %v, image: %v, backendStoreDriver: %v", imName, defaultInstanceManagerImage, backendStoreDriver)
 				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, backendStoreDriver); err != nil {
 					return err
