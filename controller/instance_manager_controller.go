@@ -470,6 +470,17 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	if im.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		pods, err := imc.ds.ListInstanceManagerPodsBy(im.Spec.NodeID, "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
+		if err != nil {
+			return err
+		}
+		if len(pods) > 0 {
+			imc.logger.Infof("%v instance manager pod(s) for v2 volume is already running", len(pods))
+			return nil
+		}
+	}
+
 	if err := imc.createInstanceManagerPod(im); err != nil {
 		return err
 	}
