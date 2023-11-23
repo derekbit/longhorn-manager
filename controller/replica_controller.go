@@ -416,7 +416,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.Image)
+	cliAPIVersion, err := rc.ds.GetImageCLIAPIVersion(r.Spec.Image, r.Spec.BackendStoreDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +439,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		DataLocality:        v.Spec.DataLocality,
 		ExposeRequired:      exposeRequired,
 		ImIP:                im.Status.IP,
-		EngineCLIAPIVersion: engineCLIAPIVersion,
+		EngineCLIAPIVersion: cliAPIVersion,
 	})
 }
 
@@ -565,8 +565,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
-	if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
-		return err
+	if r.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
+			return err
+		}
 	}
 
 	var im *longhorn.InstanceManager
