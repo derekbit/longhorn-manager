@@ -1153,20 +1153,6 @@ func (c *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (l
 	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
 
-func (c *VolumeController) updateReplicaLogRequested(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
-	needReplicaLogs := false
-	for _, r := range rs {
-		if r.Spec.LogRequested && r.Status.LogFetched {
-			r.Spec.LogRequested = false
-		}
-		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
-		rs[r.Name] = r
-	}
-	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
-		e.Spec.LogRequested = false
-	}
-}
-
 func (c *VolumeController) isUnmapMarkSnapChainRemovedEnabled(v *longhorn.Volume) (bool, error) {
 	if v.Spec.UnmapMarkSnapChainRemoved != longhorn.UnmapMarkSnapChainRemovedIgnored {
 		return v.Spec.UnmapMarkSnapChainRemoved == longhorn.UnmapMarkSnapChainRemovedEnabled, nil
@@ -2001,10 +1987,6 @@ func findValueWithBiggestLength(m map[string][]string) []string {
 
 func isDataLocalityBestEffort(v *longhorn.Volume) bool {
 	return v.Spec.DataLocality == longhorn.DataLocalityBestEffort
-}
-
-func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
-	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
 }
 
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
