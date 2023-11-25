@@ -21,6 +21,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -213,5 +214,163 @@ func (uc *UpgradeController) reconcile(upgradeName string) (err error) {
 		}
 	}()
 
+	switch upgrade.Status.State {
+	case longhorn.UpgradeStateUndefined:
+		upgrade.Status.State = longhorn.UpgradeStateUpgrading
+		return nil
+	case longhorn.UpgradeStateUpgrading:
+		if err := uc.upgrade(upgrade); err != nil {
+			upgrade.Status.State = longhorn.UpgradeStateError
+		}
+		return nil
+	case longhorn.UpgradeStateCompleted:
+		fallthrough
+	case longhorn.UpgradeStateError:
+		return nil
+	default:
+		return fmt.Errorf("unknown upgrade state: %v", upgrade.Status.State)
+	}
+}
+
+func (uc *UpgradeController) upgrade(upgrade *longhorn.Upgrade) error {
+	switch upgrade.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV2:
+		return uc.upgradeInstanceManagers(upgrade)
+	default:
+		return fmt.Errorf("unsupported backend store driver: %v", upgrade.Spec.BackendStoreDriver)
+	}
+}
+
+func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) error {
+	logrus.Infof("Debug ===> UpgradingNode=%v, NodeUpgradeState=%v", upgrade.Status.UpgradingNode, upgrade.Status.NodeUpgradeState)
+
+	if upgrade.Status.UpgradingNode == "" {
+		node, err := uc.pickNodeForUpgrade()
+		if err != nil {
+			return err
+		}
+		existingNode := node.DeepCopy()
+
+		upgrade.Status.UpgradingNode = node.Name
+		upgrade.Status.NodeUpgradeState = longhorn.NodeUpgradeStatePending
+
+		defer func() {
+			if !reflect.DeepEqual(node.Spec, existingNode.Spec) {
+				_, err := uc.ds.UpdateNode(node)
+				if err != nil {
+					uc.logger.WithError(err).Errorf("Failed to update node %v", node.Name)
+				}
+			}
+		}()
+		node.Spec.AllowScheduling = false
+		return nil
+	}
+
+	_, err := uc.ds.GetNodeRO(upgrade.Status.UpgradingNode)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get node %v", upgrade.Status.UpgradingNode)
+	}
+
+	if len(upgrade.Status.UpgradingVolumes) == 0 {
+		// Find the associated volumes and add to upgrade.Status.UpgradingVolumes
+		// Update the volume.spec.image to default one
+		volumes := map[string]*longhorn.UpgradeVolumeInfo{}
+
+		engines, err := uc.ds.ListEnginesByNodeRO(upgrade.Status.UpgradingNode)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list engines for node %v", upgrade.Status.UpgradingNode)
+		}
+		for _, engine := range engines {
+			volumes[engine.Spec.VolumeName] = &longhorn.UpgradeVolumeInfo{
+				NodeID: engine.Status.OwnerID,
+			}
+		}
+
+		replicas, err := uc.ds.ListReplicasByNodeRO(upgrade.Status.UpgradingNode)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list volumes for node %v", upgrade.Status.UpgradingNode)
+		}
+		for _, replica := range replicas {
+			volumes[replica.Spec.VolumeName] = &longhorn.UpgradeVolumeInfo{
+				NodeID: replica.Status.OwnerID,
+			}
+		}
+
+		uc.logger.Infof("Updating upgrade %v with volumes %v", upgrade.Name, volumes)
+		upgrade.Status.UpgradingVolumes = volumes
+		upgrade.Status.NodeUpgradeState = longhorn.NodeUpgradeStateSuspending
+		return nil
+	}
+
+	defaultInstanceManagerImage, err := uc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
+	allVolumesSuspended := true
+	for name := range upgrade.Status.UpgradingVolumes {
+		volume, err := uc.ds.GetVolume(name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get volume %v", name)
+		}
+
+		if volume.Spec.Image != defaultInstanceManagerImage {
+			volume.Spec.SuspendRequested = true
+			if volume.Status.OwnerID == upgrade.Status.UpgradingNode {
+				volume.Spec.Image = defaultInstanceManagerImage
+			}
+			_, err := uc.ds.UpdateVolume(volume)
+			if err != nil {
+				uc.logger.WithError(err).Errorf("Failed to update volume %v", volume.Name)
+			}
+		} else {
+			engines, err := uc.ds.ListVolumeEnginesRO(name)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get volume %v", name)
+			}
+
+			if len(engines) != 1 {
+				return fmt.Errorf("failed to get engine for volume %v", name)
+			}
+
+			var engine *longhorn.Engine
+			for _, e := range engines {
+				engine = e
+			}
+
+			if !engine.Status.Suspended {
+				allVolumesSuspended = false
+			}
+		}
+	}
+
+	if allVolumesSuspended {
+		uc.logger.Infof("All volumes are suspended, updating upgrade %v to NodeUpgradeStateUpgrading", upgrade.Name)
+	}
+
 	return nil
+}
+
+func (uc *UpgradeController) pickNodeForUpgrade() (*longhorn.Node, error) {
+	nodes, err := uc.ds.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		if !node.Spec.AllowScheduling {
+			return node.DeepCopy(), nil
+		}
+
+		ims, err := uc.ds.ListInstanceManagersBySelectorRO(node.Name, "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
+		if err != nil {
+			return nil, err
+		}
+		logrus.Infof("Debug ===> len(ims)=%v", len(ims))
+		if len(ims) == 2 {
+			return node.DeepCopy(), nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find node for upgrade")
 }

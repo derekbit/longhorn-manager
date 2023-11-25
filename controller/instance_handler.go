@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
@@ -311,6 +312,20 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		// createInstance() may be called multiple times.
 		if status.CurrentState != longhorn.InstanceStateStopped {
 			break
+		}
+
+		if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
+			obj.(schema.ObjectKind).GroupVersionKind().Kind == types.LonghornKindReplica &&
+			spec.Image != status.CurrentImage &&
+			status.CurrentState == longhorn.InstanceStateRunning {
+			_, err := h.ds.GetInstanceManagerRO(status.InstanceManagerName)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return err
+				}
+				logrus.Infof("Debug --> set replica current image to %v", spec.Image)
+				status.CurrentImage = spec.Image
+			}
 		}
 
 		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)

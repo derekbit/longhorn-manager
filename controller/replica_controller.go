@@ -346,6 +346,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
+	// if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	if replica.Spec.Image != replica.Status.CurrentImage {
+
 	// Update `Replica.Status.EvictionRequested` field
 	rc.UpdateReplicaEvictionStatus(replica)
 

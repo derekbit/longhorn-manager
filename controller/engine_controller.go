@@ -1954,11 +1954,7 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 	}
 }
 
-func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
-	}()
-
+func (ec *EngineController) UpgradeV1Engine(e *longhorn.Engine, log *logrus.Entry) error {
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
 	if err != nil {
 		return err
@@ -1978,6 +1974,43 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			return err
 		}
 	}
+	return nil
+}
+
+func (ec *EngineController) UpgradeV2Engine(e *longhorn.Engine, log *logrus.Entry) error {
+	logrus.Infof("Debug =====> UpgradeV2Engine")
+	if e.Status.Suspended {
+		return nil
+
+	}
+
+	err := ec.SuspendEngineInstance(e, log)
+	if err != nil {
+		return err
+	}
+
+	e.Status.Suspended = true
+	return nil
+}
+
+func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
+	}()
+
+	switch e.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		err = ec.UpgradeV1Engine(e, log)
+	case longhorn.BackendStoreDriverTypeV2:
+		err = ec.UpgradeV2Engine(e, log)
+	default:
+		err = fmt.Errorf("unknown backend store driver %v", e.Spec.BackendStoreDriver)
+	}
+
+	if err != nil {
+		return err
+	}
+
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 	e.Status.CurrentImage = e.Spec.Image
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
@@ -1985,6 +2018,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.ReplicaModeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
+
 	return nil
 }
 
@@ -2046,6 +2080,28 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	}
 
 	e.Status.Port = int(engineInstance.Status.PortStart)
+	return nil
+}
+
+func (ec *EngineController) SuspendEngineInstance(e *longhorn.Engine, log *logrus.Entry) error {
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	logrus.Infof("Debug =====> SuspendEngineInstance")
+	err = c.EngineInstanceSuspend(&engineapi.EngineInstanceSuspendRequest{
+		Engine: e,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

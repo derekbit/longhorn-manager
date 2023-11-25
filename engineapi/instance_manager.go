@@ -655,7 +655,7 @@ func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgrade
 	engine := req.Engine
 	switch engine.Spec.BackendStoreDriver {
 	case longhorn.BackendStoreDriverTypeV1:
-		return c.engineInstanceUpgrade(req)
+		return c.v1EngineInstanceUpgrade(req)
 	case longhorn.BackendStoreDriverTypeV2:
 		/* TODO: Handle SPDK engine upgrade */
 		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
@@ -664,7 +664,7 @@ func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 }
 
-func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) v1EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -720,6 +720,28 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		return nil, err
 	}
 	return parseInstance(instance), nil
+}
+
+type EngineInstanceSuspendRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceSuspend suspends the engine instance
+func (c *InstanceManagerClient) EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	engine := req.Engine
+	switch engine.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		/* TODO: Handle SPDK engine suspend */
+		return fmt.Errorf("v1 engine suspend is not supported yet")
+	case longhorn.BackendStoreDriverTypeV2:
+		return c.v2EngineInstanceSuspend(req)
+	default:
+		return fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
+	}
+}
+
+func (c *InstanceManagerClient) v2EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	return nil
 }
 
 // VersionGet returns the version of the instance manager

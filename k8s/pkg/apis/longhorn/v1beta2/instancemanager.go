@@ -110,6 +110,9 @@ type InstanceStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// +optional
+	// +nullable
+	Suspended bool `json:"suspended"`
 }
 
 type InstanceProcessStatus struct {

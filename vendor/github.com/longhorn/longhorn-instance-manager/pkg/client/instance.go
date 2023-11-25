@@ -99,6 +99,26 @@ type InstanceCreateRequest struct {
 	Replica ReplicaCreateRequest
 }
 
+type InstanceSuspendRequest struct {
+	BackendStoreDriver string
+	Name               string
+	InstanceType       string
+	VolumeName         string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
+}
+
+type InstanceResumeRequest struct {
+	BackendStoreDriver string
+	Name               string
+	InstanceType       string
+	VolumeName         string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
+}
+
 func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api.Instance, error) {
 	if req.Name == "" || req.InstanceType == "" {
 		return nil, fmt.Errorf("failed to create instance: missing required parameter")
@@ -315,4 +335,12 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 		InstanceManagerProxyAPIVersion:    int(resp.InstanceManagerProxyAPIVersion),
 		InstanceManagerProxyAPIMinVersion: int(resp.InstanceManagerProxyAPIMinVersion),
 	}, nil
+}
+
+func (c *InstanceServiceClient) InstanceSuspend(req *InstanceSuspendRequest) error {
+	return nil
+}
+
+func (c *InstanceServiceClient) InstanceResume(req *InstanceResumeRequest) error {
+	return nil
 }
