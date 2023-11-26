@@ -1351,6 +1351,8 @@ spec:
                 type: boolean
               salvageRequested:
                 type: boolean
+              suspendRequested:
+                type: boolean
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
               upgradedReplicaAddressMap:

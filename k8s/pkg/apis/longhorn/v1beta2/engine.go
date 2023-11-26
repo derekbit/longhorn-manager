@@ -138,6 +138,8 @@ type EngineSpec struct {
 	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
 	// +optional
 	Active bool `json:"active"`
+	// +optional
+	SuspendRequested bool `json:"suspendRequested"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine
@@ -184,6 +186,8 @@ type EngineStatus struct {
 	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
 	// +optional
 	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
+	// +optional
+	Suspended bool `json:"suspended"`
 }
 
 // +genclient

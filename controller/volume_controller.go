@@ -2860,29 +2860,27 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			return err
 		}
 
+		// Handle engine
+		e.Spec.SuspendRequested = v.Spec.SuspendRequested
+
 		if e.Spec.Image != v.Spec.Image {
-			logrus.Infof("Debug ======> e.Spec.UpgradedReplicaAddressMap=%+v", e.Spec.UpgradedReplicaAddressMap)
-			e.Spec.UpgradedReplicaAddressMap = e.Spec.ReplicaAddressMap
+			//logrus.Infof("Debug ======> e.Spec.UpgradedReplicaAddressMap=%+v", e.Spec.UpgradedReplicaAddressMap)
+			//e.Spec.UpgradedReplicaAddressMap = e.Spec.ReplicaAddressMap
+			log.Infof("Debug[v2] updating engine image to %v and suspendedRequested to true", v.Spec.Image)
 			e.Spec.Image = v.Spec.Image
 		}
 
+		// Handle replicas on the upgrading node
 		for _, r := range rs {
 			if r.Status.OwnerID == upgrade.Status.UpgradingNode {
 				if r.Spec.Image != defaultInstanceManagerImage {
-					logrus.Infof("Debug ======> set replica image to %v", defaultInstanceManagerImage)
+					log.Infof("Debug[v2] updating replica image to %v", defaultInstanceManagerImage)
 					r.Spec.Image = defaultInstanceManagerImage
 				}
 			}
 		}
 
-		if e.Status.CurrentImage != v.Spec.Image {
-			return nil
-		}
-
-		if e.Status.CurrentState != longhorn.InstanceStateRunning {
-			return nil
-		}
-
+		// Check if engine and replicas are ready
 		for _, r := range rs {
 			if r.Status.OwnerID == upgrade.Status.UpgradingNode {
 				if r.Status.CurrentImage != r.Spec.Image {
@@ -2891,7 +2889,14 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			}
 		}
 
-		logrus.Infof("Debug =========> v.Status.CurrentImage to %v", v.Status.CurrentImage)
+		if e.Status.CurrentImage != v.Spec.Image {
+			return nil
+		}
+
+		//if e.Status.CurrentState != longhorn.InstanceStateRunning {
+		//	return nil
+		//}
+
 		v.Status.CurrentImage = v.Spec.Image
 	} else {
 		if err := c.checkOldAndNewEngineImages(v, volumeAndReplicaNodes...); err != nil {
