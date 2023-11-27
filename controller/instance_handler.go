@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +39,7 @@ type InstanceManagerHandler interface {
 	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
 	LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error)
+	SuspendInstance(obj interface{}) error
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -171,6 +173,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.Image
 		}
+	case longhorn.InstanceStateSuspended:
+		status.CurrentState = longhorn.InstanceStateSuspended
+
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -251,7 +256,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return err
 			}
 			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
+				im, err = h.ds.GetInstanceManagerByInstanceRO(obj, "")
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 				}
@@ -313,6 +318,20 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
+		if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
+			obj.(schema.ObjectKind).GroupVersionKind().Kind == types.LonghornKindReplica &&
+			spec.Image != status.CurrentImage &&
+			status.CurrentState == longhorn.InstanceStateRunning {
+			_, err := h.ds.GetInstanceManagerRO(status.InstanceManagerName)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return err
+				}
+				logrus.Infof("Debug --> set replica current image to %v", spec.Image)
+				status.CurrentImage = spec.Image
+			}
+		}
+
 		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
 		if err != nil {
 			return err
@@ -350,6 +369,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 		}
 		status.Started = false
+	case longhorn.InstanceStateSuspended:
+		err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+		if err != nil {
+			return err
+		}
+		logrus.Infof("Debug ----> Set status.CurrentState suspended")
+		status.CurrentState = longhorn.InstanceStateSuspended
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -467,6 +493,26 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 		return err
 	}
 	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
+
+	return nil
+}
+
+func (h *InstanceHandler) suspendInstance(instanceName string, backendStoreDriver longhorn.BackendStoreDriverType, obj runtime.Object) error {
+	logrus.Infof("Suspending instance %v", instanceName)
+
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return fmt.Errorf("suspending instance is not supported for backend store driver %v", backendStoreDriver)
+	}
+
+	if _, err := h.instanceManagerHandler.GetInstance(obj); err != nil {
+		return nil
+	}
+
+	if err := h.instanceManagerHandler.SuspendInstance(obj); err != nil {
+		return err
+	}
+
+	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonSuspend, "Suspends %v", instanceName)
 
 	return nil
 }

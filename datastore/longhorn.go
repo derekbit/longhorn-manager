@@ -3123,14 +3123,14 @@ func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imTyp
 // GetInstanceManagerByInstance returns an InstanceManager for a given object,
 // or an error if more than one InstanceManager is found.
 func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
-	im, err := s.GetInstanceManagerByInstanceRO(obj)
+	im, err := s.GetInstanceManagerByInstanceRO(obj, "")
 	if err != nil {
 		return nil, err
 	}
 	return im.DeepCopy(), nil
 }
 
-func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}, image string) (*longhorn.InstanceManager, error) {
 	var (
 		name               string // name of the object
 		nodeID             string
@@ -3153,9 +3153,12 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", name)
 	}
 
-	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
-	if err != nil {
-		return nil, err
+	var err error
+	if image == "" {
+		image, err = s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)

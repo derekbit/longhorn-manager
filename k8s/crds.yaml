@@ -1551,6 +1551,9 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              suspended:
+                nullable: true
+                type: boolean
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
             type: object
@@ -2515,6 +2518,9 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              suspended:
+                nullable: true
+                type: boolean
             type: object
         type: object
     served: true
@@ -3258,6 +3264,16 @@ spec:
               upgradingNode:
                 description: The node ID where the upgrade is running.
                 type: string
+              upgradingVolumes:
+                additionalProperties:
+                  properties:
+                    nodeID:
+                      type: string
+                  required:
+                  - nodeID
+                  type: object
+                description: The volumes that are upgrading.
+                type: object
             type: object
         type: object
     served: true
@@ -3635,6 +3651,8 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              suspendRequested:
+                type: boolean
               unmapMarkSnapChainRemoved:
                 enum:
                 - ignored
@@ -3752,6 +3770,8 @@ spec:
                 type: string
               state:
                 type: string
+              suspended:
+                type: boolean
             type: object
         type: object
     served: true

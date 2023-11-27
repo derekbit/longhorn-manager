@@ -820,7 +820,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 
 func (imc *InstanceManagerController) getRunningReplicaInstanceManagerRO(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
 	if r.Status.InstanceManagerName == "" {
-		im, err = imc.ds.GetInstanceManagerByInstanceRO(r)
+		im, err = imc.ds.GetInstanceManagerByInstanceRO(r, "")
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return nil, err
 		}

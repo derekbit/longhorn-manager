@@ -346,6 +346,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
+	// if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	if replica.Spec.Image != replica.Status.CurrentImage {
+
 	// Update `Replica.Status.EvictionRequested` field
 	rc.UpdateReplicaEvictionStatus(replica)
 
@@ -401,7 +404,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		}
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj)
+	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj, "")
 	if err != nil {
 		return nil, err
 	}
@@ -633,6 +636,11 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	// TODO: implement this
+	return nil
+}
+
 func canDeleteInstance(r *longhorn.Replica) bool {
 	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 ||
 		(r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 && r.DeletionTimestamp != nil)
@@ -710,7 +718,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		err error
 	)
 	if r.Status.InstanceManagerName == "" {
-		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj)
+		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj, "")
 		if err != nil {
 			return nil, err
 		}

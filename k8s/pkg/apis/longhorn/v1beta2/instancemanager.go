@@ -54,12 +54,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateUnknown   = InstanceState("unknown")
+	InstanceStateSuspended = InstanceState("suspended")
 )
 
 type InstanceSpec struct {
@@ -110,6 +111,9 @@ type InstanceStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// +optional
+	// +nullable
+	Suspended bool `json:"suspended"`
 }
 
 type InstanceProcessStatus struct {

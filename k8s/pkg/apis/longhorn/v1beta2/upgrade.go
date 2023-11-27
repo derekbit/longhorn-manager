@@ -5,6 +5,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type UpgradeState string
 
 const (
+	UpgradeStateUndefined = ""
 	UpgradeStateUpgrading = "upgrading"
 	UpgradeStateError     = "error"
 	UpgradeStateCompleted = "completed"
@@ -13,14 +14,15 @@ const (
 type NodeUpgradeState string
 
 const (
-	NodeUpgradeStateUndefined      = ""
-	NodeUpgradeStatePending        = "pending"
-	NodeUpgradeStateSuspending     = "suspending"
-	NodeUpgradeStateSuspended      = "suspended"
-	NodeUpgradeStateReconstructing = "reconstructing"
-	NodeUpgradeStateResuming       = "resuming"
-	NodeUpgradeStateCompleted      = "completed"
+	NodeUpgradeStateUndefined = ""
+	NodeUpgradeStatePending   = "pending"
+	NodeUpgradeStateUpgrading = "upgrading"
+	NodeUpgradeStateCompleted = "completed"
 )
+
+type UpgradeVolumeInfo struct {
+	NodeID string `json:"nodeID"`
+}
 
 // UpgradeSpec defines the desired state of the upgrade
 type UpgradeSpec struct {
@@ -43,6 +45,9 @@ type UpgradeStatus struct {
 	// The state of the upgrade on the node.
 	// +optional
 	NodeUpgradeState NodeUpgradeState `json:"nodeUpgradeState"`
+	// The volumes that are upgrading.
+	// +optional
+	UpgradingVolumes map[string]*UpgradeVolumeInfo `json:"upgradingVolumes"`
 }
 
 // +genclient

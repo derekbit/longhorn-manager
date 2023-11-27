@@ -711,6 +711,8 @@ github.com/creack/pty v1.1.18/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20231127051004-bff2f855660a h1:aSG95s+i2Rd5TdAMyr7zY6GZ4PTCxrTFUtEAhBayKXw=
+github.com/derekbit/longhorn-instance-manager v0.0.0-20231127051004-bff2f855660a/go.mod h1:UEKMX5u3sHynT3KAddLUaxcrLABl8Y2H/NH8Oy4Kv3U=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/docker/distribution v2.8.2+incompatible h1:T3de5rq0dB1j30rp0sA2rER+m322EBzniBPB6ZIzuh8=
@@ -1039,8 +1041,6 @@ github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246 h1:Pry2QHJ
 github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246/go.mod h1:PCawMRVllTJnjbIYIC8axRfEI7aEhhjbsoBS/Y/EUYQ=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443 h1:4P/dmOAq8nMGg9vnXkT04NBdNidOCPXg2LM3J63ewn8=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443/go.mod h1:zcfS53mU3LkxWAWf2MkHsa75Q4t01GmiW++mfp1+78M=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240 h1:ODDgqV+etH3mOI+Ss9C2jb5wHqll7kyet//bjBYhvaI=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240/go.mod h1:UEKMX5u3sHynT3KAddLUaxcrLABl8Y2H/NH8Oy4Kv3U=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4 h1:jf2jLuUZS5l7TyI1cNRqm7e9X/lrwBNsI16Q7P/o7JE=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4/go.mod h1:A/Z/YpW//hdULf+ZxelXQi8VEfAIIDRvEFvmv0xHSU0=
 github.com/longhorn/longhorn-spdk-engine v0.0.0-20231005170812-e9b634e07e47 h1:hadV15fSF+akBFZ8dMQFscTsJUVpEC1t6Go3B28ZNYw=
