@@ -929,7 +929,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 					return err
 				}
 				continue
-			} else if r.Spec.Image != v.Spec.Image {
+			} else if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 && r.Spec.Image != v.Spec.Image {
 				// r.Spec.Active shouldn't be set for the leftover replicas, something must wrong
 				log.WithField("replica", r.Name).Warnf("Replica engine image %v is different from volume engine image %v, "+
 					"but replica spec.Active has been set", r.Spec.Image, v.Spec.Image)
@@ -1691,8 +1691,40 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 						r.Spec.DesireState = longhorn.InstanceStateRunning
 					}
 				} else {
-					if e.Status.CurrentState == longhorn.InstanceStateSuspended {
-						r.Spec.DesireState = longhorn.InstanceStateStopped
+					if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
+						e.Status.CurrentState == longhorn.InstanceStateSuspended {
+						var upgrade *longhorn.Upgrade
+						upgrades, err := c.ds.ListUpgradesRO()
+						if err != nil {
+							return err
+						}
+						for _, u := range upgrades {
+							upgrade = u
+							break
+						}
+
+						if r.Status.OwnerID == upgrade.Status.UpgradingNode {
+							im, err := c.ds.GetDefaultInstanceManagerByNodeRO(r.Status.OwnerID, r.Spec.BackendStoreDriver)
+							if err != nil {
+								return err
+							}
+
+							if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+								// New instance manager
+								logrus.Infof("Debug ---> mark replica running %v", r.Name)
+								r.Spec.DesireState = longhorn.InstanceStateRunning
+							} else {
+								// Old instance manager
+								logrus.Infof("Debug ---> mark replica stopped %v", r.Name)
+								r.Spec.DesireState = longhorn.InstanceStateStopped
+							}
+						}
+
+						// if e.Status.CurrentState == longhorn.InstanceStateSuspended &&
+						// 	r.Status.OwnerID == upgrade.Status.UpgradingNode {
+						// 	logrus.Infof("Debug ---> mark replica stopped %v", r.Name)
+						// 	r.Spec.DesireState = longhorn.InstanceStateStopped
+						// }
 					}
 				}
 			}
@@ -2945,6 +2977,23 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 
 		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			return nil
+		}
+
+		node, err := c.ds.GetNodeRO(c.controllerID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get node %v for volume %v upgrade", c.controllerID, v.Name)
+		}
+		if node.Status.DiskStatus == nil {
+			return nil
+		}
+
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			if diskStatus.Type != longhorn.DiskTypeBlock {
+				continue
+			}
+			if diskStatus.InstanceManagerName != im.Name {
+				return fmt.Errorf("failed to upgrade volume %v: disk %v is not managed by instance manager %v", v.Name, diskName, im.Name)
+			}
 		}
 
 		log.Infof("Updating current image to %v", v.Spec.Image)
