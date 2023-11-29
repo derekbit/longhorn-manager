@@ -80,10 +80,14 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
 			}
+			logrus.Infof("Debug --> A %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
+
 		status.CurrentImage = ""
 		status.IP = ""
 		status.StorageIP = ""
@@ -96,6 +100,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
 			}
+			logrus.Infof("Debug --> B %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 			status.CurrentImage = ""
 			status.IP = ""
@@ -111,9 +116,12 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
 			}
+			logrus.Infof("Debug --> C %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -175,9 +183,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 	case longhorn.InstanceStateSuspended:
 		status.CurrentState = longhorn.InstanceStateSuspended
-
 	case longhorn.InstanceStateStopping:
 		if status.Started {
+			logrus.Infof("Debug --> D %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopping
@@ -188,6 +196,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.Port = 0
 	case longhorn.InstanceStateStopped:
 		if status.Started {
+			logrus.Infof("Debug --> E %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
@@ -200,6 +209,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentState != longhorn.InstanceStateError {
 			logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
 		}
+		logrus.Infof("Debug --> F %v", instanceName)
 		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
@@ -376,6 +386,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 		logrus.Infof("Debug ----> Set status.CurrentState suspended")
 		status.CurrentState = longhorn.InstanceStateSuspended
+		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -386,6 +397,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
 		if spec.DesireState != longhorn.InstanceStateStopped {
 			if spec.NodeID != im.Spec.NodeID {
+				logrus.Infof("Debug --> G %v", instanceName)
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
 				status.StorageIP = ""

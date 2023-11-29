@@ -23,10 +23,6 @@ func isVolumeMigrating(v *longhorn.Volume) bool {
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		return v.Spec.SuspendRequested && v.Spec.SuspendRequested != v.Status.Suspended
-	}
-
 	return v.Status.CurrentImage != v.Spec.Image
 }
 

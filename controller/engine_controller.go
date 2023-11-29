@@ -362,6 +362,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 			}
 		}
 	} else if ec.isMonitoring(engine) {
+		logrus.Infof("Debug ==> isMonitoring(engine)=%v %v", engine.Name, engine.Status.CurrentState)
 		// engine is not running
 		ec.resetAndStopMonitoring(engine)
 	}
@@ -820,9 +821,11 @@ func (m *EngineMonitor) Run() {
 		select {
 		case <-ticker.C:
 			if needStop := m.sync(); needStop {
+				logrus.Infof("Stopping monitoring engine %v A", m.Name)
 				return
 			}
 		case <-m.stopCh:
+			logrus.Infof("Stopping monitoring engine %v B", m.Name)
 			return
 		}
 	}

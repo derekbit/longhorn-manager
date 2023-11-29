@@ -1668,12 +1668,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		return nil
 	}
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		if v.Spec.SuspendRequested {
-			log.Info("Waiting for volume to be unsuspended")
-			return nil
-		}
-	}
+	// if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	if v.Spec.SuspendRequested && v.Status.Suspended {
+	// 		log.Info("Waiting for volume to be unsuspended")
+	// 		return nil
+	// 	}
+	// }
 
 	for _, r := range rs {
 		// Don't attempt to start the replica or do anything else if it hasn't been scheduled.
@@ -1685,14 +1685,21 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			return err
 		}
 		if canIMLaunchReplica {
-			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
-				if r.Status.CurrentState == longhorn.InstanceStateStopped {
-					r.Spec.DesireState = longhorn.InstanceStateRunning
+			if r.Spec.FailedAt == "" {
+				if r.Spec.Image == v.Status.CurrentImage {
+					if r.Status.CurrentState == longhorn.InstanceStateStopped {
+						r.Spec.DesireState = longhorn.InstanceStateRunning
+					}
+				} else {
+					if e.Status.CurrentState == longhorn.InstanceStateSuspended {
+						r.Spec.DesireState = longhorn.InstanceStateStopped
+					}
 				}
 			}
 		} else {
 			// wait for IM is starting when volume is upgrading
 			if c.isVolumeUpgrading(v) {
+				log.Infof("Volume %v is upgrading, waiting for IM to start", v.Name)
 				continue
 			}
 
@@ -1768,9 +1775,16 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
 			e.Spec.NodeID, v.Status.CurrentNodeID)
 	}
+
 	e.Spec.NodeID = v.Spec.NodeID
 	e.Spec.ReplicaAddressMap = replicaAddressMap
-	e.Spec.DesireState = longhorn.InstanceStateRunning
+
+	if v.Spec.SuspendRequested {
+		e.Spec.DesireState = longhorn.InstanceStateSuspended
+	} else {
+		e.Spec.DesireState = longhorn.InstanceStateRunning
+	}
+
 	// The volume may be activated
 	e.Spec.DisableFrontend = v.Status.FrontendDisabled
 	e.Spec.Frontend = v.Spec.Frontend
@@ -1788,6 +1802,24 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine,
 		}
 	}
 	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
+}
+
+func (c *VolumeController) suspendVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+	if e.Status.CurrentState != longhorn.InstanceStateSuspended {
+		return
+	}
+
+	c.logger.Infof("Stopped replicas for volume %v since the engine is suspended", v.Name)
+
+	for _, r := range rs {
+		if r.Spec.Image == v.Status.CurrentImage {
+			continue
+		}
+		if r.Spec.DesireState != longhorn.InstanceStateStopped {
+			r.Spec.DesireState = longhorn.InstanceStateStopped
+			rs[r.Name] = r
+		}
+	}
 }
 
 func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
@@ -2796,7 +2828,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		"volumeDesiredEngineImage": v.Spec.Image,
 	})
 
-	if !c.isVolumeUpgrading(v) {
+	if !c.isVolumeUpgrading(v) && !v.Spec.SuspendRequested {
 		// it must be a rollback
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
@@ -2868,7 +2900,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		}
 
 		// Handle engine
-		e.Spec.DesireState = longhorn.InstanceStateSuspended
+		// e.Spec.DesireState = longhorn.InstanceStateSuspended
 
 		if e.Spec.Image != v.Spec.Image {
 			//logrus.Infof("Debug ======> e.Spec.UpgradedReplicaAddressMap=%+v", e.Spec.UpgradedReplicaAddressMap)
@@ -2887,23 +2919,35 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			}
 		}
 
-		// Check if engine and replicas are ready
-		for _, r := range rs {
-			if r.Status.OwnerID == upgrade.Status.UpgradingNode {
-				if r.Status.CurrentImage != r.Spec.Image {
-					return nil
-				}
-			}
-		}
+		// c.suspendVolumeDependentResources(v, e, rs)
 
-		if e.Status.CurrentImage != v.Spec.Image {
-			return nil
-		}
+		// Check if engine and replicas are ready
+		// for _, r := range rs {
+		// 	if r.Status.OwnerID == upgrade.Status.UpgradingNode {
+		// 		if r.Status.CurrentImage != r.Spec.Image {
+		// 			return nil
+		// 		}
+		// 	}
+		// }
+
+		// if e.Status.CurrentImage != v.Spec.Image {
+		// 	return nil
+		// }
 
 		//if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		//	return nil
 		//}
 
+		im, err := c.ds.GetDefaultInstanceManagerByNodeRO(c.controllerID, v.Spec.BackendStoreDriver)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get default instance manager on node %v for volume %v upgrade", c.controllerID, v.Name)
+		}
+
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			return nil
+		}
+
+		log.Infof("Updating current image to %v", v.Spec.Image)
 		v.Status.CurrentImage = v.Spec.Image
 	} else {
 		if err := c.checkOldAndNewEngineImages(v, volumeAndReplicaNodes...); err != nil {

@@ -268,6 +268,10 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 		return nil
 	}
 
+	log := uc.logger.WithFields(logrus.Fields{
+		"upgradingNode": upgrade.Status.UpgradingNode,
+	})
+
 	_, err := uc.ds.GetNodeRO(upgrade.Status.UpgradingNode)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get node %v", upgrade.Status.UpgradingNode)
@@ -298,7 +302,7 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 			}
 		}
 
-		uc.logger.Infof("Updating upgrade %v with volumes %+v", upgrade.Name, volumes)
+		log.Infof("Updating upgrade %v with volumes %+v", upgrade.Name, volumes)
 		upgrade.Status.UpgradingVolumes = volumes
 		upgrade.Status.NodeUpgradeState = longhorn.NodeUpgradeStateUpgrading
 		return nil
@@ -317,10 +321,8 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 		}
 		existingVolume := volume.DeepCopy()
 
-		logrus.Infof("Debug ---> A update volume %v", volume.Name)
 		volume.Spec.SuspendRequested = true
 		if volume.Status.OwnerID == upgrade.Status.UpgradingNode {
-			logrus.Infof("Debug ---> B update volume %v", volume.Name)
 			volume.Spec.Image = defaultInstanceManagerImage
 		}
 
@@ -333,6 +335,21 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 	}
 
 	// Wait for all the volumes finish the upgrade
+	allVolumesSuspended := true
+	for name := range upgrade.Status.UpgradingVolumes {
+		engine, err := uc.ds.GetVolumeCurrentEngine(name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get engine for volume %v", name)
+		}
+		if engine.Status.CurrentState != longhorn.InstanceStateSuspended {
+			allVolumesSuspended = false
+			break
+		}
+	}
+
+	if allVolumesSuspended {
+		log.Info("All volumes are suspended, start to upgrade instance manager")
+	}
 
 	return nil
 }
