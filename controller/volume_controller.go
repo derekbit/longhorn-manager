@@ -1719,12 +1719,6 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 								r.Spec.DesireState = longhorn.InstanceStateStopped
 							}
 						}
-
-						// if e.Status.CurrentState == longhorn.InstanceStateSuspended &&
-						// 	r.Status.OwnerID == upgrade.Status.UpgradingNode {
-						// 	logrus.Infof("Debug ---> mark replica stopped %v", r.Name)
-						// 	r.Spec.DesireState = longhorn.InstanceStateStopped
-						// }
 					}
 				}
 			}
