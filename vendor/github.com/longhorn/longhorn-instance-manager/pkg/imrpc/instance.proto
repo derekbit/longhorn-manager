@@ -56,6 +56,7 @@ message InstanceStatus {
 
 message InstanceCreateRequest {
 	InstanceSpec spec = 1;
+	bool suspended = 2;
 }
 
 message InstanceDeleteRequest {

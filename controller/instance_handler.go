@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -381,6 +382,29 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		status.Started = false
 	case longhorn.InstanceStateSuspended:
 		if status.CurrentState == longhorn.InstanceStateSuspended {
+			ims, err := h.ds.ListInstanceManagersByNodeRO(status.OwnerID, longhorn.InstanceManagerTypeAllInOne, spec.BackendStoreDriver)
+			if err != nil {
+				return errors.Wrapf(err, "failed to list instance managers for node %v", status.OwnerID)
+			}
+
+			var im *longhorn.InstanceManager
+			for _, i := range ims {
+				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+					im = i
+					break
+				}
+			}
+
+			defaultInstanceManagerImage, err := h.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+			if err != nil {
+				return err
+			}
+
+			if im.Spec.Image != defaultInstanceManagerImage {
+				logrus.Infof("Instance manager %v is not using the default image", im.Name)
+				break
+			}
+
 			instance, exists := instances[instanceName]
 			if exists {
 				switch instance.Status.State {
@@ -394,7 +418,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				logrus.Infof("Recreate engine instance %v", instanceName)
 				err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
 				if err != nil {
-					return err
+					if strings.Contains(err.Error(), "not found") {
+						status.InstanceManagerName = ""
+					} else {
+						return err
+					}
 				}
 			}
 		} else {

@@ -436,6 +436,11 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
+	suspended := false
+	if req.Engine.Status.CurrentState == longhorn.InstanceStateSuspended {
+		suspended = true
+	}
+
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Engine.Spec.BackendStoreDriver),
 		Name:               req.Engine.Name,
@@ -444,6 +449,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Size:               uint64(req.Engine.Spec.VolumeSize),
 		PortCount:          DefaultEnginePortCount,
 		PortArgs:           []string{DefaultPortArg},
+		Suspended:          suspended,
 
 		Binary:     binary,
 		BinaryArgs: args,

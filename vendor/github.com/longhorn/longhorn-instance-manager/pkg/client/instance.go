@@ -91,6 +91,7 @@ type InstanceCreateRequest struct {
 	Size               uint64
 	PortCount          int
 	PortArgs           []string
+	Suspended          bool
 
 	Binary     string
 	BinaryArgs []string
@@ -172,6 +173,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
 		},
+		Suspended: req.Suspended,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create instance")
