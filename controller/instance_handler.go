@@ -380,13 +380,31 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 		status.Started = false
 	case longhorn.InstanceStateSuspended:
-		err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
-		if err != nil {
-			return err
+		if status.CurrentState == longhorn.InstanceStateSuspended {
+			instance, exists := instances[instanceName]
+			if exists {
+				switch instance.Status.State {
+				case longhorn.InstanceStateRunning:
+					status.Started = true
+				case longhorn.InstanceStateSuspended:
+					logrus.Infof("Add replica to engine instance %v", instanceName)
+				}
+				break
+			} else {
+				logrus.Infof("Recreate engine instance %v", instanceName)
+				err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+			if err != nil {
+				return err
+			}
+			status.CurrentState = longhorn.InstanceStateSuspended
+			status.Started = false
 		}
-		logrus.Infof("Debug ----> Set status.CurrentState suspended")
-		status.CurrentState = longhorn.InstanceStateSuspended
-		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
