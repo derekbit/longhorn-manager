@@ -1662,6 +1662,91 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
 }
 
+func (c *VolumeController) handleReplicaUpgrade(r *longhorn.Replica) error {
+	upgrades, err := c.ds.ListUpgradesRO()
+	if err != nil {
+		return err
+	}
+
+	var upgrade *longhorn.Upgrade
+	for _, u := range upgrades {
+		upgrade = u
+		break
+	}
+
+	if r.Status.OwnerID == upgrade.Status.UpgradingNode {
+		if err := c.checkInstanceManager(r); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *VolumeController) getRunningInstanceManager(r *longhorn.Replica) (*longhorn.InstanceManager, error) {
+	ims, err := c.ds.ListInstanceManagersByNodeRO(r.Status.OwnerID, longhorn.InstanceManagerTypeAllInOne, r.Spec.BackendStoreDriver)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list instance managers for node %v", r.Status.OwnerID)
+	}
+
+	for _, im := range ims {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find a running instance manager for replica %v", r.Name)
+}
+
+func (c *VolumeController) checkDiskReadiness(r *longhorn.Replica, im *longhorn.InstanceManager) (bool, error) {
+	node, err := c.ds.GetNodeRO(r.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == r.Spec.DiskID {
+			if diskStatus.InstanceManagerName == im.Name &&
+				types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
+				return true, nil
+			}
+			break
+		}
+	}
+
+	return false, nil
+}
+
+func (c *VolumeController) checkInstanceManager(r *longhorn.Replica) error {
+	im, err := c.getRunningInstanceManager(r)
+	if err != nil {
+		return err
+	}
+
+	diskReady, err := c.checkDiskReadiness(r, im)
+	if err != nil {
+		return err
+	}
+	if !diskReady {
+		return fmt.Errorf("disk %v is not ready for replica %v", r.Spec.DiskID, r.Name)
+	}
+
+	defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
+	if im.Spec.Image == defaultInstanceManagerImage && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+		c.logger.Infof("Starting replica %v on new instance manager %v", r.Name, im.Name)
+		r.Spec.DesireState = longhorn.InstanceStateRunning
+	} else {
+		c.logger.Infof("Stopping replica %v on old instance manager %v", r.Name, im.Name)
+		r.Spec.DesireState = longhorn.InstanceStateStopped
+	}
+
+	return nil
+}
+
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
@@ -1679,80 +1764,13 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		}
 		if canIMLaunchReplica {
 			if r.Spec.FailedAt == "" {
-				if r.Spec.Image == v.Status.CurrentImage {
-					if r.Status.CurrentState == longhorn.InstanceStateStopped {
-						r.Spec.DesireState = longhorn.InstanceStateRunning
-					}
-				} else {
-					if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
-						e.Status.CurrentState == longhorn.InstanceStateSuspended {
-						var upgrade *longhorn.Upgrade
-						upgrades, err := c.ds.ListUpgradesRO()
-						if err != nil {
-							return err
-						}
-						for _, u := range upgrades {
-							upgrade = u
-							break
-						}
-
-						if r.Status.OwnerID == upgrade.Status.UpgradingNode {
-							ims, err := c.ds.ListInstanceManagersByNodeRO(r.Status.OwnerID, longhorn.InstanceManagerTypeAllInOne, r.Spec.BackendStoreDriver)
-							if err != nil {
-								return err
-							}
-
-							var im *longhorn.InstanceManager
-							for _, i := range ims {
-								if i.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-									im = i
-									break
-								}
-							}
-
-							if im == nil {
-								return fmt.Errorf("failed to find running instance manager for replica %v", r.Name)
-							}
-
-							logrus.Infof("Debug ----> im.Name=%v", im.Name)
-
-							node, err := c.ds.GetNodeRO(r.Status.OwnerID)
-							if err != nil {
-								return err
-							}
-
-							diskReady := false
-							for _, diskStatus := range node.Status.DiskStatus {
-								logrus.Infof("Debug ----> diskStatus.DiskUUID=%v  r.Spec.DiskID=%v", diskStatus.DiskUUID, r.Spec.DiskID)
-								logrus.Infof("Debug ----> diskStatus.InstanceManagerName=%v im.Name=%v", diskStatus.InstanceManagerName, im.Name)
-								logrus.Infof("Debug ----> types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status=%v", types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status)
-								if diskStatus.DiskUUID == r.Spec.DiskID {
-									if diskStatus.InstanceManagerName == im.Name &&
-										types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
-										diskReady = true
-									}
-									break
-								}
-							}
-							if !diskReady {
-								return fmt.Errorf("disk %v is not ready for replica %v", r.Spec.DiskID, r.Name)
-							}
-
-							defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
-							if err != nil {
-								return err
-							}
-
-							if im.Spec.Image == defaultInstanceManagerImage && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-								// New instance manager
-								logrus.Infof("Debug ---> mark replica running %v", r.Name)
-								r.Spec.DesireState = longhorn.InstanceStateRunning
-							} else {
-								// Old instance manager
-								logrus.Infof("Debug ---> mark replica stopped %v", r.Name)
-								r.Spec.DesireState = longhorn.InstanceStateStopped
-							}
-						}
+				// Check if the image matches the current status and state
+				if r.Spec.Image == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateStopped {
+					r.Spec.DesireState = longhorn.InstanceStateRunning
+				} else if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
+					e.Status.CurrentState == longhorn.InstanceStateSuspended {
+					if err := c.handleReplicaUpgrade(r); err != nil {
+						return err
 					}
 				}
 			}
