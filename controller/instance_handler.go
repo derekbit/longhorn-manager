@@ -294,6 +294,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 	}
 
+	logrus.Infof("Debug ==> instanceName=%v", instanceName)
+
 	if spec.LogRequested {
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the backend store driver is not "longhorn"
@@ -412,16 +414,28 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			return err
 		}
 
-		defaultInstanceManagerImage, err := h.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+		upgrades, err := h.ds.ListUpgradesRO()
 		if err != nil {
 			return err
 		}
 
-		if im.Spec.Image != defaultInstanceManagerImage {
-			logrus.Infof("Instance manager %v is not using the default image", im.Name)
+		var upgrade *longhorn.Upgrade
+		for _, u := range upgrades {
+			upgrade = u
 			break
 		}
 
+		if spec.NodeID == upgrade.Status.UpgradingNode {
+			defaultInstanceManagerImage, err := h.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+			if err != nil {
+				return err
+			}
+
+			if im.Spec.Image != defaultInstanceManagerImage {
+				logrus.Infof("Instance manager %v is not using the default image", im.Name)
+				break
+			}
+		}
 		_, exists := instances[instanceName]
 		if !exists {
 			logrus.Infof("Recreate engine instance %v", instanceName)

@@ -439,7 +439,12 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, "")
+	instanceManagerImage := ""
+	if e.Spec.Image != "" {
+		instanceManagerImage = e.Spec.Image
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, instanceManagerImage)
 	if err != nil {
 		return nil, err
 	}

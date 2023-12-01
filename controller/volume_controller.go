@@ -1857,11 +1857,30 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			return err
 		}
 
-		if v.Status.OwnerID == upgrade.Status.UpgradingNode &&
-			v.Status.CurrentImage == defaultInstanceManagerImage {
-			e.Spec.DesireState = longhorn.InstanceStateReconnected
+		if v.Status.OwnerID == upgrade.Status.UpgradingNode {
+			if v.Status.CurrentImage == defaultInstanceManagerImage {
+				e.Spec.DesireState = longhorn.InstanceStateReconnected
+			} else {
+				e.Spec.DesireState = longhorn.InstanceStateSuspended
+			}
 		} else {
-			e.Spec.DesireState = longhorn.InstanceStateSuspended
+			allReplicaUpdated := true
+			for replicaName := range replicaAddressMap {
+				r := rs[replicaName]
+				if r.Status.OwnerID == upgrade.Status.UpgradingNode {
+					if r.Status.CurrentImage != defaultInstanceManagerImage {
+						allReplicaUpdated = false
+						break
+					}
+				}
+			}
+			if allReplicaUpdated {
+				logrus.Infof("Debug ===> e.Name=%v, reconnected", e.Name)
+				e.Spec.DesireState = longhorn.InstanceStateReconnected
+			} else {
+				logrus.Infof("Debug ===> e.Name=%v, suspended", e.Name)
+				e.Spec.DesireState = longhorn.InstanceStateSuspended
+			}
 		}
 	} else {
 		e.Spec.DesireState = longhorn.InstanceStateRunning
@@ -1883,7 +1902,8 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine,
 			break
 		}
 	}
-	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
+	return hasRunningReplica &&
+		(e.Status.CurrentState == longhorn.InstanceStateRunning || e.Status.CurrentState == longhorn.InstanceStateReconnected || e.Status.CurrentState == longhorn.InstanceStateSuspended)
 }
 
 func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
