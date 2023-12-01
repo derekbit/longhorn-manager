@@ -1845,7 +1845,28 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	e.Spec.ReplicaAddressMap = replicaAddressMap
 
 	if v.Spec.SuspendRequested {
-		e.Spec.DesireState = longhorn.InstanceStateSuspended
+		upgrades, err := c.ds.ListUpgradesRO()
+		if err != nil {
+			return err
+		}
+
+		var upgrade *longhorn.Upgrade
+		for _, u := range upgrades {
+			upgrade = u
+			break
+		}
+
+		defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+		if err != nil {
+			return err
+		}
+
+		if v.Status.OwnerID == upgrade.Status.UpgradingNode &&
+			v.Status.CurrentImage == defaultInstanceManagerImage {
+			e.Spec.DesireState = longhorn.InstanceStateReconnected
+		} else {
+			e.Spec.DesireState = longhorn.InstanceStateSuspended
+		}
 	} else {
 		e.Spec.DesireState = longhorn.InstanceStateRunning
 	}
@@ -1867,24 +1888,6 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine,
 		}
 	}
 	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
-}
-
-func (c *VolumeController) suspendVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
-	if e.Status.CurrentState != longhorn.InstanceStateSuspended {
-		return
-	}
-
-	c.logger.Infof("Stopped replicas for volume %v since the engine is suspended", v.Name)
-
-	for _, r := range rs {
-		if r.Spec.Image == v.Status.CurrentImage {
-			continue
-		}
-		if r.Spec.DesireState != longhorn.InstanceStateStopped {
-			r.Spec.DesireState = longhorn.InstanceStateStopped
-			rs[r.Name] = r
-		}
-	}
 }
 
 func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {

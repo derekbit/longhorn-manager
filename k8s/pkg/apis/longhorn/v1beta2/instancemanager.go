@@ -54,13 +54,14 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning   = InstanceState("running")
-	InstanceStateStopped   = InstanceState("stopped")
-	InstanceStateError     = InstanceState("error")
-	InstanceStateStarting  = InstanceState("starting")
-	InstanceStateStopping  = InstanceState("stopping")
-	InstanceStateUnknown   = InstanceState("unknown")
-	InstanceStateSuspended = InstanceState("suspended")
+	InstanceStateRunning     = InstanceState("running")
+	InstanceStateStopped     = InstanceState("stopped")
+	InstanceStateError       = InstanceState("error")
+	InstanceStateStarting    = InstanceState("starting")
+	InstanceStateStopping    = InstanceState("stopping")
+	InstanceStateUnknown     = InstanceState("unknown")
+	InstanceStateSuspended   = InstanceState("suspended")
+	InstanceStateReconnected = InstanceState("reconnected")
 )
 
 type InstanceSpec struct {

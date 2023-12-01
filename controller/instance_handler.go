@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -120,7 +119,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			logrus.Infof("Debug --> C %v", instanceName)
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			if status.CurrentState != longhorn.InstanceStateSuspended {
+			if status.CurrentState != longhorn.InstanceStateSuspended &&
+				status.CurrentState != longhorn.InstanceStateReconnected {
 				status.CurrentState = longhorn.InstanceStateStopped
 			}
 		}
@@ -184,6 +184,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 	case longhorn.InstanceStateSuspended:
 		status.CurrentState = longhorn.InstanceStateSuspended
+	case longhorn.InstanceStateReconnected:
+		status.CurrentState = longhorn.InstanceStateReconnected
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			logrus.Infof("Debug --> D %v", instanceName)
@@ -381,50 +383,15 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 		status.Started = false
 	case longhorn.InstanceStateSuspended:
-		if status.CurrentState == longhorn.InstanceStateSuspended {
-			im, err := h.ds.GetRunningInstanceManagerRO(status.OwnerID, spec.BackendStoreDriver)
-			if err != nil {
-				return err
-			}
-
-			defaultInstanceManagerImage, err := h.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
-			if err != nil {
-				return err
-			}
-
-			if im.Spec.Image != defaultInstanceManagerImage {
-				logrus.Infof("Instance manager %v is not using the default image", im.Name)
-				break
-			}
-
-			instance, exists := instances[instanceName]
-			if exists {
-				switch instance.Status.State {
-				case longhorn.InstanceStateRunning:
-					status.Started = true
-				case longhorn.InstanceStateSuspended:
-					logrus.Infof("Add replica to engine instance %v", instanceName)
-				}
-				break
-			} else {
-				logrus.Infof("Recreate engine instance %v", instanceName)
-				err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
-				if err != nil {
-					if strings.Contains(err.Error(), "not found") {
-						status.InstanceManagerName = ""
-					} else {
-						return err
-					}
-				}
-			}
-		} else {
-			err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
-			if err != nil {
-				return err
-			}
-			status.CurrentState = longhorn.InstanceStateSuspended
-			status.Started = false
+		err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+		if err != nil {
+			return err
 		}
+		status.CurrentState = longhorn.InstanceStateSuspended
+		status.Started = false
+	case longhorn.InstanceStateReconnected:
+		logrus.Infof("Debug =======> InstanceStateReconnected")
+		status.CurrentState = longhorn.InstanceStateReconnected
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
