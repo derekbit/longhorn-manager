@@ -1674,10 +1674,36 @@ func (c *VolumeController) handleReplicaUpgrade(r *longhorn.Replica) error {
 		break
 	}
 
-	if r.Status.OwnerID == upgrade.Status.UpgradingNode {
-		if err := c.checkInstanceManager(r); err != nil {
-			return err
+	if r.Status.OwnerID != upgrade.Status.UpgradingNode {
+		return nil
+	}
+
+	im, err := c.ds.GetRunningInstanceManagerRO(r.Status.OwnerID, r.Spec.BackendStoreDriver)
+	if err != nil {
+		return err
+	}
+
+	diskReady, err := c.checkDiskReadiness(r, im)
+	if err != nil {
+		return err
+	}
+	if !diskReady {
+		return fmt.Errorf("disk %v is not ready for replica %v", r.Spec.DiskID, r.Name)
+	}
+
+	defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return err
+	}
+
+	if im.Spec.Image == defaultInstanceManagerImage {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			c.logger.Infof("Starting replica %v on new instance manager %v", r.Name, im.Name)
+			r.Spec.DesireState = longhorn.InstanceStateRunning
 		}
+	} else {
+		c.logger.Infof("Stopping replica %v on old instance manager %v", r.Name, im.Name)
+		r.Spec.DesireState = longhorn.InstanceStateStopped
 	}
 
 	return nil
@@ -1700,36 +1726,6 @@ func (c *VolumeController) checkDiskReadiness(r *longhorn.Replica, im *longhorn.
 	}
 
 	return false, nil
-}
-
-func (c *VolumeController) checkInstanceManager(r *longhorn.Replica) error {
-	im, err := c.ds.GetRunningInstanceManagerRO(r.Status.OwnerID, r.Spec.BackendStoreDriver)
-	if err != nil {
-		return err
-	}
-
-	diskReady, err := c.checkDiskReadiness(r, im)
-	if err != nil {
-		return err
-	}
-	if !diskReady {
-		return fmt.Errorf("disk %v is not ready for replica %v", r.Spec.DiskID, r.Name)
-	}
-
-	defaultInstanceManagerImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
-	if err != nil {
-		return err
-	}
-
-	if im.Spec.Image == defaultInstanceManagerImage && im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-		c.logger.Infof("Starting replica %v on new instance manager %v", r.Name, im.Name)
-		r.Spec.DesireState = longhorn.InstanceStateRunning
-	} else {
-		c.logger.Infof("Stopping replica %v on old instance manager %v", r.Name, im.Name)
-		r.Spec.DesireState = longhorn.InstanceStateStopped
-	}
-
-	return nil
 }
 
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
