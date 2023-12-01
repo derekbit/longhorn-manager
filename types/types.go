@@ -961,6 +961,27 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 }
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	fileInfo, err := os.Stat(dataPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// block-type disk
+	if (fileInfo.Mode() & os.ModeDevice) == os.ModeDevice {
+		return map[string]longhorn.DiskSpec{
+			DefaultDiskPrefix + util.RandomID(): {
+				Type:              longhorn.DiskTypeBlock,
+				Path:              dataPath,
+				AllowScheduling:   true,
+				EvictionRequested: false,
+				// TODO: should we support storageReserved for block device?
+				StorageReserved: 0,
+				Tags:            []string{},
+			},
+		}, nil
+	}
+
+	// filesystem-type disk
 	if err := util.CreateDiskPathReplicaSubdirectory(dataPath); err != nil {
 		return nil, err
 	}
