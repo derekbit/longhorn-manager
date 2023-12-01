@@ -339,11 +339,19 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 	for name := range upgrade.Status.UpgradingVolumes {
 		engine, err := uc.ds.GetVolumeCurrentEngine(name)
 		if err != nil {
-			return errors.Wrapf(err, "failed to get engine for volume %v", name)
+			return errors.Wrapf(err, "failed to get engine for volumex %v", name)
 		}
-		if engine.Status.CurrentState != longhorn.InstanceStateSuspended {
-			allVolumesSuspended = false
-			break
+
+		if engine.Status.OwnerID == upgrade.Status.UpgradingNode {
+			if engine.Status.CurrentState != longhorn.InstanceStateReconnected {
+				allVolumesSuspended = false
+				break
+			}
+		} else {
+			if engine.Status.CurrentState != longhorn.InstanceStateSuspended {
+				allVolumesSuspended = false
+				break
+			}
 		}
 	}
 
