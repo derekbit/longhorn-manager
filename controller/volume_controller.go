@@ -1683,21 +1683,6 @@ func (c *VolumeController) handleReplicaUpgrade(r *longhorn.Replica) error {
 	return nil
 }
 
-func (c *VolumeController) getRunningInstanceManager(r *longhorn.Replica) (*longhorn.InstanceManager, error) {
-	ims, err := c.ds.ListInstanceManagersByNodeRO(r.Status.OwnerID, longhorn.InstanceManagerTypeAllInOne, r.Spec.BackendStoreDriver)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list instance managers for node %v", r.Status.OwnerID)
-	}
-
-	for _, im := range ims {
-		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
-			return im, nil
-		}
-	}
-
-	return nil, fmt.Errorf("failed to find a running instance manager for replica %v", r.Name)
-}
-
 func (c *VolumeController) checkDiskReadiness(r *longhorn.Replica, im *longhorn.InstanceManager) (bool, error) {
 	node, err := c.ds.GetNodeRO(r.Status.OwnerID)
 	if err != nil {
@@ -1718,7 +1703,7 @@ func (c *VolumeController) checkDiskReadiness(r *longhorn.Replica, im *longhorn.
 }
 
 func (c *VolumeController) checkInstanceManager(r *longhorn.Replica) error {
-	im, err := c.getRunningInstanceManager(r)
+	im, err := c.ds.GetRunningInstanceManagerRO(r.Status.OwnerID, r.Spec.BackendStoreDriver)
 	if err != nil {
 		return err
 	}

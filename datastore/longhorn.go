@@ -4858,3 +4858,18 @@ func (s *DataStore) ListUpgradesRO() ([]*longhorn.Upgrade, error) {
 func (s *DataStore) DeleteUpgrade(upgradeName string) error {
 	return s.lhClient.LonghornV1beta2().Upgrades(s.namespace).Delete(context.TODO(), upgradeName, metav1.DeleteOptions{})
 }
+
+func (s *DataStore) GetRunningInstanceManagerRO(node string, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
+	ims, err := s.ListInstanceManagersByNodeRO(node, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list instance managers for node %v", node)
+	}
+
+	for _, im := range ims {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find a running instance manager for node %v", node)
+}
