@@ -248,6 +248,15 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
+func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
+	// Only happen when upgrading instance-manager image
+	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
+		return h.ds.GetRunningInstanceManagerRO(spec.NodeID, spec.BackendStoreDriver)
+	}
+
+	return h.ds.GetInstanceManagerByInstanceRO(obj, "")
+}
+
 func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
@@ -286,7 +295,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return err
 			}
 			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstanceRO(obj, "")
+				im, err = h.getInstanceManagerRO(obj, spec, status)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 				}
@@ -346,7 +355,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
-		if status.CurrentState != longhorn.InstanceStateStopped {
+		if status.CurrentState != longhorn.InstanceStateStopped && status.CurrentState != longhorn.InstanceStateSuspended {
 			break
 		}
 
@@ -407,6 +416,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			return err
 		}
 		status.CurrentState = longhorn.InstanceStateSuspended
+		status.InstanceManagerName = ""
 		status.Started = false
 	case longhorn.InstanceStateReconnected:
 		im, err := h.ds.GetRunningInstanceManagerRO(status.OwnerID, spec.BackendStoreDriver)

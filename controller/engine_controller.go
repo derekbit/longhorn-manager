@@ -697,7 +697,11 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 		err error
 	)
 	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj, "")
+		if e.Spec.DesireState == longhorn.InstanceStateRunning && e.Status.CurrentState == longhorn.InstanceStateSuspended {
+			im, err = ec.ds.GetRunningInstanceManagerRO(e.Spec.NodeID, e.Spec.BackendStoreDriver)
+		} else {
+			im, err = ec.ds.GetInstanceManagerByInstanceRO(obj, "")
+		}
 		if err != nil {
 			return nil, err
 		}

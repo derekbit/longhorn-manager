@@ -244,6 +244,10 @@ func (uc *UpgradeController) upgrade(upgrade *longhorn.Upgrade) error {
 func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) error {
 	logrus.Infof("Debug ===> UpgradingNode=%v, NodeUpgradeState=%v", upgrade.Status.UpgradingNode, upgrade.Status.NodeUpgradeState)
 
+	if upgrade.Status.NodeUpgradeState == longhorn.NodeUpgradeStateCompleted {
+		return nil
+	}
+
 	if upgrade.Status.UpgradingNode == "" {
 		node, err := uc.pickNodeForUpgrade()
 		if err != nil {
@@ -336,19 +340,27 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 
 	// Wait for all the volumes finish the upgrade
 	allVolumesSuspended := true
-	for name := range upgrade.Status.UpgradingVolumes {
-		engine, err := uc.ds.GetVolumeCurrentEngine(name)
+	for volumeName := range upgrade.Status.UpgradingVolumes {
+		engine, err := uc.ds.GetVolumeCurrentEngine(volumeName)
 		if err != nil {
-			return errors.Wrapf(err, "failed to get engine for volumex %v", name)
+			return errors.Wrapf(err, "failed to get engine for volumex %v", volumeName)
 		}
 
-		if engine.Status.OwnerID == upgrade.Status.UpgradingNode {
-			if engine.Status.CurrentState != longhorn.InstanceStateReconnected {
+		if engine.Status.CurrentState != longhorn.InstanceStateSuspended {
+			allVolumesSuspended = false
+			break
+		}
+
+		uc.logger.Infof("Volume %v is suspended", volumeName)
+
+		for replicaName := range engine.Spec.ReplicaAddressMap {
+			replica, err := uc.ds.GetReplicaRO(replicaName)
+			if err != nil {
 				allVolumesSuspended = false
 				break
 			}
-		} else {
-			if engine.Status.CurrentState != longhorn.InstanceStateSuspended {
+
+			if replica.Status.CurrentState != longhorn.InstanceStateRunning {
 				allVolumesSuspended = false
 				break
 			}
@@ -357,6 +369,24 @@ func (uc *UpgradeController) upgradeInstanceManagers(upgrade *longhorn.Upgrade) 
 
 	if allVolumesSuspended {
 		log.Info("All volumes are suspended, start to upgrade instance manager")
+		for name := range upgrade.Status.UpgradingVolumes {
+			volume, err := uc.ds.GetVolume(name)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get volume %v", name)
+			}
+			existingVolume := volume.DeepCopy()
+
+			volume.Spec.SuspendRequested = false
+
+			if !reflect.DeepEqual(volume.Spec, existingVolume.Spec) {
+				_, err := uc.ds.UpdateVolume(volume)
+				if err != nil {
+					uc.logger.WithError(err).Warnf("Failed to update volume %v", volume.Name)
+				}
+			}
+		}
+
+		upgrade.Status.NodeUpgradeState = longhorn.NodeUpgradeStateCompleted
 	}
 
 	return nil
