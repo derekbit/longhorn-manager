@@ -3647,6 +3647,8 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              suspendRequested:
+                type: boolean
               unmapMarkSnapChainRemoved:
                 enum:
                 - ignored

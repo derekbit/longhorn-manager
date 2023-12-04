@@ -280,6 +280,8 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=ignored;disabled;enabled
 	// +optional
 	OfflineReplicaRebuilding OfflineReplicaRebuilding `json:"offlineReplicaRebuilding"`
+	// +optional
+	SuspendRequested bool `json:"suspendRequested"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
