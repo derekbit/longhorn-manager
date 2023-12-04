@@ -14,6 +14,8 @@ service InstanceService {
 	rpc InstanceLog(InstanceLogRequest) returns (stream LogResponse) {}
 	rpc InstanceWatch(google.protobuf.Empty) returns (stream google.protobuf.Empty) {}
 	rpc InstanceReplace(InstanceReplaceRequest) returns (InstanceResponse) {}
+	rpc InstanceSuspend(InstanceSuspendRequest) returns (google.protobuf.Empty) {}
+	rpc InstanceResume(InstanceResumeRequest) returns (google.protobuf.Empty) {}
 
 	rpc VersionGet(google.protobuf.Empty) returns (VersionResponse);
 }
@@ -54,6 +56,7 @@ message InstanceStatus {
 
 message InstanceCreateRequest {
 	InstanceSpec spec = 1;
+	bool suspended = 2;
 }
 
 message InstanceDeleteRequest {
@@ -90,4 +93,16 @@ message InstanceLogRequest {
 message InstanceReplaceRequest {
 	InstanceSpec spec = 1;
 	string terminate_signal = 2;
+}
+
+message InstanceSuspendRequest {
+	BackendStoreDriver backend_store_driver = 1;
+	string name = 2;
+	string type = 3;
+}
+
+message InstanceResumeRequest {
+	BackendStoreDriver backend_store_driver = 1;
+	string name = 2;
+	string type = 3;
 }

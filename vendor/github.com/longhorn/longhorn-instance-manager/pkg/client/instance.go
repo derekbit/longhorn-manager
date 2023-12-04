@@ -91,9 +91,30 @@ type InstanceCreateRequest struct {
 	Size               uint64
 	PortCount          int
 	PortArgs           []string
+	Suspended          bool
 
 	Binary     string
 	BinaryArgs []string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
+}
+
+type InstanceSuspendRequest struct {
+	BackendStoreDriver string
+	Name               string
+	InstanceType       string
+	VolumeName         string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
+}
+
+type InstanceResumeRequest struct {
+	BackendStoreDriver string
+	Name               string
+	InstanceType       string
+	VolumeName         string
 
 	Engine  EngineCreateRequest
 	Replica ReplicaCreateRequest
@@ -152,6 +173,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
 		},
+		Suspended: req.Suspended,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create instance")
@@ -315,4 +337,33 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 		InstanceManagerProxyAPIVersion:    int(resp.InstanceManagerProxyAPIVersion),
 		InstanceManagerProxyAPIMinVersion: int(resp.InstanceManagerProxyAPIMinVersion),
 	}, nil
+}
+
+func (c *InstanceServiceClient) InstanceSuspend(backendStoreDriver, name, instanceType string) error {
+	if name == "" {
+		return fmt.Errorf("failed to suspend instance: missing required parameter name")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	if !ok {
+		return fmt.Errorf("failed to suspend instance: invalid backend store driver %v", backendStoreDriver)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceSuspend(ctx, &rpc.InstanceSuspendRequest{
+		Name:               name,
+		Type:               instanceType,
+		BackendStoreDriver: rpc.BackendStoreDriver(driver),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to suspend instance %v", name)
+	}
+	return nil
+}
+
+func (c *InstanceServiceClient) InstanceResume(req *InstanceResumeRequest) error {
+	return nil
 }
