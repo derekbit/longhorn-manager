@@ -425,6 +425,30 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 
 }
 
+func (ec *EngineController) isEngineUpgradeRequired(e *longhorn.Engine) (bool, error) {
+	upgrades, err := ec.ds.ListUpgradesRO()
+	if err != nil {
+		return false, err
+	}
+
+	var upgrade *longhorn.Upgrade
+	for _, u := range upgrades {
+		upgrade = u
+		break
+	}
+
+	if upgrade != nil {
+		for volumeName := range upgrade.Status.Volumes {
+			if volumeName != e.Spec.VolumeName {
+				continue
+			}
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
@@ -468,26 +492,9 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	// Check engine upgrade
-	upgrades, err := ec.ds.ListUpgradesRO()
+	upgradeRequired, err := ec.isEngineUpgradeRequired(e)
 	if err != nil {
 		return nil, err
-	}
-
-	var upgrade *longhorn.Upgrade
-	for _, u := range upgrades {
-		upgrade = u
-		break
-	}
-
-	engineUpgrade := false
-	if upgrade != nil {
-		for volumeName := range upgrade.Status.Volumes {
-			if volumeName == e.Spec.VolumeName {
-				engineUpgrade = true
-				break
-			}
-		}
 	}
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
@@ -498,7 +505,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
-		EngineUpgrade:                    engineUpgrade,
+		UpgradeRequired:                  upgradeRequired,
 	})
 }
 
