@@ -1854,7 +1854,10 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			upgrade = u
 			break
 		}
-
+		if upgrade == nil {
+			// TODO: error handling
+			return fmt.Errorf("upgrade resource is not found")
+		}
 		if v.Status.OwnerID == upgrade.Spec.UpgradedNode {
 			e.Spec.DesireState = longhorn.InstanceStateSuspended
 		} else {

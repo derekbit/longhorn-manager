@@ -468,6 +468,28 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	// Check engine upgrade
+	upgrades, err := ec.ds.ListUpgradesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	var upgrade *longhorn.Upgrade
+	for _, u := range upgrades {
+		upgrade = u
+		break
+	}
+
+	engineUpgrade := false
+	if upgrade != nil {
+		for volumeName := range upgrade.Status.Volumes {
+			if volumeName == e.Spec.VolumeName {
+				engineUpgrade = true
+				break
+			}
+		}
+	}
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,
@@ -476,6 +498,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		EngineUpgrade:                    engineUpgrade,
 	})
 }
 
