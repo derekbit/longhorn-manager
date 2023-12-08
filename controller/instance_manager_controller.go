@@ -467,7 +467,18 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	// Since `spec.nodeName` is specified during the pod creation,
 	// the node cordon can not prevent the pod being launched.
 	if unschedulable, err := imc.ds.IsKubeNodeUnschedulable(im.Spec.NodeID); unschedulable || err != nil {
-		return err
+		return errors.Wrapf(err, "failed to check if node %v is unschedulable for checking instance manager pod", im.Spec.NodeID)
+	}
+
+	if im.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		pods, err := imc.ds.ListInstanceManagerPodsBy(im.Spec.NodeID, "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list instance manager pods for v2 volume on node %v for checking instance manager pod", im.Spec.NodeID)
+		}
+		if len(pods) > 0 {
+			imc.logger.Infof("Number of instance manager pods %v for v2 volumes are already running", len(pods))
+			return nil
+		}
 	}
 
 	if err := imc.createInstanceManagerPod(im); err != nil {
