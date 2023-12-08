@@ -97,34 +97,49 @@ type DiskStatus struct {
 
 // NodeSpec defines the desired state of the Longhorn node
 type NodeSpec struct {
+	// The name of the node.
 	// +optional
 	Name string `json:"name"`
+	// The disks of the node.
 	// +optional
 	Disks map[string]DiskSpec `json:"disks"`
+	// Allow scheduling replicas on the node.
 	// +optional
 	AllowScheduling bool `json:"allowScheduling"`
+	// Request to evict all replicas on the node.
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
+	// The tags of the node.
 	// +optional
 	Tags []string `json:"tags"`
+	// The CPU request of the instance manager.
 	// +optional
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
+	// Request to upgrade the instance manager for v2 volumes on the node.
+	// +optional
+	UpgradeRequested bool `json:"upgradeRequested"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node
 type NodeStatus struct {
+	// The condition of the node.
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// The status of the disks on the node.
 	// +optional
 	// +nullable
 	DiskStatus map[string]*DiskStatus `json:"diskStatus"`
+	// The Region of the node.
 	// +optional
 	Region string `json:"region"`
+	// The Zone of the node.
 	// +optional
 	Zone string `json:"zone"`
+	// The status of the snapshot integrity check.
 	// +optional
 	SnapshotCheckStatus SnapshotCheckStatus `json:"snapshotCheckStatus"`
+	// Indicate whether the node is auto-evicting.
 	// +optional
 	AutoEvicting bool `json:"autoEvicting"`
 }
