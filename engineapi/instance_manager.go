@@ -655,16 +655,15 @@ func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgrade
 	engine := req.Engine
 	switch engine.Spec.BackendStoreDriver {
 	case longhorn.BackendStoreDriverTypeV1:
-		return c.engineInstanceUpgrade(req)
+		return c.v1EngineInstanceUpgrade(req)
 	case longhorn.BackendStoreDriverTypeV2:
-		/* TODO: Handle SPDK engine upgrade */
-		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
+		return nil, fmt.Errorf("v2 engine upgrade is not supported")
 	default:
 		return nil, fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
 	}
 }
 
-func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) v1EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
