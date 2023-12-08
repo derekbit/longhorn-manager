@@ -91,6 +91,8 @@ type DiskStatus struct {
 	DiskUUID string `json:"diskUUID"`
 	// +optional
 	Type DiskType `json:"diskType"`
+	// +optional
+	InstanceManagerName string `json:"instanceManagerName"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node
