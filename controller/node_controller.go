@@ -764,6 +764,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
 						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
+						diskInfo.InstanceManagerName,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
 				continue
 			}
@@ -784,6 +785,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 				notReadyDiskInfoMap[diskID][diskName] =
 					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
+						diskInfo.InstanceManagerName,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
 							diskName, diskInfoMap[diskName].Path, node.Name, diskID, monitor.GetDiskNamesFromDiskMap(diskInfoMap)))
@@ -828,6 +830,7 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			usableStorage := (diskInfoMap[diskName].DiskStat.StorageAvailable / truncateTo) * truncateTo
 			diskStatus.StorageAvailable = usableStorage
 			diskStatus.StorageMaximum = diskInfoMap[diskName].DiskStat.StorageMaximum
+			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
 			diskStatusMap[diskName].Conditions = types.SetConditionAndRecord(diskStatusMap[diskName].Conditions,
 				longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue,
 				"", fmt.Sprintf("Disk %v(%v) on node %v is ready", diskName, diskInfoMap[diskName].Path, node.Name),
