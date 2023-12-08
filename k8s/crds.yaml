@@ -2007,6 +2007,8 @@ spec:
                       type: string
                     diskUUID:
                       type: string
+                    instanceManagerName:
+                      type: string
                     scheduledReplica:
                       additionalProperties:
                         format: int64
