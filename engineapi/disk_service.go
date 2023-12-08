@@ -35,14 +35,20 @@ func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	}
 
 	return &DiskService{
-		logger:     logger,
-		grpcClient: client,
+		logger:              logger,
+		grpcClient:          client,
+		instanceManagerName: im.Name,
 	}, nil
 }
 
 type DiskService struct {
-	logger     logrus.FieldLogger
-	grpcClient *imclient.DiskServiceClient
+	logger              logrus.FieldLogger
+	grpcClient          *imclient.DiskServiceClient
+	instanceManagerName string
+}
+
+func (s *DiskService) GetInstanceManagerName() string {
+	return s.instanceManagerName
 }
 
 func (s *DiskService) Close() {
