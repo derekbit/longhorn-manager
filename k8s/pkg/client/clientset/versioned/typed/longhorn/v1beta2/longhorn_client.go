@@ -45,6 +45,7 @@ type LonghornV1beta2Interface interface {
 	SupportBundlesGetter
 	SystemBackupsGetter
 	SystemRestoresGetter
+	UpgradesGetter
 	VolumesGetter
 	VolumeAttachmentsGetter
 }
@@ -128,6 +129,10 @@ func (c *LonghornV1beta2Client) SystemBackups(namespace string) SystemBackupInte
 
 func (c *LonghornV1beta2Client) SystemRestores(namespace string) SystemRestoreInterface {
 	return newSystemRestores(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) Upgrades(namespace string) UpgradeInterface {
+	return newUpgrades(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) Volumes(namespace string) VolumeInterface {
