@@ -320,7 +320,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.Image {
-		if err := ec.Upgrade(engine, log); err != nil {
+		if err := ec.Upgrade(engine); err != nil {
 			// Engine live upgrade failure shouldn't block the following engine state update.
 			log.WithError(err).Error("Failed to run engine live upgrade")
 			// Sync replica address map as usual when the upgrade fails.
@@ -1958,10 +1958,8 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 	}
 }
 
-func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
-	}()
+func (ec *EngineController) upgradeV1Engine(e *longhorn.Engine) error {
+	log := ec.logger.WithField("engine", e.Name)
 
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
 	if err != nil {
@@ -1982,6 +1980,29 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			return err
 		}
 	}
+	return nil
+}
+
+func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
+	}()
+
+	log := ec.logger.WithField("engine", e.Name)
+
+	switch e.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		err = ec.upgradeV1Engine(e)
+	case longhorn.BackendStoreDriverTypeV2:
+		return nil
+	default:
+		err = fmt.Errorf("unknown backend store driver %v", e.Spec.BackendStoreDriver)
+	}
+
+	if err != nil {
+		return err
+	}
+
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 	e.Status.CurrentImage = e.Spec.Image
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
@@ -1989,6 +2010,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.ReplicaModeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
+
 	return nil
 }
 

@@ -48,6 +48,34 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
+func (h *InstanceHandler) updateStatusIPAndPort(instanceName string, instance longhorn.InstanceProcess, status *longhorn.InstanceStatus, im *longhorn.InstanceManager) error {
+	imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get instance manager pod from %v", im.Name)
+	}
+
+	if imPod == nil {
+		return fmt.Errorf("instance manager pod from %v not exist in datastore", im.Name)
+	}
+
+	storageIP := h.ds.GetStorageIPFromPod(imPod)
+	if status.StorageIP != storageIP {
+		status.StorageIP = storageIP
+		logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
+	}
+
+	if status.IP != im.Status.IP {
+		status.IP = im.Status.IP
+		logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
+	}
+	if status.Port != int(instance.Status.PortStart) {
+		status.Port = int(instance.Status.PortStart)
+		logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
+	}
+
+	return nil
+}
+
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped {
@@ -141,31 +169,12 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
-		imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
+		err := h.updateStatusIPAndPort(instanceName, instance, status, im)
 		if err != nil {
-			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
+			logrus.WithError(err).Warnf("Failed to update IP and Port for instance %v", instanceName)
 			return
 		}
 
-		if imPod == nil {
-			logrus.Warnf("Instance manager pod from %v not exist in datastore", im.Name)
-			return
-		}
-
-		storageIP := h.ds.GetStorageIPFromPod(imPod)
-		if status.StorageIP != storageIP {
-			status.StorageIP = storageIP
-			logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
-		}
-
-		if status.IP != im.Status.IP {
-			status.IP = im.Status.IP
-			logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
-		}
-		if status.Port != int(instance.Status.PortStart) {
-			status.Port = int(instance.Status.PortStart)
-			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
-		}
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
@@ -355,6 +364,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
@@ -442,7 +452,7 @@ func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) && !(backendStoreDriver == longhorn.BackendStoreDriverTypeV2 && types.ErrorIsStopped(err)) {
-		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
+		return errors.Wrapf(err, "failed to get instance %v", instanceName)
 	}
 
 	logrus.Infof("Creating instance %v", instanceName)
