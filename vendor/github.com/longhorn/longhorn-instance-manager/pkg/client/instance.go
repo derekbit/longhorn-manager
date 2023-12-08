@@ -75,6 +75,7 @@ func NewInstanceServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peer
 type EngineCreateRequest struct {
 	ReplicaAddressMap map[string]string
 	Frontend          string
+	UpgradeRequired   bool
 }
 
 type ReplicaCreateRequest struct {
@@ -91,7 +92,6 @@ type InstanceCreateRequest struct {
 	Size               uint64
 	PortCount          int
 	PortArgs           []string
-	Suspended          bool
 
 	Binary     string
 	BinaryArgs []string
@@ -101,16 +101,6 @@ type InstanceCreateRequest struct {
 }
 
 type InstanceSuspendRequest struct {
-	BackendStoreDriver string
-	Name               string
-	InstanceType       string
-	VolumeName         string
-
-	Engine  EngineCreateRequest
-	Replica ReplicaCreateRequest
-}
-
-type InstanceResumeRequest struct {
 	BackendStoreDriver string
 	Name               string
 	InstanceType       string
@@ -172,8 +162,9 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
+
+			UpgradeRequired: req.Engine.UpgradeRequired,
 		},
-		Suspended: req.Suspended,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create instance")
@@ -361,9 +352,5 @@ func (c *InstanceServiceClient) InstanceSuspend(backendStoreDriver, name, instan
 	if err != nil {
 		return errors.Wrapf(err, "failed to suspend instance %v", name)
 	}
-	return nil
-}
-
-func (c *InstanceServiceClient) InstanceResume(req *InstanceResumeRequest) error {
 	return nil
 }
