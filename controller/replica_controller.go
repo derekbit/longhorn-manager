@@ -570,6 +570,11 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	// Replica instance doesn't support suspension
+	return nil
+}
+
 func canDeleteInstance(r *longhorn.Replica) bool {
 	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 ||
 		(r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 && r.DeletionTimestamp != nil)

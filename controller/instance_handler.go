@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +39,7 @@ type InstanceManagerHandler interface {
 	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
 	LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error)
+	SuspendInstance(obj interface{}) error
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -46,6 +48,34 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 		instanceManagerHandler: instanceManagerHandler,
 		eventRecorder:          eventRecorder,
 	}
+}
+
+func (h *InstanceHandler) updateStatusIPAndPort(instanceName string, instance longhorn.InstanceProcess, status *longhorn.InstanceStatus, im *longhorn.InstanceManager) error {
+	imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get instance manager pod from %v", im.Name)
+	}
+
+	if imPod == nil {
+		return fmt.Errorf("instance manager pod from %v not exist in datastore", im.Name)
+	}
+
+	storageIP := h.ds.GetStorageIPFromPod(imPod)
+	if status.StorageIP != storageIP {
+		status.StorageIP = storageIP
+		logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
+	}
+
+	if status.IP != im.Status.IP {
+		status.IP = im.Status.IP
+		logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
+	}
+	if status.Port != int(instance.Status.PortStart) {
+		status.Port = int(instance.Status.PortStart)
+		logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
+	}
+
+	return nil
 }
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
@@ -80,8 +110,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
+
 		status.CurrentImage = ""
 		status.IP = ""
 		status.StorageIP = ""
@@ -111,7 +144,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -141,36 +176,19 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
-		imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
+		err := h.updateStatusIPAndPort(instanceName, instance, status, im)
 		if err != nil {
-			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
+			logrus.WithError(err).Warnf("Failed to update IP and Port for instance %v", instanceName)
 			return
 		}
 
-		if imPod == nil {
-			logrus.Warnf("Instance manager pod from %v not exist in datastore", im.Name)
-			return
-		}
-
-		storageIP := h.ds.GetStorageIPFromPod(imPod)
-		if status.StorageIP != storageIP {
-			status.StorageIP = storageIP
-			logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
-		}
-
-		if status.IP != im.Status.IP {
-			status.IP = im.Status.IP
-			logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
-		}
-		if status.Port != int(instance.Status.PortStart) {
-			status.Port = int(instance.Status.PortStart)
-			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
-		}
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.Image
 		}
+	case longhorn.InstanceStateSuspended:
+		status.CurrentState = longhorn.InstanceStateSuspended
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -213,6 +231,15 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
+func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
+	// Only happen when upgrading instance-manager image
+	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
+		return h.ds.GetRunningInstanceManagerRO(spec.NodeID, spec.BackendStoreDriver)
+	}
+
+	return h.ds.GetInstanceManagerByInstanceRO(obj)
+}
+
 func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
@@ -251,7 +278,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return err
 			}
 			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
+				im, err = h.getInstanceManagerRO(obj, spec, status)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 				}
@@ -309,8 +336,21 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
-		if status.CurrentState != longhorn.InstanceStateStopped {
+		if status.CurrentState != longhorn.InstanceStateStopped && status.CurrentState != longhorn.InstanceStateSuspended {
 			break
+		}
+
+		if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 &&
+			obj.(schema.ObjectKind).GroupVersionKind().Kind == types.LonghornKindReplica &&
+			spec.Image != status.CurrentImage &&
+			status.CurrentState == longhorn.InstanceStateRunning {
+			_, err := h.ds.GetInstanceManagerRO(status.InstanceManagerName)
+			if err != nil {
+				if !datastore.ErrorIsNotFound(err) {
+					return err
+				}
+				status.CurrentImage = spec.Image
+			}
 		}
 
 		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
@@ -350,11 +390,20 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 		}
 		status.Started = false
+	case longhorn.InstanceStateSuspended:
+		err := h.suspendInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+		if err != nil {
+			return err
+		}
+		status.CurrentState = longhorn.InstanceStateSuspended
+		status.InstanceManagerName = ""
+		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
@@ -442,7 +491,7 @@ func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) && !(backendStoreDriver == longhorn.BackendStoreDriverTypeV2 && types.ErrorIsStopped(err)) {
-		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
+		return errors.Wrapf(err, "failed to get instance %v", instanceName)
 	}
 
 	logrus.Infof("Creating instance %v", instanceName)
@@ -467,6 +516,26 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 		return err
 	}
 	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
+
+	return nil
+}
+
+func (h *InstanceHandler) suspendInstance(instanceName string, backendStoreDriver longhorn.BackendStoreDriverType, obj runtime.Object) error {
+	logrus.Infof("Suspending instance %v", instanceName)
+
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		return fmt.Errorf("suspending instance is not supported for backend store driver %v", backendStoreDriver)
+	}
+
+	if _, err := h.instanceManagerHandler.GetInstance(obj); err != nil {
+		return nil
+	}
+
+	if err := h.instanceManagerHandler.SuspendInstance(obj); err != nil {
+		return err
+	}
+
+	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonSuspend, "Suspends %v", instanceName)
 
 	return nil
 }
