@@ -3237,6 +3237,11 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		backendStoreDriver longhorn.BackendStoreDriverType
 	)
 
+	imImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return nil, err
+	}
+
 	switch obj := obj.(type) {
 	case *longhorn.Engine:
 		name = obj.Name
@@ -3253,22 +3258,36 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", name)
 	}
 
-	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	var imMap map[string]*longhorn.InstanceManager
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		imMap, err = s.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	} else {
+		imMap, err = s.ListInstanceManagersBySelectorRO(nodeID, imImage, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	}
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to list instance managers for node %v", nodeID)
 	}
 
-	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
-	if err != nil {
-		return nil, err
-	}
 	if len(imMap) == 1 {
 		for _, im := range imMap {
 			return im, nil
 		}
-
+	} else if len(imMap) > 1 {
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+			var runningIm *longhorn.InstanceManager
+			for _, im := range imMap {
+				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+					if runningIm != nil {
+						return nil, fmt.Errorf("found more than one running instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, imImage, longhorn.InstanceManagerTypeAllInOne)
+					}
+					runningIm = im
+				}
+			}
+			return runningIm, nil
+		}
 	}
-	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
+
+	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, imImage, longhorn.InstanceManagerTypeAllInOne)
 }
 
 func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (map[string]*longhorn.InstanceManager, error) {
