@@ -155,6 +155,8 @@ func NewNodeController(
 		}, 0)
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.PodInformer.HasSynced)
 
+	// TODO: instance manager informer (filter)
+
 	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
 		DeleteFunc: nc.enqueueKubernetesNode,

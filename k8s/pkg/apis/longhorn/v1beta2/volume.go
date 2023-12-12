@@ -280,6 +280,9 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=ignored;disabled;enabled
 	// +optional
 	OfflineReplicaRebuilding OfflineReplicaRebuilding `json:"offlineReplicaRebuilding"`
+	// UpgradeRequested is used to determine if the volume is requested to upgrade
+	// +optional
+	UpgradeRequested bool `json:"upgradeRequested"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

@@ -398,6 +398,7 @@ type EngineInstanceCreateRequest struct {
 	DataLocality                     longhorn.DataLocality
 	ImIP                             string
 	EngineCLIAPIVersion              int
+	UpgradeRequired                  bool
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -451,6 +452,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
 			Frontend:          frontend,
+			UpgradeRequired:   req.UpgradeRequired,
 		},
 	})
 
@@ -719,6 +721,35 @@ func (c *InstanceManagerClient) v1EngineInstanceUpgrade(req *EngineInstanceUpgra
 		return nil, err
 	}
 	return parseInstance(instance), nil
+}
+
+type EngineInstanceSuspendRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceSuspend suspends the engine instance
+func (c *InstanceManagerClient) EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	engine := req.Engine
+	switch engine.Spec.BackendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		return c.v1EngineInstanceSuspend(req)
+	case longhorn.BackendStoreDriverTypeV2:
+		return c.v2EngineInstanceSuspend(req)
+	default:
+		return fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
+	}
+}
+
+func (c *InstanceManagerClient) v1EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	// TODO: Handle v1 engine suspension
+	return fmt.Errorf("v1 engine suspension is not supported yet")
+}
+
+func (c *InstanceManagerClient) v2EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	engine := req.Engine
+
+	return c.instanceServiceGrpcClient.InstanceSuspend(string(engine.Spec.BackendStoreDriver),
+		engine.Name, string(longhorn.InstanceManagerTypeEngine))
 }
 
 // VersionGet returns the version of the instance manager
