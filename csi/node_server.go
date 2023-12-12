@@ -21,6 +21,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/csi/crypto"
+	"github.com/longhorn/longhorn-manager/csi/linear"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -426,42 +427,51 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	log.Infof("Volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
 
-	if volume.Encrypted {
-		secrets := req.GetSecrets()
-		keyProvider := secrets[CryptoKeyProvider]
-		passphrase := secrets[CryptoKeyValue]
-		if keyProvider != "" && keyProvider != "secret" {
-			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
-		}
+	if volume.BackendStoreDriver == string(longhorn.BackendStoreDriverTypeV2) {
+		linearDmDevice := linear.VolumeMapper(volumeID)
 
-		if len(passphrase) == 0 {
-			return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
-		}
-
-		if diskFormat != "" && diskFormat != "crypto_LUKS" {
-			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
-		}
-
-		cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[CryptoKeyCipher], secrets[CryptoKeyHash], secrets[CryptoKeySize], secrets[CryptoPBKDF])
-
-		// initial setup of longhorn device for crypto
-		if diskFormat == "" {
-			if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-		}
-
-		cryptoDevice := crypto.VolumeMapper(volumeID)
-		log.Infof("Volume %s requires crypto device %s", volumeID, cryptoDevice)
-
-		if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
+		if err := linear.OpenVolume(volumeID, devicePath); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		// update the device path to point to the new crypto device
-		devicePath = cryptoDevice
-	}
+		devicePath = linearDmDevice
+	} else {
+		if volume.Encrypted {
+			secrets := req.GetSecrets()
+			keyProvider := secrets[CryptoKeyProvider]
+			passphrase := secrets[CryptoKeyValue]
+			if keyProvider != "" && keyProvider != "secret" {
+				return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
+			}
 
+			if len(passphrase) == 0 {
+				return nil, status.Errorf(codes.InvalidArgument, "missing passphrase for encrypted volume %v", volumeID)
+			}
+
+			if diskFormat != "" && diskFormat != "crypto_LUKS" {
+				return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
+			}
+
+			cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[CryptoKeyCipher], secrets[CryptoKeyHash], secrets[CryptoKeySize], secrets[CryptoPBKDF])
+
+			// initial setup of longhorn device for crypto
+			if diskFormat == "" {
+				if err := crypto.EncryptVolume(devicePath, passphrase, cryptoParams); err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+			}
+
+			cryptoDevice := crypto.VolumeMapper(volumeID)
+			log.Infof("Volume %s requires crypto device %s", volumeID, cryptoDevice)
+
+			if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+
+			// update the device path to point to the new crypto device
+			devicePath = cryptoDevice
+		}
+	}
 	if volumeCapability.GetBlock() != nil {
 		if err := ns.nodeStageBlockVolume(volumeID, devicePath, stagingTargetPath, mounter); err != nil {
 			return nil, err
@@ -546,16 +556,22 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
 
-	// Currently, only "RWO volumes" and "block device with volume.Migratable is true" supports encryption.
-	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
-	if cleanupCryptoDevice {
-		cryptoDevice := crypto.VolumeMapper(volumeID)
-		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+	if volume.BackendStoreDriver == string(longhorn.BackendStoreDriverTypeV2) {
+		if err := linear.CloseVolume(volumeID); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
-		} else if isOpen {
-			log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
-			if err := crypto.CloseVolume(volumeID); err != nil {
+		}
+	} else {
+		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
+		cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+		if cleanupCryptoDevice {
+			cryptoDevice := crypto.VolumeMapper(volumeID)
+			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
+			} else if isOpen {
+				log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
+				if err := crypto.CloseVolume(volumeID); err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
 			}
 		}
 	}
