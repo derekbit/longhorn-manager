@@ -3668,6 +3668,9 @@ spec:
                 - disabled
                 - enabled
                 type: string
+              upgradeRequested:
+                description: UpgradeRequested is used to determine if the volume is requested to upgrade
+                type: boolean
             type: object
           status:
             description: VolumeStatus defines the observed state of the Longhorn volume
