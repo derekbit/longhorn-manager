@@ -72,3 +72,15 @@ func handleReconcileErrorLogging(logger logrus.FieldLogger, err error, mesg stri
 		logger.WithError(err).Error(mesg)
 	}
 }
+
+func isV2Replica(r *longhorn.Replica) bool {
+	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+}
+
+func isV2Engine(e *longhorn.Engine) bool {
+	return e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+}
+
+func isV2Volume(v *longhorn.Volume) bool {
+	return v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+}

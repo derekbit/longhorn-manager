@@ -425,13 +425,37 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 
 }
 
+func (ec *EngineController) isEngineUpgradeRequired(e *longhorn.Engine) (bool, error) {
+	upgrades, err := ec.ds.ListUpgradesRO()
+	if err != nil {
+		return false, err
+	}
+
+	var upgrade *longhorn.Upgrade
+	for _, u := range upgrades {
+		upgrade = u
+		break
+	}
+
+	if upgrade != nil {
+		for volumeName := range upgrade.Status.Volumes {
+			if volumeName != e.Spec.VolumeName {
+				continue
+			}
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("invalid object for engine process creation: %v", obj)
+		return nil, fmt.Errorf("invalid object for engine instance creation: %v", obj)
 	}
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
-		return nil, fmt.Errorf("missing parameters for engine instance creation: %v", e)
+		return nil, fmt.Errorf("missing parameters for engine instance creation: %+v", e)
 	}
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
@@ -468,6 +492,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	upgradeRequired, err := ec.isEngineUpgradeRequired(e)
+	if err != nil {
+		return nil, err
+	}
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,
@@ -476,6 +505,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		UpgradeRequired:                  upgradeRequired,
 	})
 }
 
@@ -599,6 +629,31 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	return nil
 }
 
+func (ec *EngineController) SuspendInstance(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine process suspension: %v", obj)
+	}
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance suspension: %v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj)
+	if err != nil {
+		return err
+	}
+
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceSuspend(&engineapi.EngineInstanceSuspendRequest{
+		Engine: e,
+	})
+}
+
 func (ec *EngineController) deleteInstanceWithCLIAPIVersionOne(e *longhorn.Engine) (err error) {
 	isCLIAPIVersionOne := false
 	if e.Status.CurrentImage != "" {
@@ -665,7 +720,11 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 		err error
 	)
 	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
+		if e.Spec.DesireState == longhorn.InstanceStateRunning && e.Status.CurrentState == longhorn.InstanceStateSuspended {
+			im, err = ec.ds.GetRunningInstanceManagerRO(e.Spec.NodeID, e.Spec.BackendStoreDriver)
+		} else {
+			im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -2072,6 +2131,27 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	}
 
 	e.Status.Port = int(engineInstance.Status.PortStart)
+	return nil
+}
+
+func (ec *EngineController) SuspendEngineInstance(e *longhorn.Engine) error {
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	err = c.EngineInstanceSuspend(&engineapi.EngineInstanceSuspendRequest{
+		Engine: e,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
