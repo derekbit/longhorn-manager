@@ -355,6 +355,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
 		if err != nil {
+			logrus.Infof("Debug ===========>>>>>> createInstance err=%v", err)
 			return err
 		}
 

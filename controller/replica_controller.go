@@ -662,6 +662,33 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 			return nil, err
 		}
 	}
+
+	// if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	diskReady, err := checkDiskReadiness(rc.ds, r, im)
+	// 	if err != nil {
+	// 		logrus.Warnf("Debug ======>>>>>> err =%v", err)
+	// 		return nil, err
+	// 	}
+	// 	if !diskReady {
+	// 		logrus.Warnf("Debug ======>>>>>> Instance %v is not ready to start because the disk %v is not ready", im.Name, r.Spec.DiskID)
+	// 		return nil, fmt.Errorf("instance %v is not ready to start because the disk %v is not ready", im.Name, r.Spec.DiskID)
+	// 	}
+	// 	diskClient, err := engineapi.NewDiskServiceClient(im, rc.logger)
+	// 	if err != nil {
+	// 		return nil, errors.Wrapf(err, "failed to create disk service client for node %v", r.Spec.NodeID)
+	// 	}
+	// 	_, err = diskClient.DiskGet(string(longhorn.DiskTypeBlock), r.Spec.DiskID, "")
+	// 	if err != nil {
+	// 		logrus.Infof("Debug ======>>>>>>  err=%v", err)
+	// 		if grpcstatus.Code(err) == grpccodes.NotFound {
+	// 			return nil, fmt.Errorf("disk %v is not ready on node %v", r.Spec.DiskID, r.Spec.NodeID)
+	// 		}
+	// 		return nil, err
+	// 	}
+
+	// 	logrus.Infof("Debug ======>>>>>>  OKKKKK")
+	// }
+
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err

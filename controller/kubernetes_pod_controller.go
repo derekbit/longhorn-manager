@@ -338,8 +338,11 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		timeNow := time.Now()
 		delayDuration := time.Duration(int64(5)) * time.Second
 
+		logrus.Infof("Debug ======> handlePodDeletionIfVolumeRequestRemount delete 1 pod=%v vol=%v", pod.Name, vol.Name)
+
 		if podStartTime.Before(remountRequestedAt) && timeNow.After(remountRequestedAt.Add(delayDuration)) {
 			gracePeriod := int64(30)
+			logrus.Infof("Debug ======> handlePodDeletionIfVolumeRequestRemount delete 2 pod=%v vol=%v", pod.Name, vol.Name)
 			err := kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.GetName(), metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
 			})

@@ -117,7 +117,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath st
 
 // DiskGet returns the disk info with the given name and path.
 func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath string) (*api.DiskInfo, error) {
-	if diskName == "" || diskPath == "" {
+	if diskName == "" {
 		return nil, fmt.Errorf("failed to get disk info: missing required parameters")
 	}
 

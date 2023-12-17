@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"fmt"
+
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,4 +86,27 @@ func isV2Engine(e *longhorn.Engine) bool {
 
 func isV2Volume(v *longhorn.Volume) bool {
 	return v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+}
+
+func isV1Volume(v *longhorn.Volume) bool {
+	return v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2
+}
+
+func checkDiskReadiness(ds *datastore.DataStore, r *longhorn.Replica, im *longhorn.InstanceManager) (bool, error) {
+	node, err := ds.GetNodeRO(r.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == r.Spec.DiskID {
+			if diskStatus.InstanceManagerName == im.Name &&
+				types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
+				return true, nil
+			}
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("failed to find disk %v on node %v", r.Spec.DiskID, node.Name)
 }

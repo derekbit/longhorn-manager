@@ -1023,6 +1023,21 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
+	// var readinessProbe *corev1.Probe
+	// if im.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	readinessProbe = &corev1.Probe{
+	// 		ProbeHandler: corev1.ProbeHandler{
+	// 			TCPSocket: &corev1.TCPSocketAction{
+	// 				Port: intstr.FromInt(engineapi.InstanceManagerSpdkServiceDefaultPort),
+	// 			},
+	// 		},
+	// 		InitialDelaySeconds: datastore.PodProbeInitialDelay,
+	// 		TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+	// 		PeriodSeconds:       datastore.PodProbePeriodSeconds,
+	// 		FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
+	// 	}
+	// }
+
 	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1040,6 +1055,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 				{
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
+					//ReadinessProbe:  readinessProbe,
 					LivenessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							TCPSocket: &corev1.TCPSocketAction{

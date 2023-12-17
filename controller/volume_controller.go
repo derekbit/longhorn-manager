@@ -1350,6 +1350,25 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		}
 	} else { // !isAutoSalvageNeeded
 		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted && v.Status.State == longhorn.VolumeStateDetached {
+			// remountRequested := false
+			// if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+			// 	logrus.Infof("Debug ===> v.Spec.NodeID=%v, v.Status.CurrentNodeID=%v", v.Spec.NodeID, v.Status.CurrentNodeID)
+			// 	// if v.Spec.NodeID == "" && v.Status.CurrentNodeID == "" {
+			// 	// 	v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+			// 	// 	remountRequested = true
+			// 	// }
+			// } else {
+			// 	v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+			// 	remountRequested = true
+			// }
+			// if remountRequested {
+			// 	// The volume was faulty and there are usable replicas.
+			// 	// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
+			// 	v.Status.RemountRequestedAt = c.nowHandler()
+			// 	msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+			// 	c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			// }
+			// return
 			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 			// The volume was faulty and there are usable replicas.
 			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
@@ -1695,7 +1714,7 @@ func (c *VolumeController) handleReplicaUpgrade(r *longhorn.Replica) error {
 		return err
 	}
 
-	diskReady, err := c.checkDiskReadiness(r, im)
+	diskReady, err := checkDiskReadiness(c.ds, r, im)
 	if err != nil {
 		return err
 	}
@@ -1719,25 +1738,6 @@ func (c *VolumeController) handleReplicaUpgrade(r *longhorn.Replica) error {
 	}
 
 	return nil
-}
-
-func (c *VolumeController) checkDiskReadiness(r *longhorn.Replica, im *longhorn.InstanceManager) (bool, error) {
-	node, err := c.ds.GetNodeRO(r.Status.OwnerID)
-	if err != nil {
-		return false, err
-	}
-
-	for _, diskStatus := range node.Status.DiskStatus {
-		if diskStatus.DiskUUID == r.Spec.DiskID {
-			if diskStatus.InstanceManagerName == im.Name &&
-				types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue {
-				return true, nil
-			}
-			break
-		}
-	}
-
-	return false, nil
 }
 
 func (c *VolumeController) getUpgradeRO() (*longhorn.Upgrade, error) {

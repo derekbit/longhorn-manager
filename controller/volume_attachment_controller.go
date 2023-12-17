@@ -645,6 +645,42 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 		return
 	}
 
+	// if vol.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// 	if vol.Status.RemountRequestedAt != "" {
+	// 		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)
+	// 		if err != nil {
+	// 			vac.logger.WithError(err).Errorf("Failed to parse remountRequestedAt for volume %v", vol.Name)
+	// 			return
+	// 		}
+
+	// 		for _, workload := range vol.Status.KubernetesStatus.WorkloadsStatus {
+	// 			pod, err := vac.ds.GetPodRO("default", workload.PodName)
+	// 			if err != nil {
+	// 				if apierrors.IsNotFound(err) {
+	// 					log.WithError(err).Warnf("Failed to get pod %v", workload.PodName)
+	// 					continue
+	// 				}
+	// 				return
+	// 			}
+	// 			if pod == nil {
+	// 				vac.logger.Infof("Pod %v is not found", workload.PodName)
+	// 				continue
+	// 			}
+
+	// 			if pod.Status.StartTime == nil {
+	// 				vac.logger.Infof("Pod %v is not started yet", pod.Name)
+	// 				return
+	// 			}
+
+	// 			podStartTime := pod.Status.StartTime.Time
+	// 			if podStartTime.Before(remountRequestedAt) {
+	// 				vac.logger.WithError(err).Infof("Pod %v is started before remountRequestedAt %v", pod.Name, remountRequestedAt)
+	// 				return
+	// 			}
+	// 		}
+	// 	}
+	// }
+
 	attachmentTicket := selectAttachmentTicketToAttach(va, vol)
 	if attachmentTicket == nil {
 		return
