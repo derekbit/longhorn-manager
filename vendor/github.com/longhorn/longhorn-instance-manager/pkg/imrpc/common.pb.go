@@ -20,7 +20,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Deprecated: replaced by DataEngine.
+// Deprecated: Use DataEngine instead.
 type BackendStoreDriver int32
 
 const (

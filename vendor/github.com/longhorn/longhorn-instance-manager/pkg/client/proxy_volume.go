@@ -34,7 +34,7 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -83,7 +83,7 @@ func (c *ProxyClient) VolumeExpand(dataEngine, engineName, volumeName, serviceAd
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -124,7 +124,7 @@ func (c *ProxyClient) VolumeFrontendStart(dataEngine, engineName, volumeName, se
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -163,7 +163,7 @@ func (c *ProxyClient) VolumeFrontendShutdown(dataEngine, engineName, volumeName,
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -200,7 +200,7 @@ func (c *ProxyClient) VolumeUnmapMarkSnapChainRemovedSet(dataEngine, engineName,
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
