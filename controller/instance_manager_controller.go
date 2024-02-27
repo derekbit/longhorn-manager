@@ -524,6 +524,12 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	if types.IsDataEngineV2(im.Spec.DataEngine) {
+		if im.Spec.DesireState == longhorn.InstanceManagerStateStopped {
+			return nil
+		}
+	}
+
 	if err := imc.createInstanceManagerPod(im); err != nil {
 		return err
 	}
