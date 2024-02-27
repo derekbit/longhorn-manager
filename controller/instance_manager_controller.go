@@ -524,6 +524,17 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	if types.IsDataEngineV2(im.Spec.DataEngine) {
+		pods, err := imc.ds.ListInstanceManagerPodsBy(im.Spec.NodeID, "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list instance manager pods for v2 volume")
+		}
+		if len(pods) > 0 {
+			imc.logger.Infof("%v instance manager pods for v2 volume is already running", len(pods))
+			return nil
+		}
+	}
+
 	if err := imc.createInstanceManagerPod(im); err != nil {
 		return err
 	}
