@@ -8,7 +8,7 @@ github.com/Microsoft/go-winio/pkg/guid
 # github.com/NYTimes/gziphandler v1.1.1
 ## explicit; go 1.11
 github.com/NYTimes/gziphandler
-# github.com/RoaringBitmap/roaring v1.9.0
+# github.com/RoaringBitmap/roaring v1.9.1
 ## explicit; go 1.14
 github.com/RoaringBitmap/roaring
 github.com/RoaringBitmap/roaring/internal
@@ -257,7 +257,7 @@ github.com/longhorn/go-common-libs/utils
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240325073158-8d33f2aada15
+# github.com/longhorn/go-spdk-helper v0.0.0-20240328085119-7ab2393959d9
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.0
@@ -267,7 +267,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240326073731-b2526e3df81e
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240330054222-a925afeae9cd
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -285,7 +285,7 @@ github.com/longhorn/longhorn-share-manager/pkg/server/nfs
 github.com/longhorn/longhorn-share-manager/pkg/types
 github.com/longhorn/longhorn-share-manager/pkg/util
 github.com/longhorn/longhorn-share-manager/pkg/volume
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240319114738-c9046e18cf8c
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240329092432-8326ea00b711
 ## explicit; go 1.21
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc

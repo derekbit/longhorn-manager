@@ -16,6 +16,7 @@ service InstanceService {
 	rpc InstanceLog(InstanceLogRequest) returns (stream LogResponse) {}
 	rpc InstanceWatch(google.protobuf.Empty) returns (stream google.protobuf.Empty) {}
 	rpc InstanceReplace(InstanceReplaceRequest) returns (InstanceResponse) {}
+	rpc InstanceSuspend(InstanceSuspendRequest) returns (google.protobuf.Empty) {}
 
 	rpc LogSetLevel(LogSetLevelRequest) returns (google.protobuf.Empty);
 	rpc LogSetFlags(LogSetFlagsRequest) returns (google.protobuf.Empty);
@@ -52,6 +53,8 @@ message InstanceSpec {
 	ProcessInstanceSpec process_instance_spec = 7;
 	SpdkInstanceSpec spdk_instance_spec = 8;
 	DataEngine data_engine = 9;
+
+	bool upgrade_required = 10;
 }
 
 message InstanceStatus {
@@ -106,6 +109,12 @@ message InstanceLogRequest {
 message InstanceReplaceRequest {
 	InstanceSpec spec = 1;
 	string terminate_signal = 2;
+}
+
+message InstanceSuspendRequest {
+	DataEngine data_engine = 1;
+	string name = 2;
+	string type = 3;
 }
 
 message LogSetLevelRequest {

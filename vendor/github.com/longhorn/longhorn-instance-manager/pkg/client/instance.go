@@ -88,6 +88,7 @@ func NewInstanceServiceClientWithTLS(ctx context.Context, ctxCancel context.Canc
 type EngineCreateRequest struct {
 	ReplicaAddressMap map[string]string
 	Frontend          string
+	UpgradeRequired   bool
 }
 
 type ReplicaCreateRequest struct {
@@ -113,6 +114,16 @@ type InstanceCreateRequest struct {
 
 	// Deprecated: replaced by DataEngine.
 	BackendStoreDriver string
+}
+
+type InstanceSuspendRequest struct {
+	DataEngine   string
+	Name         string
+	InstanceType string
+	VolumeName   string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
 }
 
 func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api.Instance, error) {
@@ -169,6 +180,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
+
+			UpgradeRequired: req.Engine.UpgradeRequired,
 		},
 	})
 	if err != nil {
@@ -318,6 +331,32 @@ func (c *InstanceServiceClient) InstanceReplace(dataEngine, name, instanceType, 
 		return nil, errors.Wrap(err, "failed to replace instance")
 	}
 	return api.RPCToInstance(p), nil
+}
+
+func (c *InstanceServiceClient) InstanceSuspend(dataEngine, name, instanceType string) error {
+	if name == "" {
+		return fmt.Errorf("failed to suspend instance: missing required parameter name")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to suspend instance: invalid data engine %v", dataEngine)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceSuspend(ctx, &rpc.InstanceSuspendRequest{
+		Name:       name,
+		Type:       instanceType,
+		DataEngine: rpc.DataEngine(driver),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to suspend instance %v", name)
+	}
+
+	return nil
 }
 
 func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {

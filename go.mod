@@ -48,7 +48,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
 	github.com/longhorn/go-common-libs v0.0.0-20240319112414-b75404dc7fbc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
-	github.com/longhorn/go-spdk-helper v0.0.0-20240325073158-8d33f2aada15
+	github.com/longhorn/go-spdk-helper v0.0.0-20240328085119-7ab2393959d9
 	github.com/longhorn/longhorn-engine v1.6.0
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683
 	github.com/longhorn/longhorn-share-manager v1.6.0
@@ -104,7 +104,7 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
-	github.com/RoaringBitmap/roaring v1.9.0 // indirect
+	github.com/RoaringBitmap/roaring v1.9.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a // indirect
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -145,7 +145,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240319114738-c9046e18cf8c // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240329092432-8326ea00b711 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -213,4 +213,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240326073731-b2526e3df81e
+replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240330054222-a925afeae9cd
