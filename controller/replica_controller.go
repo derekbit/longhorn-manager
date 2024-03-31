@@ -641,6 +641,10 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *corev1.Pod, r *longhorn.Re
 	rc.eventRecorder.Eventf(r, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old replica %v", pod.Name)
 }
 
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("replica instance doesn't support suspension")
+}
+
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
