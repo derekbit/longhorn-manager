@@ -1,6 +1,8 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.21
+go 1.22.0
+
+toolchain go1.22.2
 
 replace (
 	github.com/google/cel-go => github.com/google/cel-go v0.16.1
@@ -48,9 +50,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240418035818-c6ed5b3b8931
 	github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb
-	github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03
+	github.com/longhorn/go-common-libs v0.0.0-20240422073843-1578e42a50bd
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b
-	github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189
+	github.com/longhorn/go-spdk-helper v0.0.0-20240422131908-185e91a748ad
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3
 	github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659
@@ -72,12 +74,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.6
 	k8s.io/apiextensions-apiserver v0.25.4
-	k8s.io/apimachinery v0.29.4
+	k8s.io/apimachinery v0.30.0
 	k8s.io/cli-runtime v0.28.5
 	k8s.io/client-go v0.28.6
 	k8s.io/kubernetes v1.29.4
 	k8s.io/metrics v0.28.5
-	k8s.io/mount-utils v0.29.4
+	k8s.io/mount-utils v0.30.0
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	sigs.k8s.io/controller-runtime v0.10.1
 )
@@ -127,7 +129,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
-	github.com/go-logr/logr v1.3.0 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
@@ -200,7 +202,7 @@ require (
 	k8s.io/component-helpers v0.28.5 // indirect
 	k8s.io/controller-manager v0.28.5 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.110.1 // indirect
+	k8s.io/klog/v2 v2.120.1 // indirect
 	k8s.io/kms v0.28.5 // indirect
 	k8s.io/kube-aggregator v0.25.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
@@ -210,3 +212,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189 => github.com/derekbit/go-spdk-helper v0.0.0-20240423105946-b3a2588730ab
+
+replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240423113307-036f56e6c5f0
+
+replace github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8 => github.com/derekbit/longhorn-types v0.0.0-20240420062442-035497cf812f

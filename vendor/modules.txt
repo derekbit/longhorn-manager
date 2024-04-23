@@ -86,11 +86,10 @@ github.com/gammazero/workerpool
 # github.com/go-co-op/gocron v1.37.0
 ## explicit; go 1.16
 github.com/go-co-op/gocron
-# github.com/go-logr/logr v1.3.0
+# github.com/go-logr/logr v1.4.1
 ## explicit; go 1.18
 github.com/go-logr/logr
 github.com/go-logr/logr/funcr
-github.com/go-logr/logr/slogr
 # github.com/go-logr/stdr v1.2.2
 ## explicit; go 1.16
 github.com/go-logr/stdr
@@ -235,8 +234,8 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03
-## explicit; go 1.21
+# github.com/longhorn/go-common-libs v0.0.0-20240422073843-1578e42a50bd
+## explicit; go 1.22
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
 github.com/longhorn/go-common-libs/ns
@@ -251,8 +250,8 @@ github.com/longhorn/go-common-libs/utils
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189
-## explicit; go 1.21
+# github.com/longhorn/go-spdk-helper v0.0.0-20240422131908-185e91a748ad
+## explicit; go 1.22
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
 ## explicit; go 1.21
@@ -261,8 +260,8 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3
-## explicit; go 1.21
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240423113307-036f56e6c5f0
+## explicit; go 1.22.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
@@ -272,7 +271,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.21
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8
+# github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8 => github.com/derekbit/longhorn-types v0.0.0-20240420062442-035497cf812f
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -854,7 +853,7 @@ k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/internalint
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1beta1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.29.4 => k8s.io/apimachinery v0.28.5
+# k8s.io/apimachinery v0.30.0 => k8s.io/apimachinery v0.28.5
 ## explicit; go 1.20
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -1428,8 +1427,8 @@ k8s.io/controller-manager/pkg/leadermigration/options
 # k8s.io/klog v1.0.0
 ## explicit; go 1.12
 k8s.io/klog
-# k8s.io/klog/v2 v2.110.1
-## explicit; go 1.13
+# k8s.io/klog/v2 v2.120.1
+## explicit; go 1.18
 k8s.io/klog/v2
 k8s.io/klog/v2/internal/buffer
 k8s.io/klog/v2/internal/clock
@@ -1503,7 +1502,7 @@ k8s.io/metrics/pkg/client/clientset/versioned
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
-# k8s.io/mount-utils v0.29.4 => k8s.io/mount-utils v0.28.5
+# k8s.io/mount-utils v0.30.0 => k8s.io/mount-utils v0.28.5
 ## explicit; go 1.20
 k8s.io/mount-utils
 # k8s.io/utils v0.0.0-20240310230437-4693a0247e57
@@ -1578,3 +1577,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.5
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.28.5
 # k8s.io/sample-controller => k8s.io/sample-controller v0.28.5
+# github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189 => github.com/derekbit/go-spdk-helper v0.0.0-20240423105946-b3a2588730ab
