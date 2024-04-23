@@ -24,7 +24,11 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	return upgradeNodes(namespace, lhClient, resourceMaps)
+	if err := upgradeNodes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeInstanceManagers(namespace, lhClient, resourceMaps)
 }
 
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
@@ -92,7 +96,7 @@ func upgradeEngineStatus(namespace string, lhClient *lhclientset.Clientset, reso
 
 func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade node failed")
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade nodes failed")
 	}()
 
 	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
@@ -114,6 +118,26 @@ func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMap
 		}
 
 		nodeMap[key] = node
+	}
+
+	return nil
+}
+
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance managers failed")
+	}()
+
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn instance managers during the instance manager upgrade")
+	}
+
+	for _, im := range imMap {
+		im.Spec.DesireState = longhorn.InstanceManagerStateRunning
 	}
 
 	return nil
