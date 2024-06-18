@@ -1715,6 +1715,8 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeID:
+                type: string
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
               upgradedReplicaAddressMap:
@@ -1806,6 +1808,8 @@ spec:
                 format: int64
                 type: string
               currentState:
+                type: string
+              currentTargetNodeID:
                 type: string
               endpoint:
                 type: string
@@ -1933,6 +1937,8 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              targetCreated:
+                type: boolean
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
             type: object
@@ -2115,6 +2121,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
@@ -2158,6 +2170,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
@@ -2201,6 +2219,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
@@ -2386,6 +2410,9 @@ spec:
                 items:
                   type: string
                 type: array
+              upgradeRequested:
+                description: Request to upgrade the instance manager for v2 volumes on the node.
+                type: boolean
             type: object
           status:
             description: NodeStatus defines the observed state of the Longhorn node
@@ -3018,6 +3045,8 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeID:
+                type: string
               unmapMarkDiskChainRemovedEnabled:
                 type: boolean
               volumeName:
@@ -3063,6 +3092,8 @@ spec:
                 type: string
               currentState:
                 type: string
+              currentTargetNodeID:
+                type: string
               evictionRequested:
                 description: 'Deprecated: Replaced by field `spec.evictionRequested`.'
                 type: boolean
@@ -3082,6 +3113,8 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              targetCreated:
+                type: boolean
             type: object
         type: object
     served: true
@@ -4395,6 +4428,8 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              targetNodeID:
+                type: string
               unmapMarkSnapChainRemoved:
                 enum:
                 - ignored
@@ -4456,6 +4491,8 @@ spec:
                 description: the node that this volume is currently migrating to
                 type: string
               currentNodeID:
+                type: string
+              currentTargetNodeID:
                 type: string
               expansionRequired:
                 type: boolean

@@ -314,6 +314,8 @@ type VolumeSpec struct {
 	// Setting that freezes the filesystem on the root partition before a snapshot is created.
 	// +optional
 	FreezeFilesystemForSnapshot FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot"`
+	// +optional
+	TargetNodeID string `json:"targetNodeID"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -367,6 +369,8 @@ type VolumeStatus struct {
 	ShareState ShareManagerState `json:"shareState"`
 	// +optional
 	OfflineReplicaRebuildingRequired bool `json:"offlineReplicaRebuildingRequired"`
+	// +optional
+	CurrentTargetNodeID string `json:"currentTargetNodeID"`
 }
 
 // +genclient
