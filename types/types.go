@@ -79,7 +79,7 @@ const (
 
 const (
 	DefaultAPIPort                   = 9500
-	DefaultWebhookServerPort         = 9443
+	DefaultWebhookServerPort         = 9501
 	DefaultRecoveryBackendServerPort = 9600
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
