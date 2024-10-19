@@ -28,6 +28,7 @@ const (
 	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
 	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonUpgradeRequested          = "UpgradeRequested"
 )
 
 const (
