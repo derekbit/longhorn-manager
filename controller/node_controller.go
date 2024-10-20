@@ -2075,15 +2075,29 @@ func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kube
 func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode *corev1.Node,
 	disableSchedulingOnCordonedNode bool) {
 	kubeSpec := kubeNode.Spec
-	if disableSchedulingOnCordonedNode &&
-		kubeSpec.Unschedulable {
+	reason := ""
+	message := ""
+	disableScheduling := false
+
+	if disableSchedulingOnCordonedNode && kubeSpec.Unschedulable {
+		disableScheduling = true
+		reason = string(longhorn.NodeConditionReasonKubernetesNodeCordoned)
+		message = fmt.Sprintf("Node %v is cordoned", node.Name)
+	} else if node.Spec.UpgradeRequested {
+		disableScheduling = true
+		reason = string(longhorn.NodeConditionReasonUpgradeRequested)
+		message = fmt.Sprintf("Node %v is being upgraded", node.Name)
+	}
+
+	if disableScheduling {
 		node.Status.Conditions =
 			types.SetConditionAndRecord(node.Status.Conditions,
 				longhorn.NodeConditionTypeSchedulable,
 				longhorn.ConditionStatusFalse,
-				string(longhorn.NodeConditionReasonKubernetesNodeCordoned),
-				fmt.Sprintf("Node %v is cordoned", node.Name),
-				nc.eventRecorder, node,
+				reason,
+				message,
+				nc.eventRecorder,
+				node,
 				corev1.EventTypeNormal)
 	} else {
 		node.Status.Conditions =
@@ -2092,7 +2106,8 @@ func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode 
 				longhorn.ConditionStatusTrue,
 				"",
 				"",
-				nc.eventRecorder, node,
+				nc.eventRecorder,
+				node,
 				corev1.EventTypeNormal)
 	}
 }
