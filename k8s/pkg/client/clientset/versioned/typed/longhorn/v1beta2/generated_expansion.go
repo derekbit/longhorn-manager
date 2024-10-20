@@ -40,6 +40,8 @@ type InstanceManagerExpansion interface{}
 
 type NodeExpansion interface{}
 
+type NodeUpgradeExpansion interface{}
+
 type OrphanExpansion interface{}
 
 type RecurringJobExpansion interface{}
@@ -57,6 +59,8 @@ type SupportBundleExpansion interface{}
 type SystemBackupExpansion interface{}
 
 type SystemRestoreExpansion interface{}
+
+type UpgradeManagerExpansion interface{}
 
 type VolumeExpansion interface{}
 

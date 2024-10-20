@@ -37,6 +37,7 @@ type LonghornV1beta2Interface interface {
 	EngineImagesGetter
 	InstanceManagersGetter
 	NodesGetter
+	NodeUpgradesGetter
 	OrphansGetter
 	RecurringJobsGetter
 	ReplicasGetter
@@ -46,6 +47,7 @@ type LonghornV1beta2Interface interface {
 	SupportBundlesGetter
 	SystemBackupsGetter
 	SystemRestoresGetter
+	UpgradeManagersGetter
 	VolumesGetter
 	VolumeAttachmentsGetter
 }
@@ -99,6 +101,10 @@ func (c *LonghornV1beta2Client) Nodes(namespace string) NodeInterface {
 	return newNodes(c, namespace)
 }
 
+func (c *LonghornV1beta2Client) NodeUpgrades(namespace string) NodeUpgradeInterface {
+	return newNodeUpgrades(c, namespace)
+}
+
 func (c *LonghornV1beta2Client) Orphans(namespace string) OrphanInterface {
 	return newOrphans(c, namespace)
 }
@@ -133,6 +139,10 @@ func (c *LonghornV1beta2Client) SystemBackups(namespace string) SystemBackupInte
 
 func (c *LonghornV1beta2Client) SystemRestores(namespace string) SystemRestoreInterface {
 	return newSystemRestores(c, namespace)
+}
+
+func (c *LonghornV1beta2Client) UpgradeManagers(namespace string) UpgradeManagerInterface {
+	return newUpgradeManagers(c, namespace)
 }
 
 func (c *LonghornV1beta2Client) Volumes(namespace string) VolumeInterface {

@@ -106,6 +106,14 @@ type NodeListerExpansion interface{}
 // NodeNamespaceLister.
 type NodeNamespaceListerExpansion interface{}
 
+// NodeUpgradeListerExpansion allows custom methods to be added to
+// NodeUpgradeLister.
+type NodeUpgradeListerExpansion interface{}
+
+// NodeUpgradeNamespaceListerExpansion allows custom methods to be added to
+// NodeUpgradeNamespaceLister.
+type NodeUpgradeNamespaceListerExpansion interface{}
+
 // OrphanListerExpansion allows custom methods to be added to
 // OrphanLister.
 type OrphanListerExpansion interface{}
@@ -177,6 +185,14 @@ type SystemRestoreListerExpansion interface{}
 // SystemRestoreNamespaceListerExpansion allows custom methods to be added to
 // SystemRestoreNamespaceLister.
 type SystemRestoreNamespaceListerExpansion interface{}
+
+// UpgradeManagerListerExpansion allows custom methods to be added to
+// UpgradeManagerLister.
+type UpgradeManagerListerExpansion interface{}
+
+// UpgradeManagerNamespaceListerExpansion allows custom methods to be added to
+// UpgradeManagerNamespaceLister.
+type UpgradeManagerNamespaceListerExpansion interface{}
 
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
