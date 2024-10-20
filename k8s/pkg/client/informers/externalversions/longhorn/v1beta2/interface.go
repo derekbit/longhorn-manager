@@ -46,6 +46,8 @@ type Interface interface {
 	InstanceManagers() InstanceManagerInformer
 	// Nodes returns a NodeInformer.
 	Nodes() NodeInformer
+	// NodeUpgrades returns a NodeUpgradeInformer.
+	NodeUpgrades() NodeUpgradeInformer
 	// Orphans returns a OrphanInformer.
 	Orphans() OrphanInformer
 	// RecurringJobs returns a RecurringJobInformer.
@@ -64,6 +66,8 @@ type Interface interface {
 	SystemBackups() SystemBackupInformer
 	// SystemRestores returns a SystemRestoreInformer.
 	SystemRestores() SystemRestoreInformer
+	// UpgradeManagers returns a UpgradeManagerInformer.
+	UpgradeManagers() UpgradeManagerInformer
 	// Volumes returns a VolumeInformer.
 	Volumes() VolumeInformer
 	// VolumeAttachments returns a VolumeAttachmentInformer.
@@ -136,6 +140,11 @@ func (v *version) Nodes() NodeInformer {
 	return &nodeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// NodeUpgrades returns a NodeUpgradeInformer.
+func (v *version) NodeUpgrades() NodeUpgradeInformer {
+	return &nodeUpgradeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // Orphans returns a OrphanInformer.
 func (v *version) Orphans() OrphanInformer {
 	return &orphanInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -179,6 +188,11 @@ func (v *version) SystemBackups() SystemBackupInformer {
 // SystemRestores returns a SystemRestoreInformer.
 func (v *version) SystemRestores() SystemRestoreInformer {
 	return &systemRestoreInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// UpgradeManagers returns a UpgradeManagerInformer.
+func (v *version) UpgradeManagers() UpgradeManagerInformer {
+	return &upgradeManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Volumes returns a VolumeInformer.
