@@ -72,6 +72,10 @@ func (c *FakeLonghornV1beta2) Nodes(namespace string) v1beta2.NodeInterface {
 	return &FakeNodes{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) NodeUpgrades(namespace string) v1beta2.NodeUpgradeInterface {
+	return &FakeNodeUpgrades{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) Orphans(namespace string) v1beta2.OrphanInterface {
 	return &FakeOrphans{c, namespace}
 }
@@ -106,6 +110,10 @@ func (c *FakeLonghornV1beta2) SystemBackups(namespace string) v1beta2.SystemBack
 
 func (c *FakeLonghornV1beta2) SystemRestores(namespace string) v1beta2.SystemRestoreInterface {
 	return &FakeSystemRestores{c, namespace}
+}
+
+func (c *FakeLonghornV1beta2) UpgradeManagers(namespace string) v1beta2.UpgradeManagerInterface {
+	return &FakeUpgradeManagers{c, namespace}
 }
 
 func (c *FakeLonghornV1beta2) Volumes(namespace string) v1beta2.VolumeInterface {

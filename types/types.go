@@ -40,6 +40,8 @@ const (
 	LonghornKindSupportBundle       = "SupportBundle"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindUpgradeManager      = "UpgradeManager"
+	LonghornKindNodeUpgrade         = "NodeUpgrade"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 

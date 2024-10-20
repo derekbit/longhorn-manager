@@ -65,6 +65,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VolumeList{},
 		&VolumeAttachment{},
 		&VolumeAttachmentList{},
+		&UpgradeManager{},
+		&UpgradeManagerList{},
+		&NodeUpgrade{},
+		&NodeUpgradeList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

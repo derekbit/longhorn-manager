@@ -90,6 +90,10 @@ type DataStore struct {
 	SystemRestoreInformer          cache.SharedInformer
 	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
+	upgradeManagerLister           lhlisters.UpgradeManagerLister
+	UpgradeManagerInformer         cache.SharedInformer
+	nodeUpgradeLister              lhlisters.NodeUpgradeLister
+	NodeUpgradeInformer            cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	podLister                     corelisters.PodLister
@@ -179,6 +183,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
+	upgradeManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().UpgradeManagers()
+	cacheSyncs = append(cacheSyncs, upgradeManagerInformer.Informer().HasSynced)
+	nodeUpgradeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().NodeUpgrades()
+	cacheSyncs = append(cacheSyncs, nodeUpgradeInformer.Informer().HasSynced)
 
 	// Kube Informers
 	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
@@ -268,6 +276,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
+		upgradeManagerLister:           upgradeManagerInformer.Lister(),
+		UpgradeManagerInformer:         upgradeManagerInformer.Informer(),
+		nodeUpgradeLister:              nodeUpgradeInformer.Lister(),
+		NodeUpgradeInformer:            nodeUpgradeInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),
