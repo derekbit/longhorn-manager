@@ -5585,6 +5585,230 @@ func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage,
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }
 
+// CreateUpgradeManager creates a Longhorn UpgradeManager resource and verifies creation
+func (s *DataStore) CreateUpgradeManager(upgradeManager *longhorn.UpgradeManager) (*longhorn.UpgradeManager, error) {
+	ret, err := s.lhClient.LonghornV1beta2().UpgradeManagers(s.namespace).Create(context.TODO(), upgradeManager, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "upgradeManager", func(name string) (k8sruntime.Object, error) {
+		return s.GetUpgradeManagerRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.UpgradeManager)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for upgradeManager")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetUpgradeManagerRO returns the UpgradeManager with the given upgradeManager name in the cluster
+func (s *DataStore) GetUpgradeManagerRO(upgradeManagerName string) (*longhorn.UpgradeManager, error) {
+	return s.upgradeManagerLister.UpgradeManagers(s.namespace).Get(upgradeManagerName)
+}
+
+// GetUpgradeManager returns a copy of UpgradeManager with the given upgradeManager name in the cluster
+func (s *DataStore) GetUpgradeManager(name string) (*longhorn.UpgradeManager, error) {
+	resultRO, err := s.GetUpgradeManagerRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateUpgradeManager updates the given Longhorn upgradeManager in the cluster UpgradeManager CR and verifies update
+func (s *DataStore) UpdateUpgradeManager(upgradeManager *longhorn.UpgradeManager) (*longhorn.UpgradeManager, error) {
+	obj, err := s.lhClient.LonghornV1beta2().UpgradeManagers(s.namespace).Update(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgradeManager.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetUpgradeManagerRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateUpgradeManagerStatus updates the given Longhorn upgradeManager status in the cluster UpgradeManagers CR status and verifies update
+func (s *DataStore) UpdateUpgradeManagerStatus(upgradeManager *longhorn.UpgradeManager) (*longhorn.UpgradeManager, error) {
+	obj, err := s.lhClient.LonghornV1beta2().UpgradeManagers(s.namespace).UpdateStatus(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgradeManager.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetUpgradeManagerRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForUpgradeManager will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForUpgradeManager(upgradeManager *longhorn.UpgradeManager) error {
+	if !util.FinalizerExists(longhornFinalizerKey, upgradeManager) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, upgradeManager); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().UpgradeManagers(s.namespace).Update(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if upgradeManager.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for upgradeManager %s", upgradeManager.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) listUpgradeManagers(selector labels.Selector) (map[string]*longhorn.UpgradeManager, error) {
+	list, err := s.upgradeManagerLister.UpgradeManagers(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.UpgradeManager{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListUpgradeManagers returns an object contains all UpgradeManagers for the given namespace
+func (s *DataStore) ListUpgradeManagers() (map[string]*longhorn.UpgradeManager, error) {
+	return s.listUpgradeManagers(labels.Everything())
+}
+
+// ListUpgradeManagersRO returns a list of all UpgradeManagers for the given namespace
+func (s *DataStore) ListUpgradeManagersRO() ([]*longhorn.UpgradeManager, error) {
+	return s.upgradeManagerLister.UpgradeManagers(s.namespace).List(labels.Everything())
+}
+
+// DeleteUpgradeManager won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteUpgradeManager(upgradeManagerName string) error {
+	return s.lhClient.LonghornV1beta2().UpgradeManagers(s.namespace).Delete(context.TODO(), upgradeManagerName, metav1.DeleteOptions{})
+}
+
+// CreateNodeUpgrade creates a Longhorn NodeUpgrade resource and verifies creation
+func (s *DataStore) CreateNodeUpgrade(nodeUpgrade *longhorn.NodeUpgrade) (*longhorn.NodeUpgrade, error) {
+	ret, err := s.lhClient.LonghornV1beta2().NodeUpgrades(s.namespace).Create(context.TODO(), nodeUpgrade, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "nodeUpgrade", func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeUpgradeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.NodeUpgrade)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for nodeUpgrade")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetNodeUpgradeRO returns the NodeUpgrade with the given nodeUpgrade name in the cluster
+func (s *DataStore) GetNodeUpgradeRO(upgradeName string) (*longhorn.NodeUpgrade, error) {
+	return s.nodeUpgradeLister.NodeUpgrades(s.namespace).Get(upgradeName)
+}
+
+// GetNodeUpgrade returns a copy of NodeUpgrade with the given nodeUpgrade name in the cluster
+func (s *DataStore) GetNodeUpgrade(name string) (*longhorn.NodeUpgrade, error) {
+	resultRO, err := s.GetNodeUpgradeRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateNodeUpgrade updates the given Longhorn nodeUpgrade in the cluster NodeUpgrade CR and verifies update
+func (s *DataStore) UpdateNodeUpgrade(upgrade *longhorn.NodeUpgrade) (*longhorn.NodeUpgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().NodeUpgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateNodeUpgradeStatus updates the given Longhorn nodeUpgrade status in the cluster NodeUpgrades CR status and verifies update
+func (s *DataStore) UpdateNodeUpgradeStatus(upgrade *longhorn.NodeUpgrade) (*longhorn.NodeUpgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().NodeUpgrades(s.namespace).UpdateStatus(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForNodeUpgrade will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForNodeUpgrade(upgrade *longhorn.NodeUpgrade) error {
+	if !util.FinalizerExists(longhornFinalizerKey, upgrade) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, upgrade); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().NodeUpgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if upgrade.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for nodeUpgrade %s", upgrade.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) listNodeUpgrades(selector labels.Selector) (map[string]*longhorn.NodeUpgrade, error) {
+	list, err := s.nodeUpgradeLister.NodeUpgrades(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.NodeUpgrade{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListNodeUpgrades returns an object contains all NodeUpgrades for the given namespace
+func (s *DataStore) ListNodeUpgrades() (map[string]*longhorn.NodeUpgrade, error) {
+	return s.listNodeUpgrades(labels.Everything())
+}
+
+// ListNodeUpgradesRO returns a list of all NodeUpgrades for the given namespace
+func (s *DataStore) ListNodeUpgradesRO() ([]*longhorn.NodeUpgrade, error) {
+	return s.nodeUpgradeLister.NodeUpgrades(s.namespace).List(labels.Everything())
+}
+
+// DeleteNodeUpgrade won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteNodeUpgrade(upgradeName string) error {
+	return s.lhClient.LonghornV1beta2().NodeUpgrades(s.namespace).Delete(context.TODO(), upgradeName, metav1.DeleteOptions{})
+}
+
 // GetRunningInstanceManagerByNodeRO returns the running instance manager for the given node and data engine
 func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	// Trying to get the default instance manager first.
