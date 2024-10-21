@@ -46,6 +46,8 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDUpgradeManagerName         = "upgradeManagers.longhorn.io"
+	CRDNodeUpgradeName            = "nodeUpgrades.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -202,6 +204,14 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDUpgradeManagerName, metav1.GetOptions{}); err == nil {
+		ds.UpgradeManagerInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.UpgradeManagerInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDNodeUpgradeName, metav1.GetOptions{}); err == nil {
+		ds.NodeUpgradeInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.NodeUpgradeInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
