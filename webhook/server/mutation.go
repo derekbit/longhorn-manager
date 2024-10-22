@@ -17,6 +17,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
+	"github.com/longhorn/longhorn-manager/webhook/resources/nodeupgrade"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
 	"github.com/longhorn/longhorn-manager/webhook/resources/replica"
@@ -24,6 +25,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/snapshot"
 	"github.com/longhorn/longhorn-manager/webhook/resources/supportbundle"
 	"github.com/longhorn/longhorn-manager/webhook/resources/systembackup"
+	"github.com/longhorn/longhorn-manager/webhook/resources/upgrademanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volumeattachment"
 )
@@ -50,6 +52,8 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		volumeattachment.NewMutator(ds),
 		instancemanager.NewMutator(ds),
 		backupbackingimage.NewMutator(ds),
+		upgrademanager.NewMutator(ds),
+		nodeupgrade.NewMutator(ds),
 	}
 
 	router := webhook.NewRouter()
