@@ -154,6 +154,16 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 		return nil, err
 	}
 
+	upgradeManagerController, err := NewUpgradeManagerController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeUpgradeController, err := NewNodeUpgradeController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	// Kubernetes controllers
 	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	if err != nil {
@@ -213,6 +223,8 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	go upgradeManagerController.Run(Workers, stopCh)
+	go nodeUpgradeController.Run(Workers, stopCh)
 
 	// Start goroutines for Kubernetes controllers
 	go kubernetesPVController.Run(Workers, stopCh)
