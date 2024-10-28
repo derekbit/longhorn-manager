@@ -101,6 +101,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped {
 			status.InstanceManagerName = ""
+			status.CurrentTargetNodeID = ""
 		}
 	}()
 
@@ -478,6 +479,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				if shouldDeleteInstance(&instance) {
 					if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 						return err
+					}
+
+					// TODO: (live upgrade) retry delete instance if it's not deleted
+					if err := h.deleteTarget(instanceName, runtimeObj); err != nil {
+						if !types.ErrorIsNotFound(err) {
+							return err
+						}
 					}
 				}
 			}

@@ -609,19 +609,19 @@ func deleteUnixSocketFile(volumeName string) error {
 }
 
 func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
-	return fmt.Errorf("suspending replica instance is not supported")
+	return nil
 }
 
 func (rc *ReplicaController) ResumeInstance(obj interface{}) error {
-	return fmt.Errorf("resuming replica instance is not supported")
+	return nil
 }
 
 func (rc *ReplicaController) SwitchOverTarget(obj interface{}) error {
-	return fmt.Errorf("replica instance doesn't support target switchover")
+	return nil
 }
 
 func (rc *ReplicaController) DeleteTarget(obj interface{}) error {
-	return fmt.Errorf("replica instance doesn't support target deletion")
+	return nil
 }
 
 func (rc *ReplicaController) RequireRemoteTargetInstance(obj interface{}) (bool, error) {

@@ -652,6 +652,15 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		return err
 	}
 
+	if e.Status.CurrentTargetNodeID != "" {
+		err = c.EngineInstanceDeleteTarget(&engineapi.EngineInstanceDeleteTargetRequest{
+			Engine: e,
+		})
+	}
+	if err != nil && !types.ErrorIsNotFound(err) {
+		return err
+	}
+
 	return nil
 }
 

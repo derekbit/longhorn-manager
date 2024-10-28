@@ -1974,6 +1974,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		}
 		e.Spec.RequestedBackupRestore = ""
 		e.Spec.NodeID = ""
+		e.Spec.TargetNodeID = ""
 		e.Spec.DesireState = longhorn.InstanceStateStopped
 	}
 	// must make sure engine stopped first before stopping replicas
