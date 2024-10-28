@@ -3,7 +3,6 @@ package engineapi
 import (
 	"context"
 	"fmt"
-	"net"
 	"path/filepath"
 	"strconv"
 
@@ -459,23 +458,6 @@ type EngineInstanceCreateRequest struct {
 	TargetAddress                    string
 }
 
-func getReplicaAddresses(replicaAddresses map[string]string, initiatorIP, targetIP string) (map[string]string, error) {
-	addresses := map[string]string{}
-	for name, addr := range replicaAddresses {
-		if initiatorIP != targetIP {
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			if initiatorIP == host {
-				continue
-			}
-		}
-		addresses[name] = addr
-	}
-	return addresses, nil
-}
-
 // EngineInstanceCreate creates a new engine instance
 func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
@@ -500,10 +482,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			return nil, err
 		}
 	case longhorn.DataEngineTypeV2:
-		replicaAddresses, err = getReplicaAddresses(req.Engine.Status.CurrentReplicaAddressMap, req.InitiatorAddress, req.TargetAddress)
-		if err != nil {
-			return nil, err
-		}
+		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 	}
 
 	if c.GetAPIVersion() < 4 {
