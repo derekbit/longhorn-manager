@@ -14,6 +14,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -124,8 +125,12 @@ func (m *NodeUpgradeMonitor) handleNodeUpgrade(nodeUpgrade *longhorn.NodeUpgrade
 		m.handleUpgradeStateUndefined(nodeUpgrade)
 	case longhorn.UpgradeStateInitializing:
 		m.handleUpgradeStateInitializing(nodeUpgrade)
+	case longhorn.UpgradeStateSwitchingOver:
+		m.handleUpgradeStateSwitchingOver(nodeUpgrade)
 	case longhorn.UpgradeStateUpgrading:
 		m.handleUpgradeStateUpgrading(nodeUpgrade)
+	case longhorn.UpgradeStateSwitchingBack:
+		m.handleUpgradeStateSwitchingBack(nodeUpgrade)
 	case longhorn.UpgradeStateCompleted, longhorn.UpgradeStateError:
 		return
 	default:
@@ -191,8 +196,23 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrade *longhor
 		}
 	}
 
-	m.nodeUpgradeStatus.State = longhorn.UpgradeStateUpgrading
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingOver
 	m.nodeUpgradeStatus.Volumes = volumes
+}
+
+func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgrade *longhorn.NodeUpgrade) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = err.Error()
+		}
+	}()
+
+	if switchOverCompleted := m.switchOverVolumes(nodeUpgrade); switchOverCompleted {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateUpgrading
+	}
 }
 
 func (m *NodeUpgradeMonitor) handleUpgradeStateUpgrading(nodeUpgrade *longhorn.NodeUpgrade) {
@@ -206,7 +226,25 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateUpgrading(nodeUpgrade *longhorn.N
 		}
 	}()
 
-	if upgradeCompleted := m.reconcileVolumes(nodeUpgrade); upgradeCompleted {
+	if upgradeCompleted := m.upgradeInstanceManager(nodeUpgrade); upgradeCompleted {
+		log.Infof("Upgrade of instance manager for nodeUpgrade %v is completed", nodeUpgrade.Name)
+		//m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingBack
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateCompleted
+	}
+}
+
+func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longhorn.NodeUpgrade) {
+	var err error
+	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
+
+	defer func() {
+		if err != nil {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = err.Error()
+		}
+	}()
+
+	if upgradeCompleted := m.upgradeInstanceManager(nodeUpgrade); upgradeCompleted {
 		var node *longhorn.Node
 
 		node, err = m.ds.GetNode(nodeUpgrade.Status.OwnerID)
@@ -260,13 +298,35 @@ func (m *NodeUpgradeMonitor) collectVolumes(nodeUpgrade *longhorn.NodeUpgrade) (
 	return volumes, nil
 }
 
-func (m *NodeUpgradeMonitor) reconcileVolumes(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
+func (m *NodeUpgradeMonitor) switchOverVolumes(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
 	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-	log.Infof("Reconciling volumes for nodeUpgrade %v", nodeUpgrade.Name)
+	log.Infof("Switching over volumes for nodeUpgrade %v", nodeUpgrade.Name)
 
 	m.updateVolumes(nodeUpgrade)
 
-	return m.AreAllVolumesUpgraded(nodeUpgrade)
+	return m.AreAllVolumesSwitchedOver(nodeUpgrade)
+}
+
+func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
+	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
+	log.Infof("Upgrading instance manager for nodeUpgrade %v", nodeUpgrade.Name)
+
+	m.failReplicas(nodeUpgrade)
+
+	err := m.deleteNonDefaultInstanceManager(nodeUpgrade)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to delete non-default instance manager")
+		return false
+	}
+
+	isRunning, err := m.isDefaultInstanceManagerRunning(nodeUpgrade)
+	if err != nil {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+		m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to check if default instance manager is running").Error()
+		return
+	}
+
+	return isRunning
 }
 
 func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade) {
@@ -292,28 +352,76 @@ func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade) {
 	}
 }
 
+func (m *NodeUpgradeMonitor) failReplicas(nodeUpgrade *longhorn.NodeUpgrade) {
+	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
+
+	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+		m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to list replicas on node %v", nodeUpgrade.Status.OwnerID).Error()
+		return
+	}
+
+	for _, r := range replicas {
+		if r.Spec.DesireState == longhorn.InstanceStateStopped {
+			continue
+		}
+
+		log.Infof("Failing replica %v on node %v", r.Name, nodeUpgrade.Status.OwnerID)
+
+		setReplicaFailedAt(r, util.Now())
+		r.Spec.DesireState = longhorn.InstanceStateStopped
+
+		_, err = m.ds.UpdateReplica(r)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to fail replica %v on node %v", r.Name, nodeUpgrade.Status.OwnerID)
+			continue
+		}
+	}
+}
+
+// r.Spec.FailedAt and r.Spec.LastFailedAt should both be set when a replica failure occurs.
+// r.Spec.FailedAt may be cleared (before rebuilding), but r.Spec.LastFailedAt must not be.
+func setReplicaFailedAt(r *longhorn.Replica, timestamp string) {
+	r.Spec.FailedAt = timestamp
+	if timestamp != "" {
+		r.Spec.LastFailedAt = timestamp
+	}
+}
+
 func (m *NodeUpgradeMonitor) findAvailableNodeForNVMeTarget(nodeUpgrade *longhorn.NodeUpgrade) (string, error) {
 	upgradeManager, err := m.ds.GetUpgradeManager(nodeUpgrade.Spec.UpgradeManager)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to get upgradeManager %v", nodeUpgrade.Name)
 	}
 
+	ims, err := m.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to list instance managers for v2 data engine")
+	}
+
 	availableNode := ""
-	for nodeID, upgradeNodeStatus := range upgradeManager.Status.UpgradeNodes {
-		if nodeID == nodeUpgrade.Status.OwnerID {
+	for _, im := range ims {
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			continue
 		}
-		if upgradeNodeStatus.State == longhorn.UpgradeStateError {
+
+		if im.Spec.NodeID == nodeUpgrade.Status.OwnerID {
 			continue
 		}
 
 		if availableNode == "" {
-			availableNode = nodeID
+			availableNode = im.Spec.NodeID
+		}
+
+		upgradeNodeStatus, ok := upgradeManager.Status.UpgradeNodes[im.Spec.NodeID]
+		if !ok {
+			continue
 		}
 
 		// Prefer the node that has completed the upgrade
 		if upgradeNodeStatus.State == longhorn.UpgradeStateCompleted {
-			availableNode = nodeID
+			availableNode = im.Spec.NodeID
 			break
 		}
 	}
@@ -323,7 +431,6 @@ func (m *NodeUpgradeMonitor) findAvailableNodeForNVMeTarget(nodeUpgrade *longhor
 	}
 
 	return availableNode, nil
-
 }
 
 func (m *NodeUpgradeMonitor) updateVolume(volumeName, image, nodeForNVMeTarget string) error {
@@ -342,6 +449,29 @@ func (m *NodeUpgradeMonitor) updateVolume(volumeName, image, nodeForNVMeTarget s
 		}
 	}
 	return nil
+}
+
+func (m *NodeUpgradeMonitor) AreAllVolumesSwitchedOver(nodeUpgrade *longhorn.NodeUpgrade) bool {
+	allSwitchedOver := true
+
+	for name := range nodeUpgrade.Status.Volumes {
+		volume, err := m.ds.GetVolume(name)
+		if err != nil {
+			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateError
+			nodeUpgrade.Status.Volumes[name].ErrorMessage = err.Error()
+			continue
+		}
+
+		if volume.Status.CurrentImage == nodeUpgrade.Spec.InstanceManagerImage &&
+			volume.Spec.Image == volume.Status.CurrentImage &&
+			volume.Spec.TargetNodeID == volume.Status.CurrentTargetNodeID {
+			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateCompleted
+		} else {
+			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateUpgrading
+			allSwitchedOver = false
+		}
+	}
+	return allSwitchedOver
 }
 
 func (m *NodeUpgradeMonitor) AreAllVolumesUpgraded(nodeUpgrade *longhorn.NodeUpgrade) bool {
@@ -363,4 +493,42 @@ func (m *NodeUpgradeMonitor) AreAllVolumesUpgraded(nodeUpgrade *longhorn.NodeUpg
 		}
 	}
 	return allUpgraded
+}
+
+func (m *NodeUpgradeMonitor) deleteNonDefaultInstanceManager(nodeUpgrade *longhorn.NodeUpgrade) error {
+	ims, err := m.ds.ListInstanceManagersByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance managers for node %v", nodeUpgrade.Status.OwnerID)
+	}
+
+	for _, im := range ims {
+		if im.Spec.Image == nodeUpgrade.Spec.InstanceManagerImage {
+			continue
+		}
+		if len(im.Status.InstanceReplicas) != 0 {
+			return errors.Errorf("instance manager %v has instance replicas", im.Name)
+		}
+
+		if err := m.ds.DeleteInstanceManager(im.Name); err != nil {
+			return errors.Wrapf(err, "failed to delete instance manager %v", im.Name)
+		}
+	}
+
+	return nil
+}
+
+func (m *NodeUpgradeMonitor) isDefaultInstanceManagerRunning(nodeUpgrade *longhorn.NodeUpgrade) (bool, error) {
+	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
+
+	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get default instance manager for node %v", nodeUpgrade.Status.OwnerID)
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		log.Warnf("Instance manager %v is not running and in state %v", im.Name, im.Status.CurrentState)
+		return false, nil
+	}
+
+	return true, nil
 }

@@ -132,10 +132,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		im.DeletionTimestamp != nil {
 		if status.Started {
 			if spec.Image == status.CurrentImage {
-				if status.CurrentState != longhorn.InstanceStateError {
-					logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
-				}
-				status.CurrentState = longhorn.InstanceStateError
+				// if status.CurrentState != longhorn.InstanceStateError {
+				// 	logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
+				// }
+				// status.CurrentState = longhorn.InstanceStateError
+				logrus.Infof("Debug ====> im=%v, currentState=%v", im.Name, im.Status.CurrentState)
 			}
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
