@@ -121,8 +121,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentImage = ""
 		}
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -143,8 +146,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		// if status.CurrentState == longhorn.InstanceStateStopped || status.CurrentState == longhorn.InstanceStateError {
 		// 	status.IP = ""
 		// 	status.StorageIP = ""
@@ -163,8 +169,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 				status.CurrentState = longhorn.InstanceStateError
 				status.CurrentImage = ""
 				status.IP = ""
+				status.TargetIP = ""
 				status.StorageIP = ""
+				status.StorageTargetIP = ""
 				status.Port = 0
+				status.TargetPort = 0
 				h.resetInstanceErrorCondition(status)
 			}
 		}
@@ -183,8 +192,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -205,8 +217,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateStarting
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
@@ -253,18 +268,26 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 
 		if status.IP != im.Status.IP {
 			status.IP = im.Status.IP
-			if targetIm != nil {
-				status.IP = targetIm.Status.IP
-			}
+			status.TargetIP = im.Status.IP
 			logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
 		}
+
+		if targetIm != nil && targetInstance != nil {
+			if status.TargetIP != targetIm.Status.IP {
+				status.TargetIP = targetIm.Status.IP
+			}
+		}
+
 		if status.Port != int(instance.Status.PortStart) {
 			status.Port = int(instance.Status.PortStart)
-			if targetInstance != nil {
-				status.Port = int(targetInstance.Status.TargetPortStart)
-			}
+			status.TargetPort = int(instance.Status.PortStart)
 			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
+
+		if targetIm != nil && targetInstance != nil {
+			status.TargetPort = int(targetInstance.Status.TargetPortStart)
+		}
+
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
@@ -293,8 +316,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateStopped:
 		if status.Started {
@@ -304,8 +330,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
@@ -314,8 +343,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	}
 }
@@ -369,6 +401,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	var im *longhorn.InstanceManager
 	if status.InstanceManagerName != "" {
 		im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
+		logrus.Infof("Debug ========> im.Name=%v, err=%v", status.InstanceManagerName, err)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				return err
@@ -389,12 +422,14 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if err != nil {
 			return err
 		}
+		logrus.Infof("Debug ========> isNodeDownOrDeleted=%v", isNodeDownOrDeleted)
 		if !isNodeDownOrDeleted {
 			im, err = h.getInstanceManagerRO(obj, spec, status)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 			}
 		}
+		logrus.Infof("Debug =======> 2im.Name=%v, err=%v", im.Name, err)
 	}
 
 	if spec.LogRequested {
@@ -456,7 +491,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				logrus.Infof("Resuming instance %v", instanceName)
 				err = h.resumeInstance(instanceName, spec.DataEngine, runtimeObj)
 			} else {
-				logrus.Infof("Creating instance %v for volume upgrade on node %v", instanceName, spec.TargetNodeID)
+				logrus.Infof("Creating target instance %v for volume upgrade on node %v", instanceName, spec.TargetNodeID)
 				err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
 			}
 		} else {
@@ -526,7 +561,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
+				status.TargetIP = ""
 				status.StorageIP = ""
+				status.StorageTargetIP = ""
 				err := fmt.Errorf("instance %v NodeID %v is not the same as the instance manager %v NodeID %v",
 					instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				return err

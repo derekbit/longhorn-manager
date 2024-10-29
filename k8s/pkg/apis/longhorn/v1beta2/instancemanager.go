@@ -112,6 +112,12 @@ type InstanceStatus struct {
 	// +optional
 	Port int `json:"port"`
 	// +optional
+	TargetIP string `json:"targetIP"`
+	// +optional
+	StorageTargetIP string `json:"storageTargetIP"`
+	// +optional
+	TargetPort int `json:"targetPort"`
+	// +optional
 	Started bool `json:"started"`
 	// +optional
 	LogFetched bool `json:"logFetched"`

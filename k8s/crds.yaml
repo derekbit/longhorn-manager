@@ -1903,8 +1903,14 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              storageTargetIP:
+                type: string
               targetCreated:
                 type: boolean
+              targetIP:
+                type: string
+              targetPort:
+                type: integer
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
             type: object
@@ -3166,8 +3172,14 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              storageTargetIP:
+                type: string
               targetCreated:
                 type: boolean
+              targetIP:
+                type: string
+              targetPort:
+                type: integer
             type: object
         type: object
     served: true

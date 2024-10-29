@@ -505,10 +505,10 @@ func (ec *EngineController) CreateInstance(obj interface{}, isInstanceOnRemoteNo
 	}
 
 	log.WithFields(logrus.Fields{
-		"instanceManager":       im.Name,
-		"instanceManager image": im.Spec.Image,
-		"initiatorIP":           initiatorIP,
-		"targetIP":              targetIP,
+		"instanceManager":      im.Name,
+		"instanceManagerImage": im.Spec.Image,
+		"initiatorIP":          initiatorIP,
+		"targetIP":             targetIP,
 	}).Info("Creating engine instance")
 
 	c, err := engineapi.NewInstanceManagerClient(im, false)
