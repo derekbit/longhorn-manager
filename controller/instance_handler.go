@@ -163,6 +163,10 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
 			if spec.Image == status.CurrentImage {
+				if spec.TargetNodeID != "" && spec.TargetNodeID != status.CurrentTargetNodeID {
+					logrus.Warnf("Skipping the instance %v since the instance manager %v is starting", instanceName, im.Name)
+					return
+				}
 				if status.CurrentState != longhorn.InstanceStateError {
 					logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
 				}
@@ -183,10 +187,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := instances[instanceName]
 	if !exists {
 		if status.Started {
-			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
+			// TODO: (live upgrade) check if the initiator instance is running
+			if spec.TargetNodeID != "" && spec.TargetNodeID != status.CurrentTargetNodeID {
+				if status.CurrentState != longhorn.InstanceStateError {
+					logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
+				}
+				status.CurrentState = longhorn.InstanceStateError
 			}
-			status.CurrentState = longhorn.InstanceStateError
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
 		}

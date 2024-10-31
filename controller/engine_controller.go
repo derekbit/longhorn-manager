@@ -474,7 +474,7 @@ func (ec *EngineController) findInstanceManagerAndIPs(obj interface{}) (im *long
 		}
 
 		targetIP = targetIm.Status.IP
-		if !e.Status.TargetCreated {
+		if !e.Status.TargetCreated && e.Status.CurrentTargetNodeID == "" {
 			im = targetIm
 		}
 	}
@@ -1041,6 +1041,17 @@ func (m *EngineMonitor) sync() bool {
 		// engine is upgrading
 		if engine.Status.CurrentImage != engine.Spec.Image || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
+		}
+
+		if engine.Spec.TargetNodeID != "" && engine.Spec.TargetNodeID != engine.Status.CurrentTargetNodeID {
+			im, err := m.ds.GetDefaultInstanceManagerByNodeRO(engine.Spec.TargetNodeID, engine.Spec.DataEngine)
+			if err != nil {
+				utilruntime.HandleError(errors.Wrapf(err, "failed to get default instance manager for engine %v", m.Name))
+			}
+
+			if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+				return false
+			}
 		}
 
 		if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
