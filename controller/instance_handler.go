@@ -134,12 +134,15 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
 		if status.Started {
+			if h.isBeingUpgraded(spec, status) {
+				logrus.Warnf("Skipping the instance %v since the instance manager %v is %v", instanceName, im.Name, im.Status.CurrentState)
+				return
+			}
 			if spec.Image == status.CurrentImage {
-				// if status.CurrentState != longhorn.InstanceStateError {
-				// 	logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
-				// }
-				// status.CurrentState = longhorn.InstanceStateError
-				logrus.Infof("Debug ====> im=%v, currentState=%v", im.Name, im.Status.CurrentState)
+				if status.CurrentState != longhorn.InstanceStateError {
+					logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
+				}
+				status.CurrentState = longhorn.InstanceStateError
 			}
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
@@ -151,11 +154,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.StorageTargetIP = ""
 		status.Port = 0
 		status.TargetPort = 0
-		// if status.CurrentState == longhorn.InstanceStateStopped || status.CurrentState == longhorn.InstanceStateError {
-		// 	status.IP = ""
-		// 	status.StorageIP = ""
-		// 	status.Port = 0
-		// }
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -163,7 +161,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
 			if spec.Image == status.CurrentImage {
-				if spec.TargetNodeID != "" && spec.TargetNodeID != status.CurrentTargetNodeID {
+				if h.isBeingUpgraded(spec, status) {
 					logrus.Warnf("Skipping the instance %v since the instance manager %v is starting", instanceName, im.Name)
 					return
 				}
@@ -187,13 +185,15 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := instances[instanceName]
 	if !exists {
 		if status.Started {
-			// TODO: (live upgrade) check if the initiator instance is running
-			if spec.TargetNodeID != "" && spec.TargetNodeID != status.CurrentTargetNodeID {
-				if status.CurrentState != longhorn.InstanceStateError {
-					logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
-				}
-				status.CurrentState = longhorn.InstanceStateError
+			if h.isBeingUpgraded(spec, status) {
+				logrus.Warnf("Skipping checking the instance %v since the instance manager %v is starting", instanceName, im.Name)
+				// TODO: (live upgrade) should we check target instance here?
+				return
 			}
+			if status.CurrentState != longhorn.InstanceStateError {
+				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
+			}
+			status.CurrentState = longhorn.InstanceStateError
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
 		}
@@ -209,7 +209,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}
 
 	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
-		logrus.Errorf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
+		logrus.Warnf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
 			"The instance manager name shouldn't change except for cleanup",
 			instanceName, im.Name, status.InstanceManagerName)
 	}
@@ -359,6 +359,24 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}
 }
 
+func (h *InstanceHandler) isBeingUpgraded(spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
+	node, err := h.ds.GetNodeRO(spec.NodeID)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get node %v", spec.NodeID)
+		return false
+	}
+
+	if !node.Spec.UpgradeRequested {
+		return false
+	}
+
+	if spec.TargetNodeID == "" {
+		return false
+	}
+
+	return spec.NodeID != spec.TargetNodeID && spec.TargetNodeID == status.CurrentTargetNodeID
+}
+
 func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
 	// Only happen when upgrading instance-manager image
 	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
@@ -408,7 +426,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	var im *longhorn.InstanceManager
 	if status.InstanceManagerName != "" {
 		im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
-		logrus.Infof("Debug ========> im.Name=%v, err=%v", status.InstanceManagerName, err)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				return err
@@ -429,14 +446,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if err != nil {
 			return err
 		}
-		logrus.Infof("Debug ========> isNodeDownOrDeleted=%v", isNodeDownOrDeleted)
 		if !isNodeDownOrDeleted {
 			im, err = h.getInstanceManagerRO(obj, spec, status)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 			}
 		}
-		logrus.Infof("Debug =======> 2im.Name=%v, err=%v", im.Name, err)
 	}
 
 	if spec.LogRequested {
