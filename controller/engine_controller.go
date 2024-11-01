@@ -439,18 +439,6 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 }
 
-func (ec *EngineController) isEngineBeingUpgraded(e *longhorn.Engine) bool {
-	if e.Spec.TargetNodeID == "" && e.Status.CurrentTargetNodeID == "" {
-		return false
-	}
-
-	if !e.Status.TargetCreated {
-		return false
-	}
-
-	return e.Spec.Image != e.Status.CurrentImage
-}
-
 func (ec *EngineController) findInstanceManagerAndIPs(obj interface{}) (im *longhorn.InstanceManager, initiatorIP string, targetIP string, err error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
@@ -539,11 +527,7 @@ func (ec *EngineController) CreateInstance(obj interface{}, isInstanceOnRemoteNo
 
 	// No need to care about the initiator and target ports if the engine is not being upgraded.
 	initiatorAddress := net.JoinHostPort(initiatorIP, strconv.Itoa(0))
-	targetAddress := net.JoinHostPort(targetIP, strconv.Itoa(0))
-	upgradeRequired := ec.isEngineBeingUpgraded(e)
-	if upgradeRequired {
-		targetAddress = net.JoinHostPort(targetIP, strconv.Itoa(e.Status.Port))
-	}
+	targetAddress := net.JoinHostPort(targetIP, strconv.Itoa(e.Status.Port))
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
@@ -553,7 +537,6 @@ func (ec *EngineController) CreateInstance(obj interface{}, isInstanceOnRemoteNo
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
-		UpgradeRequired:                  upgradeRequired,
 		InitiatorAddress:                 initiatorAddress,
 		TargetAddress:                    targetAddress,
 	})

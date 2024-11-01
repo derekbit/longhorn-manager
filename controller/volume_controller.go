@@ -2236,6 +2236,14 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Skip the replenishReplicas if the volume is being upgraded
+	if v.Spec.TargetNodeID != "" && v.Spec.NodeID != v.Spec.TargetNodeID {
+		log.Info("Volume is being upgraded, skip replenishReplicas")
+		return nil
+	}
+
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
@@ -2272,8 +2280,6 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	if currentRebuilding := getRebuildingReplicaCount(e); currentRebuilding != 0 {
 		return nil
 	}
-
-	log := getLoggerForVolume(c.logger, v)
 
 	replenishCount, updateNodeAffinity := c.getReplenishReplicasCount(v, rs, e)
 	if hardNodeAffinity == "" && updateNodeAffinity != "" {
