@@ -92,6 +92,8 @@ type InstanceSpec struct {
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// +optional
+	TargetNodeID string `json:"targetNodeID"`
 }
 
 type InstanceStatus struct {
@@ -110,6 +112,12 @@ type InstanceStatus struct {
 	// +optional
 	Port int `json:"port"`
 	// +optional
+	TargetIP string `json:"targetIP"`
+	// +optional
+	StorageTargetIP string `json:"storageTargetIP"`
+	// +optional
+	TargetPort int `json:"targetPort"`
+	// +optional
 	Started bool `json:"started"`
 	// +optional
 	LogFetched bool `json:"logFetched"`
@@ -118,6 +126,10 @@ type InstanceStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// +optional
+	CurrentTargetNodeID string `json:"currentTargetNodeID"`
+	// +optional
+	TargetCreated bool `json:"targetCreated"`
 }
 
 type InstanceProcessStatus struct {

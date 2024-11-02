@@ -11,6 +11,7 @@ const (
 	UpgradeStateSwitchingOver = UpgradeState("switching-over")
 	UpgradeStateUpgrading     = UpgradeState("upgrading")
 	UpgradeStateSwitchingBack = UpgradeState("switching-back")
+	UpgradeStateFinalizing    = UpgradeState("finalizing")
 	UpgradeStateCompleted     = UpgradeState("completed")
 	UpgradeStateError         = UpgradeState("error")
 )
