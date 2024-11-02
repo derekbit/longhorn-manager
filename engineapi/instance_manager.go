@@ -828,3 +828,72 @@ func (c *InstanceManagerClient) LogSetFlags(dataEngine longhorn.DataEngineType, 
 
 	return c.instanceServiceGrpcClient.LogSetFlags(string(dataEngine), component, flags)
 }
+
+type EngineInstanceSuspendRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceSuspend suspends engine instance
+func (c *InstanceManagerClient) EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("engine suspension for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceSuspend(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceResumeRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceResume suspends engine instance
+func (c *InstanceManagerClient) EngineInstanceResume(req *EngineInstanceResumeRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("engine resumption for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceResume(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceSwitchOverTargetRequest struct {
+	Engine        *longhorn.Engine
+	TargetAddress string
+}
+
+// EngineInstanceSwitchOverTarget switches over target for engine instance
+func (c *InstanceManagerClient) EngineInstanceSwitchOverTarget(req *EngineInstanceSwitchOverTargetRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("target switchover for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine), req.TargetAddress)
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceDeleteTargetRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceDeleteTarget deletes target for engine instance
+func (c *InstanceManagerClient) EngineInstanceDeleteTarget(req *EngineInstanceDeleteTargetRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("target deletion for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceDeleteTarget(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
