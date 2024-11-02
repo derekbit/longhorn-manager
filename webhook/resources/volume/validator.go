@@ -158,6 +158,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
+	if volume.Spec.TargetNodeID != "" {
+		return werror.NewInvalidError("spec.targetNodeID should be empty for a new volume", "")
+	}
+
 	return nil
 }
 
@@ -331,6 +335,16 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return err
 		}
 	}
+
+	if oldVolume.Spec.TargetNodeID == "" && newVolume.Spec.TargetNodeID != "" {
+		if oldVolume.Status.State != longhorn.VolumeStateAttached {
+			return werror.NewInvalidError(fmt.Sprintf("volume %v is not attached to any node", newVolume.Name), "")
+		}
+		if oldVolume.Spec.NodeID == newVolume.Spec.TargetNodeID {
+			return werror.NewInvalidError(fmt.Sprintf("spec.targetNode %v is the same as the attached node", newVolume.Spec.TargetNodeID), "")
+		}
+	}
+
 	return nil
 }
 
