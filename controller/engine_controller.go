@@ -702,14 +702,12 @@ func (ec *EngineController) ResumeInstance(obj interface{}) error {
 }
 
 func (ec *EngineController) SwitchOverTarget(obj interface{}) error {
-	log := ec.logger.WithField("engine", obj)
-
-	log.Info("Switching over target")
-
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return fmt.Errorf("invalid object for target switchover: %v", obj)
 	}
+
+	ec.logger.WithField("engine", e.Name).Info("Switching over target")
 
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
 		return fmt.Errorf("missing parameters for target switchover: %+v", e)
@@ -764,14 +762,12 @@ func (ec *EngineController) SwitchOverTarget(obj interface{}) error {
 }
 
 func (ec *EngineController) DeleteTarget(obj interface{}) error {
-	log := ec.logger.WithField("engine", obj)
-
-	log.Info("Deleting target instance")
-
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return fmt.Errorf("invalid object for engine target deletion: %v", obj)
 	}
+
+	ec.logger.WithField("engine", e.Name).Info("Deleting target instance")
 
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
 		return fmt.Errorf("missing parameters for engine target deletion: %+v", e)
@@ -852,21 +848,19 @@ func (ec *EngineController) GetInstance(obj interface{}, isInstanceOnRemoteNode 
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		if im == nil {
-			im, err = ec.ds.GetInstanceManagerRO(instanceManagerName)
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return nil, err
+	} else if im == nil {
+		im, err = ec.ds.GetInstanceManagerRO(instanceManagerName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			if types.IsDataEngineV2(e.Spec.DataEngine) {
+				im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
 				}
-				if types.IsDataEngineV2(e.Spec.DataEngine) {
-					im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
-					if err != nil {
-						return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
-					}
-				} else {
-					return nil, err
-				}
+			} else {
+				return nil, err
 			}
 		}
 	}
@@ -1024,17 +1018,6 @@ func (m *EngineMonitor) sync() bool {
 		// engine is upgrading
 		if engine.Status.CurrentImage != engine.Spec.Image || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
-		}
-
-		if engine.Spec.TargetNodeID != "" && engine.Spec.TargetNodeID != engine.Status.CurrentTargetNodeID {
-			im, err := m.ds.GetDefaultInstanceManagerByNodeRO(engine.Spec.TargetNodeID, engine.Spec.DataEngine)
-			if err != nil {
-				utilruntime.HandleError(errors.Wrapf(err, "failed to get default instance manager for engine %v", m.Name))
-			}
-
-			if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-				return false
-			}
 		}
 
 		if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {

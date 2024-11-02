@@ -2239,9 +2239,15 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	log := getLoggerForVolume(c.logger, v)
 
 	// Skip the replenishReplicas if the volume is being upgraded
-	if v.Spec.TargetNodeID != "" && v.Spec.NodeID != v.Spec.TargetNodeID {
-		log.Info("Volume is being upgraded, skip replenishReplicas")
-		return nil
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		node, err := c.ds.GetNode(v.Spec.NodeID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get node %v for checking volume upgrade status", v.Spec.NodeID)
+		}
+		if node.Spec.UpgradeRequested {
+			log.Info("Node is being upgraded, skip replenishing replica")
+			return nil
+		}
 	}
 
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)

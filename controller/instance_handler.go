@@ -134,7 +134,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
 		if status.Started {
-			if h.isBeingUpgraded(spec, status) {
+			if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
 				logrus.Warnf("Skipping the instance %v since the instance manager %v is %v", instanceName, im.Name, im.Status.CurrentState)
 				return
 			}
@@ -161,7 +161,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
 			if spec.Image == status.CurrentImage {
-				if h.isBeingUpgraded(spec, status) {
+				if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
 					logrus.Warnf("Skipping the instance %v since the instance manager %v is starting", instanceName, im.Name)
 					return
 				}
@@ -185,7 +185,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := instances[instanceName]
 	if !exists {
 		if status.Started {
-			if h.isBeingUpgraded(spec, status) {
+			if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
 				logrus.Warnf("Skipping checking the instance %v since the instance manager %v is starting", instanceName, im.Name)
 				// TODO: (live upgrade) should we check target instance here?
 				return
@@ -359,24 +359,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}
 }
 
-func (h *InstanceHandler) isBeingUpgraded(spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
-	node, err := h.ds.GetNodeRO(spec.NodeID)
-	if err != nil {
-		logrus.WithError(err).Errorf("Failed to get node %v", spec.NodeID)
-		return false
-	}
-
-	if !node.Spec.UpgradeRequested {
-		return false
-	}
-
-	if spec.TargetNodeID == "" {
-		return false
-	}
-
-	return spec.NodeID != spec.TargetNodeID && spec.TargetNodeID == status.CurrentTargetNodeID
-}
-
 func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
 	// Only happen when upgrading instance-manager image
 	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
@@ -510,14 +492,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		if spec.TargetNodeID != "" {
 			if spec.TargetNodeID == status.CurrentTargetNodeID && status.CurrentState == longhorn.InstanceStateSuspended {
-				logrus.Infof("Resuming instance %v", instanceName)
 				err = h.resumeInstance(instanceName, spec.DataEngine, runtimeObj)
 			} else {
-				logrus.Infof("Creating target instance %v for volume upgrade on node %v", instanceName, spec.TargetNodeID)
 				err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
 			}
 		} else {
-			logrus.Infof("Creating instance %v", instanceName)
 			err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
 		}
 		if err != nil {

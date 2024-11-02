@@ -61,7 +61,11 @@ func (m *NodeUpgradeMonitor) Start() {
 		}
 		return false, nil
 	}); err != nil {
-		m.logger.WithError(err).Error("Failed to start nodeUpgrade monitor")
+		if errors.Cause(err) == context.Canceled {
+			m.logger.Infof("Stopped monitoring nodeUpgrade %v due to context cancellation", m.nodeUpgradeName)
+		} else {
+			m.logger.WithError(err).Error("Failed to start nodeUpgrade monitor")
+		}
 	}
 
 	m.logger.Infof("Stopped monitoring nodeUpgrade %v", m.nodeUpgradeName)
@@ -117,8 +121,8 @@ func (m *NodeUpgradeMonitor) run(value interface{}) error {
 }
 
 func (m *NodeUpgradeMonitor) handleNodeUpgrade(nodeUpgrade *longhorn.NodeUpgrade) {
-	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-	log.Infof("Handling nodeUpgrade %v state %v", nodeUpgrade.Name, m.nodeUpgradeStatus.State)
+	m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name}).Infof("Handling nodeUpgrade %v state %v",
+		nodeUpgrade.Name, m.nodeUpgradeStatus.State)
 
 	switch m.nodeUpgradeStatus.State {
 	case longhorn.UpgradeStateUndefined:
@@ -131,6 +135,8 @@ func (m *NodeUpgradeMonitor) handleNodeUpgrade(nodeUpgrade *longhorn.NodeUpgrade
 		m.handleUpgradeStateUpgrading(nodeUpgrade)
 	case longhorn.UpgradeStateSwitchingBack:
 		m.handleUpgradeStateSwitchingBack(nodeUpgrade)
+	case longhorn.UpgradeStateFinalizing:
+		m.handleUpgradeStateFinalizing(nodeUpgrade)
 	case longhorn.UpgradeStateCompleted, longhorn.UpgradeStateError:
 		return
 	default:
@@ -210,7 +216,7 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgrade *longho
 		}
 	}()
 
-	if switchOverCompleted := m.switchOverVolumes(nodeUpgrade); switchOverCompleted {
+	if completed := m.switchOverVolumes(nodeUpgrade); completed {
 		m.nodeUpgradeStatus.State = longhorn.UpgradeStateUpgrading
 	}
 }
@@ -228,12 +234,26 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateUpgrading(nodeUpgrade *longhorn.N
 
 	if upgradeCompleted := m.upgradeInstanceManager(nodeUpgrade); upgradeCompleted {
 		log.Infof("Upgrade of instance manager for nodeUpgrade %v is completed", nodeUpgrade.Name)
-		//m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingBack
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateCompleted
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingBack
 	}
 }
 
 func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longhorn.NodeUpgrade) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = err.Error()
+		}
+	}()
+
+	if completed := m.switchBackVolumes(nodeUpgrade); completed {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateFinalizing
+	}
+}
+
+func (m *NodeUpgradeMonitor) handleUpgradeStateFinalizing(nodeUpgrade *longhorn.NodeUpgrade) {
 	var err error
 	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
 
@@ -244,28 +264,24 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longho
 		}
 	}()
 
-	if upgradeCompleted := m.upgradeInstanceManager(nodeUpgrade); upgradeCompleted {
-		var node *longhorn.Node
+	node, err := m.ds.GetNode(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get node %v for nodeUpgrade resource %v", nodeUpgrade.Status.OwnerID, nodeUpgrade.Name)
+		return
+	}
 
-		node, err = m.ds.GetNode(nodeUpgrade.Status.OwnerID)
+	if node.Spec.UpgradeRequested {
+		log.Infof("Setting upgradeRequested to false for node %v since the node upgrade is completed", nodeUpgrade.Status.OwnerID)
+
+		node.Spec.UpgradeRequested = false
+		_, err = m.ds.UpdateNode(node)
 		if err != nil {
-			err = errors.Wrapf(err, "failed to get node %v for nodeUpgrade resource %v", nodeUpgrade.Status.OwnerID, nodeUpgrade.Name)
+			err = errors.Wrapf(err, "failed to update node %v for updating upgrade requested to false", nodeUpgrade.Status.OwnerID)
 			return
 		}
-
-		if node.Spec.UpgradeRequested {
-			log.Infof("Setting upgradeRequested to false for node %v since the node upgrade is completed", nodeUpgrade.Status.OwnerID)
-
-			node.Spec.UpgradeRequested = false
-			_, err = m.ds.UpdateNode(node)
-			if err != nil {
-				err = errors.Wrapf(err, "failed to update node %v for updating upgrade requested to false", nodeUpgrade.Status.OwnerID)
-				return
-			}
-		}
-
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateCompleted
 	}
+
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateCompleted
 }
 
 func (m *NodeUpgradeMonitor) handleUpgradeStateUnknown() {
@@ -298,13 +314,20 @@ func (m *NodeUpgradeMonitor) collectVolumes(nodeUpgrade *longhorn.NodeUpgrade) (
 	return volumes, nil
 }
 
-func (m *NodeUpgradeMonitor) switchOverVolumes(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
+func (m *NodeUpgradeMonitor) switchOverVolumes(nodeUpgrade *longhorn.NodeUpgrade) (completed bool) {
 	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
 	log.Infof("Switching over volumes for nodeUpgrade %v", nodeUpgrade.Name)
 
 	m.updateVolumes(nodeUpgrade)
 
 	return m.AreAllVolumesSwitchedOver(nodeUpgrade)
+}
+
+func (m *NodeUpgradeMonitor) switchBackVolumes(nodeUpgrade *longhorn.NodeUpgrade) (completed bool) {
+	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
+	log.Infof("Switching back volumes for nodeUpgrade %v", nodeUpgrade.Name)
+
+	return false
 }
 
 func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
@@ -319,14 +342,51 @@ func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUp
 		return false
 	}
 
-	isRunning, err := m.isDefaultInstanceManagerRunning(nodeUpgrade)
+	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
 	if err != nil {
 		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
-		m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to check if default instance manager is running").Error()
+		m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to get default instance manager for node %v", nodeUpgrade.Status.OwnerID).Error()
 		return
 	}
 
-	return isRunning
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return
+	}
+
+	upgradeCompleted = true
+	for volumeName := range m.nodeUpgradeStatus.Volumes {
+		engines, err := m.ds.ListVolumeEngines(volumeName)
+		if err != nil {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to list engines for volume %v", volumeName).Error()
+			continue
+		}
+
+		if len(engines) == 0 {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = fmt.Sprintf("no engine found for volume %v", volumeName)
+			continue
+		}
+
+		if len(engines) > 1 {
+			m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.ErrorMessage = fmt.Sprintf("multiple engines found for volume %v", volumeName)
+			continue
+		}
+
+		var engine *longhorn.Engine
+		for e := range engines {
+			engine = engines[e]
+		}
+
+		_, ok := im.Status.InstanceEngines[engine.Name]
+		if !ok {
+			upgradeCompleted = false
+			continue
+		}
+	}
+
+	return upgradeCompleted
 }
 
 func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade) {
@@ -343,10 +403,11 @@ func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade) {
 		if volume.State == longhorn.UpgradeStateInitializing {
 			if err := m.updateVolume(name, nodeUpgrade.Spec.InstanceManagerImage, nodeForNVMeTarget); err != nil {
 				m.logger.WithError(err).Warnf("Failed to update volume %v", name)
-				volume.State = longhorn.UpgradeStateError
-				volume.ErrorMessage = err.Error()
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+				m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
 			} else {
-				volume.State = longhorn.UpgradeStateUpgrading
+				m.logger.Infof("Updating volume %v for nodeUpgrade %v to %v state", name, nodeUpgrade.Name, longhorn.UpgradeStateUpgrading)
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateUpgrading
 			}
 		}
 	}
@@ -515,20 +576,4 @@ func (m *NodeUpgradeMonitor) deleteNonDefaultInstanceManager(nodeUpgrade *longho
 	}
 
 	return nil
-}
-
-func (m *NodeUpgradeMonitor) isDefaultInstanceManagerRunning(nodeUpgrade *longhorn.NodeUpgrade) (bool, error) {
-	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-
-	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to get default instance manager for node %v", nodeUpgrade.Status.OwnerID)
-	}
-
-	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		log.Warnf("Instance manager %v is not running and in state %v", im.Name, im.Status.CurrentState)
-		return false, nil
-	}
-
-	return true, nil
 }

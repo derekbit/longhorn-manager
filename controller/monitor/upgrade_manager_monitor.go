@@ -62,8 +62,14 @@ func (m *UpgradeManagerMonitor) Start() {
 		}
 		return false, nil
 	}); err != nil {
-		m.logger.WithError(err).Error("Failed to start upgradeManager monitor")
+		if errors.Cause(err) == context.Canceled {
+			m.logger.Infof("Stopped monitoring upgradeManager %v due to context cancellation", m.upgradeManagerName)
+		} else {
+			m.logger.WithError(err).Error("Failed to start upgradeManager monitor")
+		}
 	}
+
+	m.logger.Infof("Stopped monitoring upgradeManager %v", m.upgradeManagerName)
 }
 
 func (m *UpgradeManagerMonitor) Close() {
@@ -219,10 +225,6 @@ func (m *UpgradeManagerMonitor) handleUpgradeStateUpgrading(upgradeManager *long
 			if nodeUpgrade.Spec.NodeID != m.upgradeManagerStatus.UpgradingNode {
 				continue
 			}
-			if nodeUpgrade.Status.State != longhorn.UpgradeStateCompleted &&
-				nodeUpgrade.Status.State != longhorn.UpgradeStateError {
-				return
-			}
 			foundNodeUpgrade = true
 			break
 		}
@@ -271,11 +273,14 @@ func (m *UpgradeManagerMonitor) handleUpgradeStateUpgrading(upgradeManager *long
 			},
 		})
 		if err != nil {
-			nodeStatus.State = longhorn.UpgradeStateError
-			nodeStatus.ErrorMessage = err.Error()
-			continue
+			if !types.ErrorAlreadyExists(err) {
+				nodeStatus.State = longhorn.UpgradeStateError
+				nodeStatus.ErrorMessage = err.Error()
+				continue
+			}
+		} else {
+			log.Infof("Created NodeUpgrade resource for node %v", nodeName)
 		}
-		log.Infof("Created NodeUpgrade resource for node %v", nodeName)
 		m.upgradeManagerStatus.UpgradingNode = nodeName
 		break
 	}

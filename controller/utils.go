@@ -113,3 +113,21 @@ func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTar
 
 	return !exists && bt.Spec.BackupTargetURL != "", nil
 }
+
+func isBeingUpgraded(ds *datastore.DataStore, spec *longhorn.InstanceSpec) bool {
+	node, err := ds.GetNodeRO(spec.NodeID)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get node %v", spec.NodeID)
+		return false
+	}
+
+	if !node.Spec.UpgradeRequested {
+		return false
+	}
+
+	if spec.TargetNodeID == "" {
+		return false
+	}
+
+	return spec.NodeID != spec.TargetNodeID
+}
