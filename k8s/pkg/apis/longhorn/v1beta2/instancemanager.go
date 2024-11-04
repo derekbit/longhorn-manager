@@ -151,6 +151,10 @@ type InstanceProcessStatus struct {
 	// +optional
 	TargetPortStart int32 `json:"targetPortStart"`
 	// +optional
+	StandbyTargetPortEnd int32 `json:"standbyTargetPortEnd"`
+	// +optional
+	StandbyTargetPortStart int32 `json:"standbyTargetPortStart"`
+	// +optional
 	State InstanceState `json:"state"`
 	// +optional
 	Type InstanceType `json:"type"`

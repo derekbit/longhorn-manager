@@ -2105,6 +2105,12 @@ spec:
                         resourceVersion:
                           format: int64
                           type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
+                          type: integer
                         state:
                           type: string
                         targetPortEnd:
@@ -2154,6 +2160,12 @@ spec:
                         resourceVersion:
                           format: int64
                           type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
+                          type: integer
                         state:
                           type: string
                         targetPortEnd:
@@ -2202,6 +2214,12 @@ spec:
                           type: integer
                         resourceVersion:
                           format: int64
+                          type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
                           type: integer
                         state:
                           type: string
