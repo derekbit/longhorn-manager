@@ -3,6 +3,7 @@ package engineapi
 import (
 	"context"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strconv"
 
@@ -484,7 +485,10 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			return nil, err
 		}
 	case longhorn.DataEngineTypeV2:
-		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
+		replicaAddresses, err = getReplicaAddresses(req.Engine.Status.CurrentReplicaAddressMap, req.InitiatorAddress, req.TargetAddress)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -522,6 +526,31 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		return nil, err
 	}
 	return parseInstance(instance), nil
+}
+
+func getReplicaAddresses(replicaAddresses map[string]string, initiatorAddress, targetAddress string) (map[string]string, error) {
+	initiatorIP, _, err := net.SplitHostPort(initiatorAddress)
+	if err != nil {
+		return nil, errors.New("invalid initiator address format")
+	}
+
+	targetIP, _, err := net.SplitHostPort(targetAddress)
+	if err != nil {
+		return nil, errors.New("invalid target address format")
+	}
+
+	addresses := make(map[string]string)
+	for name, addr := range replicaAddresses {
+		replicaIP, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, errors.New("invalid replica address format")
+		}
+		if initiatorIP != targetIP && initiatorIP == replicaIP {
+			continue
+		}
+		addresses[name] = addr
+	}
+	return addresses, nil
 }
 
 type ReplicaInstanceCreateRequest struct {

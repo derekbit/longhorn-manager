@@ -187,10 +187,21 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.Started {
 			if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
 				logrus.Warnf("Skipping checking the instance %v since the instance manager %v is starting", instanceName, im.Name)
-				// TODO: (live upgrade) should we check target instance here?
 				return
 			}
 			if status.CurrentState != longhorn.InstanceStateError {
+				// Because the async nature, directly check instance here
+				if spec.TargetNodeID != "" {
+					logrus.Infof("Reconstructed instance %v is not found in instance manager %v, checking the instance in instance manager %v", instanceName, im.Name, spec.NodeID)
+					if exist, err := h.isInstanceExist(instanceName, spec); err != nil {
+						// TODO: (live upgrade) should we retry here?
+						logrus.WithError(err).Errorf("Failed to check if reconstructed instance %v exists in instance manager %v", instanceName, spec.NodeID)
+						return
+					} else if exist {
+						logrus.Infof("Instance %v is found in instance manager %v", instanceName, spec.NodeID)
+						return
+					}
+				}
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateError
@@ -358,6 +369,28 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	}
+}
+
+func (h *InstanceHandler) isInstanceExist(instanceName string, spec *longhorn.InstanceSpec) (bool, error) {
+	var err error
+
+	im, err := h.ds.GetRunningInstanceManagerByNodeRO(spec.NodeID, spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return false, err
+	}
+	defer client.Close()
+
+	_, err = client.InstanceGet(spec.DataEngine, instanceName, string(longhorn.InstanceManagerTypeEngine))
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {

@@ -333,9 +333,9 @@ func (m *NodeUpgradeMonitor) switchOverVolumes(nodeUpgrade *longhorn.NodeUpgrade
 func (m *NodeUpgradeMonitor) switchBackVolumes(nodeUpgrade *longhorn.NodeUpgrade) (completed bool) {
 	m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name}).Infof("Switching back targets of volumes to the original node %v", nodeUpgrade.Status.OwnerID)
 
-	//m.updateVolumes(nodeUpgrade, nodeUpgrade.Status.OwnerID)
+	m.updateVolumes(nodeUpgrade, nodeUpgrade.Status.OwnerID)
 
-	return false
+	return m.AreAllVolumesSwitchedBack(nodeUpgrade)
 }
 
 func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
@@ -400,16 +400,11 @@ func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUp
 func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade, nodeName string) {
 	m.logger.WithField("nodeUpgrade", nodeUpgrade.Name).Infof("Updating volumes to node %v", nodeName)
 
-	for name, volume := range nodeUpgrade.Status.Volumes {
-		if volume.State == longhorn.UpgradeStateInitializing {
-			if err := m.updateVolume(name, nodeUpgrade.Spec.InstanceManagerImage, nodeName); err != nil {
-				m.logger.WithError(err).Warnf("Failed to update volume %v", name)
-				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
-				m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
-			} else {
-				m.logger.Infof("Updating volume %v for nodeUpgrade %v to %v state", name, nodeUpgrade.Name, longhorn.UpgradeStateUpgrading)
-				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateUpgrading
-			}
+	for name := range nodeUpgrade.Status.Volumes {
+		if err := m.updateVolume(name, nodeUpgrade.Spec.InstanceManagerImage, nodeName); err != nil {
+			m.logger.WithError(err).Warnf("Failed to update volume %v", name)
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
 		}
 	}
 }
@@ -501,7 +496,7 @@ func (m *NodeUpgradeMonitor) updateVolume(volumeName, image, nodeForNVMeTarget s
 		return errors.Wrapf(err, "failed to get volume %v for upgrade", volumeName)
 	}
 
-	if volume.Spec.Image != image {
+	if volume.Spec.Image != image || volume.Spec.TargetNodeID != nodeForNVMeTarget {
 		volume.Spec.Image = image
 		volume.Spec.TargetNodeID = nodeForNVMeTarget
 
@@ -516,20 +511,45 @@ func (m *NodeUpgradeMonitor) updateVolume(volumeName, image, nodeForNVMeTarget s
 func (m *NodeUpgradeMonitor) AreAllVolumesSwitchedOver(nodeUpgrade *longhorn.NodeUpgrade) bool {
 	allSwitchedOver := true
 
-	for name := range nodeUpgrade.Status.Volumes {
+	for name := range m.nodeUpgradeStatus.Volumes {
+		logrus.Infof("Debug -------> AreAllVolumesSwitchedOver volume=%v", name)
 		volume, err := m.ds.GetVolume(name)
 		if err != nil {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateError
-			nodeUpgrade.Status.Volumes[name].ErrorMessage = err.Error()
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
 			continue
 		}
 
 		if volume.Status.CurrentImage == nodeUpgrade.Spec.InstanceManagerImage &&
 			volume.Spec.Image == volume.Status.CurrentImage &&
 			volume.Spec.TargetNodeID == volume.Status.CurrentTargetNodeID {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateCompleted
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateUpgrading
 		} else {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateUpgrading
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateSwitchingOver
+			allSwitchedOver = false
+		}
+	}
+	return allSwitchedOver
+}
+
+func (m *NodeUpgradeMonitor) AreAllVolumesSwitchedBack(nodeUpgrade *longhorn.NodeUpgrade) bool {
+	allSwitchedOver := true
+
+	for name := range m.nodeUpgradeStatus.Volumes {
+		volume, err := m.ds.GetVolume(name)
+		if err != nil {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
+			continue
+		}
+
+		if volume.Status.CurrentImage == nodeUpgrade.Spec.InstanceManagerImage &&
+			volume.Spec.Image == volume.Status.CurrentImage &&
+			volume.Spec.TargetNodeID == volume.Spec.NodeID &&
+			volume.Spec.TargetNodeID == volume.Status.CurrentTargetNodeID {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
+		} else {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateSwitchingBack
 			allSwitchedOver = false
 		}
 	}
@@ -539,18 +559,18 @@ func (m *NodeUpgradeMonitor) AreAllVolumesSwitchedOver(nodeUpgrade *longhorn.Nod
 func (m *NodeUpgradeMonitor) AreAllVolumesUpgraded(nodeUpgrade *longhorn.NodeUpgrade) bool {
 	allUpgraded := true
 
-	for name := range nodeUpgrade.Status.Volumes {
+	for name := range m.nodeUpgradeStatus.Volumes {
 		volume, err := m.ds.GetVolume(name)
 		if err != nil {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateError
-			nodeUpgrade.Status.Volumes[name].ErrorMessage = err.Error()
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
 			continue
 		}
 
 		if volume.Status.CurrentImage == nodeUpgrade.Spec.InstanceManagerImage {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateCompleted
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
 		} else {
-			nodeUpgrade.Status.Volumes[name].State = longhorn.UpgradeStateUpgrading
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateUpgrading
 			allUpgraded = false
 		}
 	}
