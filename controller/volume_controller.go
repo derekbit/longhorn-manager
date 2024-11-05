@@ -1004,9 +1004,12 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 				}
 				continue
 			} else if r.Spec.Image != v.Spec.Image {
-				// r.Spec.Active shouldn't be set for the leftover replicas, something must wrong
-				log.WithField("replica", r.Name).Warnf("Replica engine image %v is different from volume engine image %v, "+
-					"but replica spec.Active has been set", r.Spec.Image, v.Spec.Image)
+				// For a v2 volume, the instance manager image of a replica can be different from the one of its volume
+				if types.IsDataEngineV1(v.Spec.DataEngine) {
+					// r.Spec.Active shouldn't be set for the leftover replicas, something must wrong
+					log.WithField("replica", r.Name).Warnf("Replica engine image %v is different from volume engine image %v, "+
+						"but replica spec.Active has been set", r.Spec.Image, v.Spec.Image)
+				}
 			}
 		}
 
@@ -1824,9 +1827,16 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			return err
 		}
 		if canIMLaunchReplica {
-			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
+			if r.Spec.FailedAt == "" {
 				if r.Status.CurrentState == longhorn.InstanceStateStopped {
-					r.Spec.DesireState = longhorn.InstanceStateRunning
+					if types.IsDataEngineV1(e.Spec.DataEngine) {
+						if r.Spec.Image == v.Status.CurrentImage {
+							r.Spec.DesireState = longhorn.InstanceStateRunning
+						}
+					} else {
+						// For v2 volume, the image of replica is no need to be the same as the volume image
+						r.Spec.DesireState = longhorn.InstanceStateRunning
+					}
 				}
 			}
 		} else {
@@ -1863,8 +1873,11 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if r.Spec.NodeID == "" {
 			continue
 		}
-		if r.Spec.Image != v.Status.CurrentImage {
-			continue
+		// For v2 volume, the image of replica is no need to be the same as the volume image
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
+			if r.Spec.Image != v.Status.CurrentImage {
+				continue
+			}
 		}
 		if r.Spec.EngineName != e.Name {
 			continue
@@ -1910,7 +1923,15 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	}
 	e.Spec.NodeID = v.Spec.NodeID
 	e.Spec.ReplicaAddressMap = replicaAddressMap
-	e.Spec.DesireState = longhorn.InstanceStateRunning
+
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		e.Spec.DesireState = longhorn.InstanceStateRunning
+	} else {
+		if v.Spec.Image == v.Status.CurrentImage && v.Spec.TargetNodeID == v.Status.CurrentTargetNodeID {
+			e.Spec.DesireState = longhorn.InstanceStateRunning
+		}
+	}
+
 	// The volume may be activated
 	e.Spec.DisableFrontend = v.Status.FrontendDisabled
 	e.Spec.Frontend = v.Spec.Frontend
@@ -1953,6 +1974,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		}
 		e.Spec.RequestedBackupRestore = ""
 		e.Spec.NodeID = ""
+		e.Spec.TargetNodeID = ""
 		e.Spec.DesireState = longhorn.InstanceStateStopped
 	}
 	// must make sure engine stopped first before stopping replicas
@@ -2064,7 +2086,7 @@ func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) 
 	if r.Status.InstanceManagerName != "" {
 		return true, nil
 	}
-	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r)
+	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r, false)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to find instance manager for replica %v", r.Name)
 	}
@@ -2214,6 +2236,20 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
+	log := getLoggerForVolume(c.logger, v)
+
+	// Skip the replenishReplicas if the volume is being upgraded
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		node, err := c.ds.GetNode(v.Status.OwnerID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get node %v for checking volume upgrade status", v.Status.OwnerID)
+		}
+		if node.Spec.UpgradeRequested {
+			log.Info("Node is being upgraded, skip replenishing replica")
+			return nil
+		}
+	}
+
 	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
 	if err != nil {
 		return err
@@ -2250,8 +2286,6 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	if currentRebuilding := getRebuildingReplicaCount(e); currentRebuilding != 0 {
 		return nil
 	}
-
-	log := getLoggerForVolume(c.logger, v)
 
 	replenishCount, updateNodeAffinity := c.getReplenishReplicasCount(v, rs, e)
 	if hardNodeAffinity == "" && updateNodeAffinity != "" {
@@ -3075,7 +3109,9 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	}
 
 	// Only start live upgrade if volume is healthy
-	if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+	if v.Status.State != longhorn.VolumeStateAttached ||
+		(types.IsDataEngineV1(v.Spec.DataEngine) && v.Status.Robustness != longhorn.VolumeRobustnessHealthy) ||
+		(types.IsDataEngineV2(v.Spec.DataEngine) && (v.Status.Robustness != longhorn.VolumeRobustnessHealthy && v.Status.Robustness != longhorn.VolumeRobustnessDegraded)) {
 		if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			return nil
 		}
@@ -3162,12 +3198,81 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 				e.Spec.Image = v.Spec.Image
 			}
 		}
-		c.finishLiveEngineUpgrade(v, e, rs, log)
 	} else {
-		// TODO: Implement the logic for data engine v2
-		return nil
+		if isV2LiveUpgradeCompleted(v) {
+			log.Infof(("Live upgrade is already finished"))
+			return nil
+		}
+
+		if e.Spec.TargetNodeID != v.Spec.TargetNodeID {
+			log.WithField("engine", e.Name).Infof("Updating image from %s to %s", e.Spec.Image, v.Spec.Image)
+			e.Spec.Image = v.Spec.Image
+
+			log.WithField("engine", e.Name).Infof("Updating target node from %s to %s", e.Spec.TargetNodeID, v.Spec.TargetNodeID)
+			e.Spec.TargetNodeID = v.Spec.TargetNodeID
+			return nil
+		}
+
+		if !e.Status.TargetCreated && e.Status.CurrentTargetNodeID != v.Spec.TargetNodeID {
+			return nil
+		}
+
+		if e.Status.CurrentTargetNodeID != v.Spec.TargetNodeID {
+			if e.Status.CurrentState == longhorn.InstanceStateRunning {
+				log.WithField("engine", e.Name).Infof("Suspending engine for live upgrade")
+				e.Spec.DesireState = longhorn.InstanceStateSuspended
+				return nil
+			}
+			// TODO: what if e.Status.CurrentState != longhorn.InstanceStateRunning
+		}
+
+		// At this point:
+		// 1. volume is running and healthy
+		// 1. engine is suspended
+		// 2. initiator is correcting to new target
+		// 4. old target is still existing
+
+		if replicaAddressMap, err := c.constructReplicaAddressMap(v, e, rs); err != nil {
+			return nil
+		} else {
+			if !reflect.DeepEqual(e.Spec.UpgradedReplicaAddressMap, replicaAddressMap) {
+				e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
+				return nil
+			}
+		}
+
+		if e.Status.CurrentState == longhorn.InstanceStateSuspended {
+			log.WithField("engine", e.Name).Infof("Resuming engine for live upgrade")
+			e.Spec.DesireState = longhorn.InstanceStateRunning
+			return nil
+		}
+
+		if e.Status.CurrentState != longhorn.InstanceStateRunning {
+			log.WithField("engine", e.Name).Debugf("Engine is in %v, waiting for engine to be running", e.Status.CurrentState)
+			return nil
+		}
+
+		// At this point:
+		// 1. volume is running and healthy
+		// 1. engine is running
+		// 2. initiator is correcting to new target
+		// 4. old target is still deleted
+
+		if v.Status.CurrentTargetNodeID != v.Spec.TargetNodeID {
+			v.Status.CurrentTargetNodeID = v.Spec.TargetNodeID
+			return nil
+		}
 	}
+
+	c.finishLiveEngineUpgrade(v, e, rs, log)
+
 	return nil
+}
+
+func isV2LiveUpgradeCompleted(v *longhorn.Volume) bool {
+	return v.Spec.Image == v.Status.CurrentImage &&
+		v.Spec.TargetNodeID == v.Status.CurrentTargetNodeID &&
+		v.Spec.NodeID == v.Status.CurrentNodeID
 }
 
 func (c *VolumeController) constructReplicaAddressMap(v *longhorn.Volume, e *longhorn.Engine, dataPathToNewReplica map[string]*longhorn.Replica) (map[string]string, error) {
@@ -3259,14 +3364,18 @@ func (c *VolumeController) checkOldAndNewEngineImagesForLiveUpgrade(v *longhorn.
 }
 
 func (c *VolumeController) finishLiveEngineUpgrade(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) {
-	if e.Status.CurrentImage != v.Spec.Image ||
-		e.Status.CurrentState != longhorn.InstanceStateRunning {
+	if e.Status.CurrentImage != v.Spec.Image {
+		return
+	}
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return
 	}
 
-	c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
-		return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
-	}, v.Spec.Image)
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
+			return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
+		}, v.Spec.Image)
+	}
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}

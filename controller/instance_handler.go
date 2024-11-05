@@ -35,10 +35,16 @@ type InstanceHandler struct {
 }
 
 type InstanceManagerHandler interface {
-	GetInstance(obj interface{}) (*longhorn.InstanceProcess, error)
-	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
+	GetInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error)
+	CreateInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
 	LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error)
+	SuspendInstance(obj interface{}) error
+	ResumeInstance(obj interface{}) error
+	SwitchOverTarget(obj interface{}) error
+	DeleteTarget(obj interface{}) error
+	RequireRemoteTargetInstance(obj interface{}) (bool, error)
+	RequireLocalTargetInstance(obj interface{}) (bool, error)
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -49,10 +55,53 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
+func (h *InstanceHandler) isTargetInstanceReplacementRunning(instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (bool, error) {
+	if spec.TargetNodeID == "" {
+		return false, nil
+	}
+
+	logrus.Infof("Checking whether instance %v is running on target node %v", instanceName, spec.TargetNodeID)
+
+	im, err := h.ds.GetRunningInstanceManagerByNodeRO(spec.TargetNodeID, spec.DataEngine)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get instance manager on node %v for checking if target instance is running", spec.TargetNodeID)
+	}
+
+	c, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to create instance manager client for target instance")
+	}
+	defer c.Close()
+
+	instance, err := c.InstanceGet(spec.DataEngine, instanceName, string(longhorn.InstanceManagerTypeEngine))
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get target instance %v on node %v", instanceName, spec.TargetNodeID)
+	}
+
+	if isVolumeBeingSwitchedBack(spec, status) {
+		return isTargetInstanceRemote(instance) && isTargetInstanceReplacementCreated(instance), nil
+	}
+
+	return true, nil
+}
+
+func isVolumeBeingSwitchedBack(spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
+	return spec.NodeID == spec.TargetNodeID && spec.TargetNodeID != status.CurrentTargetNodeID
+}
+
+func isTargetInstanceReplacementCreated(instance *longhorn.InstanceProcess) bool {
+	return instance.Status.StandbyTargetPortStart != 0
+}
+
+func isTargetInstanceRemote(instance *longhorn.InstanceProcess) bool {
+	return instance.Status.PortStart != 0 && instance.Status.TargetPortStart == 0
+}
+
 func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped {
 			status.InstanceManagerName = ""
+			status.CurrentTargetNodeID = ""
 		}
 	}()
 
@@ -72,8 +121,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentImage = ""
 		}
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -82,32 +134,50 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
 		if status.Started {
-			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
+			if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
+				logrus.Warnf("Skipping the instance %v since the instance manager %v is %v", instanceName, im.Name, im.Status.CurrentState)
+				return
 			}
-			status.CurrentState = longhorn.InstanceStateError
+			if spec.Image == status.CurrentImage {
+				if status.CurrentState != longhorn.InstanceStateError {
+					logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
+				}
+				status.CurrentState = longhorn.InstanceStateError
+			}
 		} else {
 			status.CurrentState = longhorn.InstanceStateStopped
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
 
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
-			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
+			if spec.Image == status.CurrentImage {
+				if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
+					logrus.Warnf("Skipping the instance %v since the instance manager %v is starting", instanceName, im.Name)
+					return
+				}
+				if status.CurrentState != longhorn.InstanceStateError {
+					logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
+				}
+				status.CurrentState = longhorn.InstanceStateError
+				status.CurrentImage = ""
+				status.IP = ""
+				status.TargetIP = ""
+				status.StorageIP = ""
+				status.StorageTargetIP = ""
+				status.Port = 0
+				status.TargetPort = 0
+				h.resetInstanceErrorCondition(status)
 			}
-			status.CurrentState = longhorn.InstanceStateError
-			status.CurrentImage = ""
-			status.IP = ""
-			status.StorageIP = ""
-			status.Port = 0
-			h.resetInstanceErrorCondition(status)
 		}
 		return
 	}
@@ -115,6 +185,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	instance, exists := instances[instanceName]
 	if !exists {
 		if status.Started {
+			if isBeingUpgraded(h.ds, spec) && spec.TargetNodeID == status.CurrentTargetNodeID {
+				logrus.Warnf("Skipping checking the instance %v since the instance manager %v is starting", instanceName, im.Name)
+				// TODO: (live upgrade) should we check target instance here?
+				return
+			}
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
 			}
@@ -124,14 +199,17 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
 
 	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
-		logrus.Errorf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
+		logrus.Warnf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
 			"The instance manager name shouldn't change except for cleanup",
 			instanceName, im.Name, status.InstanceManagerName)
 	}
@@ -146,12 +224,16 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateStarting
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
+		// TODO: update IP and Port according to the target instance
 		imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
 		if err != nil {
 			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
@@ -169,21 +251,71 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
 		}
 
+		var targetIM *longhorn.InstanceManager
+		var targetInstance *longhorn.InstanceProcess
+		if spec.TargetNodeID != "" {
+			targetIM, err = h.ds.GetRunningInstanceManagerByNodeRO(spec.TargetNodeID, spec.DataEngine)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to get running instance manager for node %s", spec.TargetNodeID)
+				return
+			}
+
+			targetClient, err := engineapi.NewInstanceManagerClient(targetIM, false)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to get instance manager client for target instance manager %v", targetIM.Name)
+				return
+			}
+			defer targetClient.Close()
+
+			targetInstance, err = targetClient.InstanceGet(spec.DataEngine, instanceName, string(longhorn.InstanceManagerTypeEngine))
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to get target instance %s", instanceName)
+			}
+		}
+
 		if status.IP != im.Status.IP {
 			status.IP = im.Status.IP
+			status.TargetIP = im.Status.IP
 			logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
 		}
+
+		if targetIM != nil && targetInstance != nil {
+			if status.TargetIP != targetIM.Status.IP {
+				status.TargetIP = targetIM.Status.IP
+			}
+		}
+
 		if status.Port != int(instance.Status.PortStart) {
 			status.Port = int(instance.Status.PortStart)
+			status.TargetPort = int(instance.Status.PortStart)
 			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
+
+		if targetIM != nil && targetInstance != nil {
+			status.TargetPort = int(targetInstance.Status.TargetPortStart)
+		}
+
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.Image
 		}
-		h.syncInstanceCondition(instance, status)
+		if status.CurrentTargetNodeID != spec.TargetNodeID && !status.TargetCreated {
+			running, err := h.isTargetInstanceReplacementRunning(instanceName, spec, status)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to check if target instance %v is running", instanceName)
+				return
+			}
+			if running {
+				logrus.Infof("Target instance replacement %v is running on target node %v", instanceName, spec.TargetNodeID)
+				status.TargetCreated = true
+			}
+		}
 
+		h.syncInstanceCondition(instance, status)
+	case longhorn.InstanceStateSuspended:
+		status.CurrentState = longhorn.InstanceStateSuspended
+		status.CurrentTargetNodeID = spec.TargetNodeID
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -192,8 +324,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateStopped:
 		if status.Started {
@@ -203,8 +338,11 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
@@ -213,20 +351,22 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.CurrentState = longhorn.InstanceStateError
 		status.CurrentImage = ""
 		status.IP = ""
+		status.TargetIP = ""
 		status.StorageIP = ""
+		status.StorageTargetIP = ""
 		status.Port = 0
+		status.TargetPort = 0
 		h.resetInstanceErrorCondition(status)
 	}
 }
 
-func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {
-	for condition, flag := range instance.Status.Conditions {
-		conditionStatus := longhorn.ConditionStatusFalse
-		if flag {
-			conditionStatus = longhorn.ConditionStatusTrue
-		}
-		status.Conditions = types.SetCondition(status.Conditions, condition, conditionStatus, "", "")
+func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
+	// Only happen when upgrading instance-manager image
+	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
+		return h.ds.GetRunningInstanceManagerByNodeRO(spec.NodeID, spec.DataEngine)
 	}
+
+	return h.ds.GetInstanceManagerByInstanceRO(obj, false)
 }
 
 // resetInstanceErrorCondition resets the error condition to false when the instance is not running
@@ -242,6 +382,16 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 		return "", err
 	}
 	return metadata.GetName(), nil
+}
+
+func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {
+	for condition, flag := range instance.Status.Conditions {
+		conditionStatus := longhorn.ConditionStatusFalse
+		if flag {
+			conditionStatus = longhorn.ConditionStatusTrue
+		}
+		status.Conditions = types.SetCondition(status.Conditions, condition, conditionStatus, "", "")
+	}
 }
 
 func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (err error) {
@@ -280,7 +430,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			return err
 		}
 		if !isNodeDownOrDeleted {
-			im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
+			im, err = h.getInstanceManagerRO(obj, spec, status)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 			}
@@ -328,16 +478,28 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		if i, exists := instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
 			status.Started = true
-			break
+			if spec.TargetNodeID == "" && !status.TargetCreated {
+				break
+			}
 		}
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
-		if status.CurrentState != longhorn.InstanceStateStopped {
-			break
+		if status.CurrentState != longhorn.InstanceStateStopped && status.CurrentState != longhorn.InstanceStateSuspended {
+			if status.CurrentState != longhorn.InstanceStateRunning || (spec.TargetNodeID == "" && !status.TargetCreated) {
+				break
+			}
 		}
 
-		err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
+		if spec.TargetNodeID != "" {
+			if spec.TargetNodeID == status.CurrentTargetNodeID && status.CurrentState == longhorn.InstanceStateSuspended {
+				err = h.resumeInstance(instanceName, spec.DataEngine, runtimeObj)
+			} else {
+				err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
+			}
+		} else {
+			err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
+		}
 		if err != nil {
 			return err
 		}
@@ -356,10 +518,38 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 					if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 						return err
 					}
+
+					// TODO: (live upgrade) retry delete instance if it's not deleted
+					if err := h.deleteTarget(instanceName, runtimeObj); err != nil {
+						if !types.ErrorIsNotFound(err) {
+							return err
+						}
+					}
 				}
 			}
 		}
 		status.Started = false
+	case longhorn.InstanceStateSuspended:
+		if err := h.suspendInstance(instanceName, runtimeObj); err != nil {
+			return err
+		}
+
+		if err := h.switchOverTarget(instanceName, runtimeObj); err != nil {
+			logrus.Infof("Resuming instance %v after failed to switch over target", instanceName)
+			errResume := h.resumeInstance(instanceName, spec.DataEngine, runtimeObj)
+			if errResume != nil {
+				logrus.WithError(errResume).Errorf("Failed to resume instance %v after failed to switch over target", instanceName)
+			}
+			return err
+		}
+
+		if spec.TargetNodeID != status.CurrentTargetNodeID {
+			if err := h.deleteTarget(instanceName, runtimeObj); err != nil {
+				if !types.ErrorIsNotFound(err) {
+					return err
+				}
+			}
+		}
 	default:
 		return fmt.Errorf("unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -373,7 +563,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			if spec.NodeID != im.Spec.NodeID {
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
+				status.TargetIP = ""
 				status.StorageIP = ""
+				status.StorageTargetIP = ""
 				err := fmt.Errorf("instance %v NodeID %v is not the same as the instance manager %v NodeID %v",
 					instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
 				return err
@@ -447,25 +639,67 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	return nil
 }
 
-func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
-	_, err := h.instanceManagerHandler.GetInstance(obj)
+func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) (err error) {
+	instanceExists := false
+	targetInstanceRequired := false
+
+	instance, err := h.instanceManagerHandler.GetInstance(obj, false)
 	if err == nil {
-		return nil
+		instanceExists = true
+
+		targetInstanceRequired, err = h.instanceManagerHandler.RequireRemoteTargetInstance(obj)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if remote target instance for %v is required", instanceName)
+		}
+		if targetInstanceRequired {
+			_, err = h.instanceManagerHandler.GetInstance(obj, true)
+			if err == nil {
+				return nil
+			}
+		} else {
+			targetInstanceRequired, err = h.instanceManagerHandler.RequireLocalTargetInstance(obj)
+			if err != nil {
+				return errors.Wrapf(err, "failed to check if local target instance for %v is required", instanceName)
+			}
+			if !targetInstanceRequired {
+				return nil
+			}
+
+			if !isTargetInstanceRemote(instance) {
+				return nil
+			}
+			err = fmt.Errorf("cannot find local target instance for %v", instanceName)
+		}
 	}
 	if !types.ErrorIsNotFound(err) && !(types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
-		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
+		return errors.Wrapf(err, "failed to get instance %v", instanceName)
 	}
 
-	logrus.Infof("Creating instance %v", instanceName)
-	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
-		if !types.ErrorAlreadyExists(err) {
-			h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
-			return err
+	if !instanceExists {
+		logrus.Infof("Creating instance %v", instanceName)
+		if _, err := h.instanceManagerHandler.CreateInstance(obj, false); err != nil {
+			if !types.ErrorAlreadyExists(err) {
+				h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+				return err
+			}
+			// Already exists, lost track may due to previous datastore conflict
+			return nil
 		}
-		// Already exists, lost track may due to previous datastore conflict
-		return nil
+		h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStart, "Starts instance %v", instanceName)
 	}
-	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStart, "Starts %v", instanceName)
+
+	if targetInstanceRequired {
+		logrus.Infof("Creating target instance %v", instanceName)
+		if _, err := h.instanceManagerHandler.CreateInstance(obj, true); err != nil {
+			if !types.ErrorAlreadyExists(err) {
+				h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+				return err
+			}
+			// Already exists, lost track may due to previous datastore conflict
+			return nil
+		}
+		h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStart, "Starts target instance %v", instanceName)
+	}
 
 	return nil
 }
@@ -478,6 +712,58 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 		return err
 	}
 	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
+
+	return nil
+}
+
+func (h *InstanceHandler) suspendInstance(instanceName string, obj runtime.Object) error {
+	logrus.Infof("Suspending instance %v", instanceName)
+
+	if _, err := h.instanceManagerHandler.GetInstance(obj, false); err != nil {
+		return errors.Wrapf(err, "failed to get instance %v for suspension", instanceName)
+	}
+
+	if err := h.instanceManagerHandler.SuspendInstance(obj); err != nil {
+		return errors.Wrapf(err, "failed to suspend instance %v", instanceName)
+	}
+
+	return nil
+}
+
+func (h *InstanceHandler) resumeInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
+	logrus.Infof("Resuming instance %v", instanceName)
+
+	if types.IsDataEngineV1(dataEngine) {
+		return fmt.Errorf("resuming instance is not supported for data engine %v", dataEngine)
+	}
+
+	if _, err := h.instanceManagerHandler.GetInstance(obj, false); err != nil {
+		return errors.Wrapf(err, "failed to get instance %v for resumption", instanceName)
+	}
+
+	if err := h.instanceManagerHandler.ResumeInstance(obj); err != nil {
+		return errors.Wrapf(err, "failed to resume instance %v", instanceName)
+	}
+
+	return nil
+}
+
+func (h *InstanceHandler) switchOverTarget(instanceName string, obj runtime.Object) error {
+	logrus.Infof("Switching over target for instance %v", instanceName)
+
+	if err := h.instanceManagerHandler.SwitchOverTarget(obj); err != nil {
+		return errors.Wrapf(err, "failed to switch over target for instance %s", instanceName)
+	}
+
+	return nil
+}
+
+func (h *InstanceHandler) deleteTarget(instanceName string, obj runtime.Object) error {
+	logrus.Infof("Deleting target for instance %s", instanceName)
+
+	if err := h.instanceManagerHandler.DeleteTarget(obj); err != nil {
+		return errors.Wrapf(err, "failed to delete target for instance %s", instanceName)
+	}
 
 	return nil
 }

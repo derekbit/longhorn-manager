@@ -24,7 +24,13 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 }
 
 func isVolumeUpgrading(v *longhorn.Volume) bool {
-	return v.Status.CurrentImage != v.Spec.Image
+	imageNotUpdated := v.Status.CurrentImage != v.Spec.Image
+
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		return imageNotUpdated
+	}
+
+	return imageNotUpdated || v.Spec.TargetNodeID != v.Status.CurrentTargetNodeID
 }
 
 // isTargetVolumeOfAnActiveCloning checks if the input volume is the target volume of an on-going cloning process
@@ -106,4 +112,22 @@ func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTar
 	}
 
 	return !exists && bt.Spec.BackupTargetURL != "", nil
+}
+
+func isBeingUpgraded(ds *datastore.DataStore, spec *longhorn.InstanceSpec) bool {
+	node, err := ds.GetNodeRO(spec.NodeID)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get node %v", spec.NodeID)
+		return false
+	}
+
+	if !node.Spec.UpgradeRequested {
+		return false
+	}
+
+	if spec.TargetNodeID == "" {
+		return false
+	}
+
+	return spec.NodeID != spec.TargetNodeID
 }

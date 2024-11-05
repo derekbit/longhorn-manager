@@ -315,24 +315,32 @@ func (m *NodeUpgradeMonitor) collectVolumes(nodeUpgrade *longhorn.NodeUpgrade) (
 }
 
 func (m *NodeUpgradeMonitor) switchOverVolumes(nodeUpgrade *longhorn.NodeUpgrade) (completed bool) {
-	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-	log.Infof("Switching over volumes for nodeUpgrade %v", nodeUpgrade.Name)
+	m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name}).Info("Switching over volumes")
 
-	m.updateVolumes(nodeUpgrade)
+	nodeForNVMeTarget, err := m.findAvailableNodeForNVMeTarget(nodeUpgrade)
+	if err != nil {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+		m.nodeUpgradeStatus.ErrorMessage = fmt.Errorf("failed to find available node for NVMe target: %v", err).Error()
+
+		return false
+	}
+
+	m.updateVolumes(nodeUpgrade, nodeForNVMeTarget)
 
 	return m.AreAllVolumesSwitchedOver(nodeUpgrade)
 }
 
 func (m *NodeUpgradeMonitor) switchBackVolumes(nodeUpgrade *longhorn.NodeUpgrade) (completed bool) {
-	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-	log.Infof("Switching back volumes for nodeUpgrade %v", nodeUpgrade.Name)
+	m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name}).Infof("Switching back targets of volumes to the original node %v", nodeUpgrade.Status.OwnerID)
+
+	//m.updateVolumes(nodeUpgrade, nodeUpgrade.Status.OwnerID)
 
 	return false
 }
 
 func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUpgrade) (upgradeCompleted bool) {
 	log := m.logger.WithFields(logrus.Fields{"nodeUpgrade": nodeUpgrade.Name})
-	log.Infof("Upgrading instance manager for nodeUpgrade %v", nodeUpgrade.Name)
+	log.Info("Upgrading instance manager")
 
 	m.failReplicas(nodeUpgrade)
 
@@ -389,19 +397,12 @@ func (m *NodeUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeUp
 	return upgradeCompleted
 }
 
-func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade) {
-	nodeForNVMeTarget, err := m.findAvailableNodeForNVMeTarget(nodeUpgrade)
-	if err != nil {
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
-		m.nodeUpgradeStatus.ErrorMessage = fmt.Errorf("failed to find available node for NVMe target: %v", err).Error()
-		return
-	}
-
-	m.logger.Infof("Got available node %v for NVMe target for nodeUpgrade %v", nodeForNVMeTarget, nodeUpgrade.Name)
+func (m *NodeUpgradeMonitor) updateVolumes(nodeUpgrade *longhorn.NodeUpgrade, nodeName string) {
+	m.logger.WithField("nodeUpgrade", nodeUpgrade.Name).Infof("Updating volumes to node %v", nodeName)
 
 	for name, volume := range nodeUpgrade.Status.Volumes {
 		if volume.State == longhorn.UpgradeStateInitializing {
-			if err := m.updateVolume(name, nodeUpgrade.Spec.InstanceManagerImage, nodeForNVMeTarget); err != nil {
+			if err := m.updateVolume(name, nodeUpgrade.Spec.InstanceManagerImage, nodeName); err != nil {
 				m.logger.WithError(err).Warnf("Failed to update volume %v", name)
 				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
 				m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
