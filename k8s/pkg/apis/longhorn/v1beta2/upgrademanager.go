@@ -42,6 +42,7 @@ type UpgradeManagerStatus struct {
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.ownerID`,description="The node that the upgrade manager is being performed on"
 // +kubebuilder:printcolumn:name="Data Engine",type=string,JSONPath=`.spec.dataEngine`,description="The data engine targeted for upgrade"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The current state of the upgrade process"
+// +kubebuilder:printcolumn:name="Upgrading Node",type=string,JSONPath=`.status.upgradingNode`,description="The node that is currently being upgraded"
 // UpgradeManager is where Longhorn stores upgrade manager object.
 type UpgradeManager struct {
 	metav1.TypeMeta   `json:",inline"`
