@@ -232,10 +232,65 @@ func (m *NodeUpgradeMonitor) handleUpgradeStateUpgrading(nodeUpgrade *longhorn.N
 		}
 	}()
 
-	if upgradeCompleted := m.upgradeInstanceManager(nodeUpgrade); upgradeCompleted {
-		log.Infof("Upgrade of instance manager for nodeUpgrade %v is completed", nodeUpgrade.Name)
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingBack
+	if completed := m.upgradeInstanceManager(nodeUpgrade); !completed {
+		return
 	}
+
+	if completed := m.AreAllEngineInitiatorInstancesRecreated(nodeUpgrade); !completed {
+		log.Infof("Waiting for all engine initiator instances to be recreated")
+		return
+	}
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingBack
+}
+
+func (m *NodeUpgradeMonitor) AreAllEngineInitiatorInstancesRecreated(nodeUpgrade *longhorn.NodeUpgrade) bool {
+	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
+	if err != nil {
+		m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
+		m.nodeUpgradeStatus.ErrorMessage = errors.Wrapf(err, "failed to get default instance manager for node %v", nodeUpgrade.Status.OwnerID).Error()
+		return false
+	}
+
+	allRecreated := true
+	for name := range m.nodeUpgradeStatus.Volumes {
+		_, err := m.ds.GetVolumeRO(name)
+		if err != nil {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
+			continue
+		}
+
+		engines, err := m.ds.ListVolumeEnginesRO(name)
+		if err != nil {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = err.Error()
+			continue
+		}
+
+		if len(engines) == 0 {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = fmt.Sprintf("no engine found for volume %v", name)
+			continue
+		}
+
+		if len(engines) > 1 {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+			m.nodeUpgradeStatus.Volumes[name].ErrorMessage = fmt.Sprintf("multiple engines found for volume %v", name)
+			continue
+		}
+
+		var engine *longhorn.Engine
+		for _, e := range engines {
+			engine = e
+		}
+
+		_, ok := im.Status.InstanceEngines[engine.Name]
+		if !ok {
+			allRecreated = false
+		}
+	}
+
+	return allRecreated
 }
 
 func (m *NodeUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longhorn.NodeUpgrade) {

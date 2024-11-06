@@ -192,13 +192,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			if status.CurrentState != longhorn.InstanceStateError {
 				// Because the async nature, directly check instance here
 				if spec.TargetNodeID != "" {
-					logrus.Infof("Reconstructed instance %v is not found in instance manager %v, checking the instance in instance manager %v", instanceName, im.Name, spec.NodeID)
+					logrus.Infof("Recreated initiator instance %v is not found in instance manager %v, directly checking the instance in instance manager %v", instanceName, im.Name, spec.NodeID)
 					if exist, err := h.isInstanceExist(instanceName, spec); err != nil {
-						// TODO: (live upgrade) should we retry here?
-						logrus.WithError(err).Errorf("Failed to check if reconstructed instance %v exists in instance manager %v", instanceName, spec.NodeID)
+						// TODO: should we retry here?
+						logrus.WithError(err).Errorf("Failed to check if recreated initiator instance %v exists in instance manager %v", instanceName, spec.NodeID)
 						return
 					} else if exist {
-						logrus.Infof("Instance %v is found in instance manager %v", instanceName, spec.NodeID)
+						logrus.Infof("Initiator instance %v is found in instance manager %v", instanceName, spec.NodeID)
 						return
 					}
 				}

@@ -231,7 +231,7 @@ func (m *UpgradeManagerMonitor) handleUpgradeStateUpgrading(upgradeManager *long
 		if foundNodeUpgrade {
 			m.upgradeManagerStatus.UpgradeNodes[m.upgradeManagerStatus.UpgradingNode].State = nodeUpgrade.Status.State
 			m.upgradeManagerStatus.UpgradeNodes[m.upgradeManagerStatus.UpgradingNode].ErrorMessage = nodeUpgrade.Status.ErrorMessage
-			m.upgradeManagerStatus.UpgradingNode = ""
+			m.upgradeManagerStatus.UpgradingNode = nodeUpgrade.Spec.NodeID
 		} else {
 			m.upgradeManagerStatus.UpgradeNodes[m.upgradeManagerStatus.UpgradingNode].State = longhorn.UpgradeStateError
 			m.upgradeManagerStatus.UpgradeNodes[m.upgradeManagerStatus.UpgradingNode].ErrorMessage = "NodeUpgrade resource not found"
