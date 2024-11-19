@@ -108,7 +108,7 @@ require (
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20241110123431-85dca7039c42 // indirect
+	github.com/longhorn/types v0.0.0-20241117042122-c899b8796df9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
@@ -226,3 +226,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace github.com/longhorn/types v0.0.0-20241117042122-c899b8796df9 => github.com/derekbit/longhorn-types v0.0.0-20241117074921-a5e533aa1bf3
+
+replace github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241117 => github.com/derekbit/longhorn-instance-manager v0.0.0-20241119080623-fc70fdfc5091
