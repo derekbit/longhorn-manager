@@ -234,6 +234,12 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrad
 					err = errors.Errorf("volume %v has only 1 replica", volume.Name)
 					return
 				}
+				if volume.Status.State != longhorn.VolumeStateAttached {
+					if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+						err = errors.Errorf("volume %v is not healthy", volume.Name)
+						return
+					}
+				}
 			}
 		}
 

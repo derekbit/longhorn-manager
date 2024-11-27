@@ -262,7 +262,13 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.Started {
 			if h.isEngineOfV2DataEngine(obj, spec.DataEngine) {
 				if spec.Image == status.CurrentImage {
-					if h.isV2DataEngineBeingUpgraded(spec, status) {
+					upgradeRequested, err := h.ds.IsNodeDataEngineUpgradeRequested(spec.NodeID)
+					if err != nil {
+						logrus.WithError(err).Errorf("Failed to get node %v", spec.NodeID)
+						return
+					}
+					if upgradeRequested {
+						logrus.Warnf("Skipping the instance %v since the instance manager %v is %v", instanceName, im.Name, im.Status.CurrentState)
 						return
 					}
 					h.handleIfInstanceManagerStarting(im.Name, instanceName, status)
