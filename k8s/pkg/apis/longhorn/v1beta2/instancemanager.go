@@ -161,6 +161,26 @@ type InstanceProcessStatus struct {
 	Type InstanceType `json:"type"`
 	// +optional
 	ResourceVersion int64 `json:"resourceVersion"`
+	// +optional
+	NvmeSubsystem NvmeSubsystem `json:"nvmeSubsystem"`
+}
+
+type NvmeSubsystem struct {
+	// +optional
+	Paths map[string]NvmeDevicePath `json:"paths"`
+}
+
+type NvmeDevicePath struct {
+	// +optional
+	Trtype string `json:"trtype"`
+	// +optional
+	Traddr string `json:"traddr"`
+	// +optional
+	Trsvcid string `json:"trsvcid"`
+	// +optional
+	SrcAddr string `json:"srcAddr"`
+	// +optional
+	State string `json:"state"`
 }
 
 type V2DataEngineSpec struct {
