@@ -217,6 +217,20 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrad
 			return
 		}
 
+		var im *longhorn.InstanceManager
+		im, err = m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return
+		}
+
+		for name, engine := range im.Status.InstanceEngines {
+			for _, path := range engine.Status.NvmeSubsystem.Paths {
+				if path.State != "live" {
+					m.nodeUpgradeStatus.Message = fmt.Sprintf("NVMe subsystem path for engine %v is in state %v", name, path.State)
+				}
+			}
+		}
+
 		replicas, errList := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
 		if errList != nil {
 			err = errors.Wrapf(errList, "failed to list replicas on node %v", nodeUpgrade.Status.OwnerID)
@@ -504,12 +518,29 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn
 		}
 		if volume.Spec.NodeID != "" {
 			if volume.Spec.NumberOfReplicas == 1 {
-				err = errors.Errorf("volume %v has only 1 replica", volume.Name)
 				allHealthy = false
+				break
 			}
 			if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-				err = errors.Errorf("volume %v is not healthy", volume.Name)
 				allHealthy = false
+				break
+			}
+		}
+	}
+
+	if allHealthy {
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
+		if err != nil {
+			m.nodeUpgradeStatus.Message = errors.Wrapf(err, "failed to get default instance manager for node %v", nodeUpgrade.Status.OwnerID).Error()
+			return false
+		}
+
+		for name, engine := range im.Status.InstanceEngines {
+			for _, path := range engine.Status.NvmeSubsystem.Paths {
+				if path.State != "live" {
+					m.nodeUpgradeStatus.Message = fmt.Sprintf("NVMe subsystem path for engine %v is in state %v", name, path.State)
+					allHealthy = false
+				}
 			}
 		}
 	}

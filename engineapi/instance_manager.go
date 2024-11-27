@@ -274,6 +274,19 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 		return nil
 	}
 
+	nvmeSubsystem := &longhorn.NvmeSubsystem{
+		Paths: make(map[string]longhorn.NvmeDevicePath),
+	}
+	for pathName, path := range p.InstanceStatus.NvmeSubsystem.Paths {
+		nvmeSubsystem.Paths[pathName] = longhorn.NvmeDevicePath{
+			Trtype:  path.Trtype,
+			Traddr:  path.Traddr,
+			Trsvcid: path.Trsvcid,
+			SrcAddr: path.SrcAddr,
+			State:   path.State,
+		}
+	}
+
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:       p.Name,
@@ -290,6 +303,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			TargetPortEnd:          p.InstanceStatus.TargetPortEnd,
 			StandbyTargetPortEnd:   p.InstanceStatus.StandbyTargetPortEnd,
 			StandbyTargetPortStart: p.InstanceStatus.StandbyTargetPortStart,
+			NvmeSubsystem:          *nvmeSubsystem,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -723,8 +737,10 @@ func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProc
 		return result, nil
 	}
 
+	logrus.Infof("Debug ========> InstanceList")
 	instances, err := c.instanceServiceGrpcClient.InstanceList()
 	if err != nil {
+		logrus.Infof("Debug ========> InstanceList err=%v", err)
 		return nil, err
 	}
 	for name, instance := range instances {
