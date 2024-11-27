@@ -63,6 +63,18 @@ func RPCToInstanceList(obj *rpc.InstanceListResponse) map[string]*Instance {
 	return ret
 }
 
+type NvmeDevicePath struct {
+	Trtype  string `json:"trtype"`
+	Traddr  string `json:"traddr"`
+	Trsvcid string `json:"trsvcid"`
+	SrcAddr string `json:"src_addr"`
+	State   string `json:"state"`
+}
+
+type NvmeSubsystem struct {
+	Paths map[string]NvmeDevicePath `json:"paths"`
+}
+
 type InstanceStatus struct {
 	State                  string          `json:"state"`
 	ErrorMsg               string          `json:"errorMsg"`
@@ -73,9 +85,25 @@ type InstanceStatus struct {
 	TargetPortEnd          int32           `json:"targetPortEnd"`
 	StandbyTargetPortStart int32           `json:"standbyTargetPortStart"`
 	StandbyTargetPortEnd   int32           `json:"standbyTargetPortEnd"`
+	NvmeSubsystem          NvmeSubsystem   `json:"nvmeSubsystem"`
 }
 
 func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
+	nvmeSubsystem := NvmeSubsystem{
+		Paths: map[string]NvmeDevicePath{},
+	}
+	if obj.NvmeSubsystem != nil {
+		for pathName, path := range obj.NvmeSubsystem.Paths {
+			nvmeSubsystem.Paths[pathName] = NvmeDevicePath{
+				Trtype:  path.Trtype,
+				Traddr:  path.Traddr,
+				Trsvcid: path.Trsvcid,
+				SrcAddr: path.SrcAddr,
+				State:   path.State,
+			}
+		}
+	}
+
 	return InstanceStatus{
 		State:                  obj.State,
 		ErrorMsg:               obj.ErrorMsg,
@@ -86,6 +114,7 @@ func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
 		TargetPortEnd:          obj.TargetPortEnd,
 		StandbyTargetPortStart: obj.StandbyTargetPortStart,
 		StandbyTargetPortEnd:   obj.StandbyTargetPortEnd,
+		NvmeSubsystem:          nvmeSubsystem,
 	}
 }
 

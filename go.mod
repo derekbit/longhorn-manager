@@ -61,10 +61,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241117
-	github.com/longhorn/backupstore v0.0.0-20241117040525-542fb2c66652
-	github.com/longhorn/go-common-libs v0.0.0-20241117040506-5685d80d0eea
+	github.com/longhorn/backupstore v0.0.0-20241124092526-138305866a87
+	github.com/longhorn/go-common-libs v0.0.0-20241124035508-d6221574e626
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241110033836-dd4b01aa15b8
-	github.com/longhorn/go-spdk-helper v0.0.0-20241115132910-af0134eda2a6
+	github.com/longhorn/go-spdk-helper v0.0.0-20241124090314-c396ae715a7f
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241117
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241117
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
@@ -75,7 +75,7 @@ require (
 	github.com/rancher/wrangler/v3 v3.1.0
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.22.0
 	golang.org/x/net v0.31.0
@@ -84,14 +84,14 @@ require (
 	google.golang.org/grpc v1.68.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.31.2
+	k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver v0.31.2
-	k8s.io/apimachinery v0.31.2
+	k8s.io/apimachinery v0.31.3
 	k8s.io/cli-runtime v0.31.2
-	k8s.io/client-go v0.31.2
+	k8s.io/client-go v0.31.3
 	k8s.io/kubernetes v1.31.2
 	k8s.io/metrics v0.31.2
-	k8s.io/mount-utils v0.31.2
+	k8s.io/mount-utils v0.31.3
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 	sigs.k8s.io/controller-runtime v0.19.1
 )
@@ -108,7 +108,7 @@ require (
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20241117042122-c899b8796df9 // indirect
+	github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
@@ -227,6 +227,6 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/longhorn/types v0.0.0-20241117042122-c899b8796df9 => github.com/derekbit/longhorn-types v0.0.0-20241117074921-a5e533aa1bf3
+replace github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab => github.com/derekbit/longhorn-types v0.0.0-20241126114320-36b8b01a8cb5
 
-replace github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241117 => github.com/derekbit/longhorn-instance-manager v0.0.0-20241119080623-fc70fdfc5091
+replace github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241117 => github.com/derekbit/longhorn-instance-manager v0.0.0-20241127052600-597764305bfd

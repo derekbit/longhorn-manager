@@ -17,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/mount-utils"
 
-	spdkhelpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
+	helpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
 )
 
 const (
@@ -128,7 +128,7 @@ func ParsePortRange(portRange string) (int32, int32, error) {
 // IsSPDKTgtReady checks if SPDK target is ready
 func IsSPDKTgtReady(timeout time.Duration) bool {
 	for i := 0; i < int(timeout.Seconds()); i++ {
-		conn, err := net.DialTimeout(spdkhelpertypes.DefaultJSONServerNetwork, spdkhelpertypes.DefaultUnixDomainSocketPath, 1*time.Second)
+		conn, err := net.DialTimeout(helpertypes.DefaultJSONServerNetwork, helpertypes.DefaultUnixDomainSocketPath, 1*time.Second)
 		if err == nil {
 			conn.Close()
 			return true
