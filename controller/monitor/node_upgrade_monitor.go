@@ -12,8 +12,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -233,6 +231,12 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrad
 				if volume.Spec.NumberOfReplicas == 1 {
 					err = errors.Errorf("volume %v has only 1 replica", volume.Name)
 					return
+				}
+				if volume.Status.State != longhorn.VolumeStateAttached {
+					if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+						err = errors.Errorf("volume %v is not healthy", volume.Name)
+						return
+					}
 				}
 			}
 		}
@@ -481,28 +485,16 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn
 		}
 	}
 
-	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	volumes, err := m.ds.ListVolumesRO()
 	if err != nil {
-		m.nodeUpgradeStatus.Message = errors.Wrapf(err, "failed to list replicas on node %v", nodeUpgrade.Status.OwnerID).Error()
+		m.nodeUpgradeStatus.Message = errors.Wrap(err, "failed to list volumes").Error()
 		return false
 	}
 
-	for _, r := range replicas {
-		volume, err := m.ds.GetVolumeRO(r.Spec.VolumeName)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			m.nodeUpgradeStatus.Message = errors.Wrapf(err, "failed to get volume %v for replica %v", r.Spec.VolumeName, r.Name).Error()
-			continue
-		}
-		if volume.Spec.NodeID != "" {
-			if volume.Spec.NumberOfReplicas == 1 {
-				err = errors.Errorf("volume %v has only 1 replica", volume.Name)
-				allHealthy = false
-			}
+	for _, volume := range volumes {
+		if volume.Status.State != longhorn.VolumeStateDetached {
 			if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-				err = errors.Errorf("volume %v is not healthy", volume.Name)
+				m.nodeUpgradeStatus.Message = fmt.Sprintf("Volume %v is not healthy", volume.Name)
 				allHealthy = false
 			}
 		}
