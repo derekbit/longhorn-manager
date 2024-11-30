@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,11 +169,11 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUndefined() {
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
-	log := m.logger.WithFields(logrus.Fields{"nodeDataEngineUpgrade": nodeUpgrade.Name})
 	var err error
 
 	defer func() {
 		if err != nil {
+			// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
 			m.nodeUpgradeStatus.Message = err.Error()
 		}
 	}()
@@ -189,81 +190,78 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrad
 		return
 	}
 
-	defer func() {
-		if err != nil {
-			node, errGet := m.ds.GetNode(nodeUpgrade.Status.OwnerID)
-			if errGet != nil {
-				log.WithError(errGet).Warnf("Failed to get node %v", nodeUpgrade.Status.OwnerID)
-				return
-			}
-
-			node.Spec.DataEngineUpgradeRequested = false
-			if _, errUpdate := m.ds.UpdateNode(node); errUpdate != nil {
-				log.WithError(errUpdate).Warnf("Failed to update node %v to set DataEngineUpgradeRequested to false", nodeUpgrade.Status.OwnerID)
-				return
-			}
-		}
-	}()
-
-	// Mark the node as upgrade requested
-	var volumes map[string]*longhorn.VolumeUpgradeStatus
-	if node.Spec.DataEngineUpgradeRequested {
-		condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
-		if condition.Status == longhorn.ConditionStatusTrue {
-			log.Infof("DataEngineUpgradeRequested of node %v is set to true, but it is still schedulable", nodeUpgrade.Status.OwnerID)
-			// Return here and check again in the next reconciliation
-			return
-		}
-
-		replicas, errList := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
-		if errList != nil {
-			err = errors.Wrapf(errList, "failed to list replicas on node %v", nodeUpgrade.Status.OwnerID)
-			return
-		}
-
-		for _, r := range replicas {
-			volume, errGet := m.ds.GetVolumeRO(r.Spec.VolumeName)
-			if errGet != nil {
-				err = errors.Wrapf(errGet, "failed to get volume %v for replica %v", r.Spec.VolumeName, r.Name)
-				return
-			}
-			if volume.Spec.NodeID != "" {
-				if volume.Spec.NumberOfReplicas == 1 {
-					err = errors.Errorf("volume %v has only 1 replica", volume.Name)
-					return
-				}
-				if volume.Status.State != longhorn.VolumeStateAttached {
-					if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-						err = errors.Errorf("volume %v is not healthy", volume.Name)
-						return
-					}
-				}
-			}
-		}
-
-		volumes, err = m.listVolumes(nodeUpgrade)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to list volumes on node %v", nodeUpgrade.Status.OwnerID)
-			return
-		}
-
-		err = m.snapshotVolumes(volumes)
-		if err != nil {
-			err = errors.Wrap(err, "failed to snapshot volumes")
-			return
-		}
-
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingOver
-		m.nodeUpgradeStatus.Message = ""
-		m.nodeUpgradeStatus.Volumes = volumes
-	} else {
+	if !node.Spec.DataEngineUpgradeRequested {
 		node.Spec.DataEngineUpgradeRequested = true
 		_, err = m.ds.UpdateNode(node)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to update node %v to set DataEngineUpgradeRequested to true", nodeUpgrade.Status.OwnerID)
-			return
+		}
+		return
+	}
+
+	var volumes map[string]*longhorn.VolumeUpgradeStatus
+
+	condition = types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
+	if condition.Status == longhorn.ConditionStatusTrue {
+		// Return here and check again in the next reconciliation
+		err = errors.Errorf("spec.dataEngineUpgradeRequested of node %v is set to true, but the node is still schedulable", nodeUpgrade.Status.OwnerID)
+		return
+	}
+
+	err = m.areIndirectVolumesReadyForUpgrade(nodeUpgrade)
+	if err != nil {
+		err = errors.Wrap(err, "failed to check if associated volumes are ready for upgrade")
+		return
+	}
+
+	volumes, err = m.listDirectVolumes(nodeUpgrade)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to list volumes on node %v", nodeUpgrade.Status.OwnerID)
+		return
+	}
+
+	err = m.snapshotVolumes(volumes)
+	if err != nil {
+		err = errors.Wrap(err, "failed to snapshot volumes")
+		return
+	}
+
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingOver
+	m.nodeUpgradeStatus.Message = ""
+	m.nodeUpgradeStatus.Volumes = volumes
+}
+
+func (m *NodeDataEngineUpgradeMonitor) areIndirectVolumesReadyForUpgrade(nodeUpgrade *longhorn.NodeDataEngineUpgrade) error {
+	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list replicas on node %v", nodeUpgrade.Status.OwnerID)
+	}
+
+	for _, r := range replicas {
+		if r.Spec.DataEngine != nodeUpgrade.Spec.DataEngine {
+			continue
+		}
+
+		volume, err := m.ds.GetVolumeRO(r.Spec.VolumeName)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get volume %v for replica %v", r.Spec.VolumeName, r.Name)
+		}
+
+		// No need to care about the detached volumes
+		if volume.Status.State == longhorn.VolumeStateDetached {
+			continue
+		}
+
+		if volume.Spec.NumberOfReplicas == 1 {
+			return fmt.Errorf("volume %v has only 1 replica, which is not supported for live upgrade", volume.Name)
+		}
+
+		if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+			return fmt.Errorf("volume %v is not healthy, which is not supported for live upgrade", volume.Name)
 		}
 	}
+
+	return nil
 }
 
 func (m *NodeDataEngineUpgradeMonitor) snapshotVolumes(volumes map[string]*longhorn.VolumeUpgradeStatus) error {
@@ -306,8 +304,6 @@ func (m *NodeDataEngineUpgradeMonitor) snapshotVolumes(volumes map[string]*longh
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
-	m.logger.WithFields(logrus.Fields{"nodeDataEngineUpgrade": nodeUpgrade.Name}).Info("Switching over target instances of volumes")
-
 	targetNode, err := m.findAvailableNodeForTargetInstanceReplacement(nodeUpgrade)
 	if err != nil {
 		// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
@@ -326,7 +322,6 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgra
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
-	m.logger.WithFields(logrus.Fields{"nodeDataEngineUpgrade": nodeUpgrade.Name}).Infof("Switching back targets of volumes to the original node %v", nodeUpgrade.Status.OwnerID)
 	var err error
 
 	defer func() {
@@ -341,35 +336,47 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgra
 	}
 
 	if m.areAllVolumesSwitchedBack(nodeUpgrade) {
-		m.clearVolumesTargetNode()
+		if !m.clearVolumesTargetNode() {
+			return
+		}
 
 		m.nodeUpgradeStatus.State = longhorn.UpgradeStateRebuildingReplica
 		m.nodeUpgradeStatus.Message = ""
 	}
 }
 
-func (m *NodeDataEngineUpgradeMonitor) clearVolumesTargetNode() {
+func (m *NodeDataEngineUpgradeMonitor) clearVolumesTargetNode() bool {
+	allCleared := true
 	for name := range m.nodeUpgradeStatus.Volumes {
 		volume, err := m.ds.GetVolumeRO(name)
 		if err != nil {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
 			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
+			if !datastore.ErrorIsNotFound(err) {
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+				allCleared = false
+			} else {
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
+			}
 			continue
 		}
 
 		if volume.Spec.TargetNodeID != "" {
 			volume.Spec.TargetNodeID = ""
-			if _, err := m.ds.UpdateVolume(volume); err != nil {
+
+			_, err := m.ds.UpdateVolume(volume)
+			if err != nil {
 				m.nodeUpgradeStatus.State = longhorn.UpgradeStateError
 				m.nodeUpgradeStatus.Message = errors.Wrap(err, "failed to empty spec.targetNodeID").Error()
+				allCleared = false
 			}
 		}
 	}
+
+	return allCleared
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateRebuildingReplica(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
 	var err error
-	log := m.logger.WithFields(logrus.Fields{"nodeDataEngineUpgrade": nodeUpgrade.Name})
 
 	defer func() {
 		if err != nil {
@@ -380,13 +387,10 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateRebuildingReplica(nodeU
 
 	node, err := m.ds.GetNode(nodeUpgrade.Status.OwnerID)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get node %v for nodeDataEngineUpgrade resource %v", nodeUpgrade.Status.OwnerID, nodeUpgrade.Name)
 		return
 	}
 
 	if node.Spec.DataEngineUpgradeRequested {
-		log.Infof("Setting DataEngineUpgradeRequested to false for node %v since the node upgrade is completed", nodeUpgrade.Status.OwnerID)
-
 		node.Spec.DataEngineUpgradeRequested = false
 		_, err = m.ds.UpdateNode(node)
 		if err != nil {
@@ -449,42 +453,6 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUnknown() {
 }
 
 func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn.NodeDataEngineUpgrade) bool {
-	allHealthy := true
-
-	for name := range m.nodeUpgradeStatus.Volumes {
-		volume, err := m.ds.GetVolumeRO(name)
-		if err != nil {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
-			continue
-		}
-
-		if volume.Status.OwnerID != nodeUpgrade.Status.OwnerID {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[name].Message = fmt.Sprintf("Volume %v is not owned by node %v", name, nodeUpgrade.Status.OwnerID)
-			continue
-		}
-
-		if volume.Status.State != longhorn.VolumeStateAttached && volume.Status.State != longhorn.VolumeStateDetached {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[name].Message = fmt.Sprintf("Volume %v is in unexpected state %v", name, volume.Status.State)
-			continue
-		}
-
-		if volume.Status.State == longhorn.VolumeStateDetached {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
-			m.nodeUpgradeStatus.Volumes[name].Message = "Volume is detached"
-			continue
-		}
-
-		if volume.Status.Robustness == longhorn.VolumeRobustnessHealthy {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
-		} else {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateRebuildingReplica
-			allHealthy = false
-		}
-	}
-
 	volumes, err := m.ds.ListVolumesRO()
 	if err != nil {
 		m.nodeUpgradeStatus.Message = errors.Wrap(err, "failed to list volumes").Error()
@@ -492,23 +460,33 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn
 	}
 
 	for _, volume := range volumes {
-		if volume.Status.State != longhorn.VolumeStateDetached {
-			if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-				m.nodeUpgradeStatus.Message = fmt.Sprintf("Volume %v is not healthy", volume.Name)
-				allHealthy = false
-			}
+		if volume.Status.State == longhorn.VolumeStateDetached {
+			continue
+		}
+
+		if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+			m.nodeUpgradeStatus.Message = fmt.Sprintf("Need to make sure all volumes are healthy before proceeding to the next state")
+			return false
 		}
 	}
 
-	return allHealthy
+	return true
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUpgradingInstanceManager(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
+	m.removeRunningReplicasFromEngines(nodeUpgrade)
+
+	allStoppedOrFailed, err := m.areAllReplicasStoppedOrFailed(nodeUpgrade)
+	if !allStoppedOrFailed {
+		m.nodeUpgradeStatus.Message = err.Error()
+		return
+	}
+
 	if !m.upgradeInstanceManager(nodeUpgrade) {
 		return
 	}
 
-	if !m.areAllEngineInitiatorInstancesRecreated(nodeUpgrade) {
+	if !m.areAllInitiatorInstancesRecreated(nodeUpgrade) {
 		return
 	}
 
@@ -516,7 +494,7 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUpgradingInstanceManage
 	m.nodeUpgradeStatus.Message = ""
 }
 
-func (m *NodeDataEngineUpgradeMonitor) areAllEngineInitiatorInstancesRecreated(nodeUpgrade *longhorn.NodeDataEngineUpgrade) bool {
+func (m *NodeDataEngineUpgradeMonitor) areAllInitiatorInstancesRecreated(nodeUpgrade *longhorn.NodeDataEngineUpgrade) bool {
 	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(nodeUpgrade.Status.OwnerID, longhorn.DataEngineTypeV2)
 	if err != nil {
 		// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
@@ -526,41 +504,38 @@ func (m *NodeDataEngineUpgradeMonitor) areAllEngineInitiatorInstancesRecreated(n
 
 	allRecreated := true
 	for name := range m.nodeUpgradeStatus.Volumes {
+		if m.nodeUpgradeStatus.Volumes[name].State == longhorn.UpgradeStateCompleted {
+			continue
+		}
+
+		// TODO: should we introduce max retry count here?
+		if m.nodeUpgradeStatus.Volumes[name].State == longhorn.UpgradeStateError {
+			allRecreated = false
+			continue
+		}
+
 		volume, err := m.ds.GetVolumeRO(name)
 		if err != nil {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
 			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
+			if !datastore.ErrorIsNotFound(err) {
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+				allRecreated = false
+			}
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
 			continue
 		}
 
-		if !types.IsDataEngineV2(volume.Spec.DataEngine) {
+		if volume.Status.State == longhorn.VolumeStateDetached {
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
+			m.nodeUpgradeStatus.Volumes[name].Message = "Volume is detached"
 			continue
 		}
 
-		if volume.Spec.NodeID == "" {
-			continue
-		}
-
-		engines, err := m.ds.ListVolumeEnginesRO(name)
+		engine, err := m.ds.GetVolumeCurrentEngine(name)
 		if err != nil {
 			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
 			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
 			continue
-		}
-
-		if len(engines) == 0 {
-			continue
-		}
-
-		if len(engines) > 1 {
-			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[name].Message = fmt.Sprintf("multiple engines found for volume %v", name)
-			continue
-		}
-
-		var engine *longhorn.Engine
-		for _, e := range engines {
-			engine = e
 		}
 
 		_, ok := im.Status.InstanceEngines[engine.Name]
@@ -572,16 +547,19 @@ func (m *NodeDataEngineUpgradeMonitor) areAllEngineInitiatorInstancesRecreated(n
 	return allRecreated
 }
 
-func (m *NodeDataEngineUpgradeMonitor) listVolumes(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (map[string]*longhorn.VolumeUpgradeStatus, error) {
-	volumeUpgradeStatus := make(map[string]*longhorn.VolumeUpgradeStatus)
-
+func (m *NodeDataEngineUpgradeMonitor) listDirectVolumes(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (map[string]*longhorn.VolumeUpgradeStatus, error) {
 	volumes, err := m.ds.ListVolumesRO()
 	if err != nil {
 		return nil, err
 	}
 
+	volumeUpgradeStatus := make(map[string]*longhorn.VolumeUpgradeStatus)
 	for _, volume := range volumes {
 		if volume.Status.OwnerID != nodeUpgrade.Status.OwnerID {
+			continue
+		}
+
+		if volume.Spec.DataEngine != nodeUpgrade.Spec.DataEngine {
 			continue
 		}
 
@@ -593,9 +571,62 @@ func (m *NodeDataEngineUpgradeMonitor) listVolumes(nodeUpgrade *longhorn.NodeDat
 	return volumeUpgradeStatus, nil
 }
 
+func (m *NodeDataEngineUpgradeMonitor) areAllReplicasStoppedOrFailed(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (bool, error) {
+	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+
+	for _, r := range replicas {
+		if r.Status.CurrentState != longhorn.InstanceStateStopped && r.Spec.DesireState != longhorn.InstanceStateError {
+			return false, fmt.Errorf("not all replicas are stopped or failed")
+		}
+	}
+
+	return true, nil
+}
+
+func (m *NodeDataEngineUpgradeMonitor) removeRunningReplicasFromEngines(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
+	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		return
+	}
+
+	for _, r := range replicas {
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+
+		engine, err := m.ds.GetVolumeCurrentEngine(r.Spec.VolumeName)
+		if err != nil {
+			continue
+		}
+
+		if engine.Status.CurrentState == longhorn.InstanceStateStopped {
+			continue
+		}
+
+		engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, engine.Spec.VolumeName, engine.Status.OwnerID)
+		if err != nil {
+			continue
+		}
+
+		engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, m.logger, m.proxyConnCounter)
+		if err != nil {
+			continue
+		}
+		defer engineClientProxy.Close()
+
+		err = engineClientProxy.ReplicaRemove(engine, "", r.Name)
+		if err != nil {
+			if !strings.Contains(err.Error(), " cannot find replica") {
+				m.logger.WithError(err).Warnf("Failed to remove replica %v from engine %v", r.Name, engine.Name)
+			}
+		}
+	}
+}
+
 func (m *NodeDataEngineUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (upgradeCompleted bool) {
-	log := m.logger.WithFields(logrus.Fields{"nodeDataEngineUpgrade": nodeUpgrade.Name})
-	log.Info("Upgrading instance manager")
 
 	m.deleteNonDefaultInstanceManager(nodeUpgrade)
 
@@ -699,52 +730,54 @@ func (m *NodeDataEngineUpgradeMonitor) findAvailableNodeForTargetInstanceReplace
 	return availableNode, nil
 }
 
-func (m *NodeDataEngineUpgradeMonitor) updateVolumeForSwitchOver(volumeName, image, targetNode string) {
+func (m *NodeDataEngineUpgradeMonitor) updateVolumeForSwitchOver(volumeName, image, tempTargetNode string) {
 	var err error
 
 	defer func() {
 		if err != nil {
 			m.nodeUpgradeStatus.Volumes[volumeName].Message = err.Error()
 			if datastore.ErrorIsNotFound(err) {
+				// If the volume is not found, we don't need to switch over it and therefore consider it as completed.
 				m.nodeUpgradeStatus.Volumes[volumeName].State = longhorn.UpgradeStateCompleted
 			} else {
 				m.nodeUpgradeStatus.Volumes[volumeName].State = longhorn.UpgradeStateError
-				m.logger.WithError(err).Warnf("Failed to update volume %v for switch over", volumeName)
 			}
 		}
 	}()
 
 	volume, err := m.ds.GetVolume(volumeName)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get volume %v for switch over", volumeName)
 		return
 	}
 
+	// If a volume is detached, no need to switch over,
+	// because it will use the default instance manager after being attached.
 	if volume.Status.State == longhorn.VolumeStateDetached {
 		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateCompleted
-		m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is detached"
+		m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is detached, so no need to switch over"
 		return
 	}
+
 	if volume.Status.State != longhorn.VolumeStateAttached {
 		err = errors.Errorf("volume %v is in neither detached nor attached state", volume.Name)
 		return
 	}
 
+	// If a volume's targetNodeID is not empty, it means the volume is being switched over
 	if volume.Spec.TargetNodeID != "" {
 		if volume.Spec.TargetNodeID != volume.Spec.NodeID {
-			// The volume is being switched over
 			m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateSwitchingOver
 			return
 		}
 	}
 
-	if volume.Spec.Image != image || volume.Spec.TargetNodeID != targetNode {
+	if volume.Spec.Image != image || volume.Spec.TargetNodeID != tempTargetNode {
 		volume.Spec.Image = image
-		volume.Spec.TargetNodeID = targetNode
+		volume.Spec.TargetNodeID = tempTargetNode
 
 		_, err = m.ds.UpdateVolume(volume)
 		if err != nil {
-			err = errors.Wrapf(err, "failed to update volume %v to image %v and target node %v for switch over", volumeName, image, targetNode)
+			err = errors.Wrapf(err, "failed to update volume %v to image %v and target node %v for switch over", volumeName, image, tempTargetNode)
 			return
 		}
 
@@ -753,8 +786,6 @@ func (m *NodeDataEngineUpgradeMonitor) updateVolumeForSwitchOver(volumeName, ima
 }
 
 func (m *NodeDataEngineUpgradeMonitor) updateVolumeForSwitchBack(volumeName, targetNode string) {
-	log := m.logger.WithFields(logrus.Fields{"volume": volumeName, "targetNode": targetNode})
-
 	var err error
 
 	defer func() {
@@ -764,49 +795,43 @@ func (m *NodeDataEngineUpgradeMonitor) updateVolumeForSwitchBack(volumeName, tar
 				m.nodeUpgradeStatus.Volumes[volumeName].State = longhorn.UpgradeStateCompleted
 			} else {
 				m.nodeUpgradeStatus.Volumes[volumeName].State = longhorn.UpgradeStateError
-				m.logger.WithError(err).Warnf("Failed to update volume %v for switch over", volumeName)
 			}
 		}
 	}()
 
 	volume, err := m.ds.GetVolume(volumeName)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get volume %v for switch over", volumeName)
 		return
 	}
 
-	if volume.Spec.NodeID == "" {
-		if volume.Status.OwnerID == "" {
-			m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateCompleted
-			m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is detached"
-		} else {
-			m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is being detached"
-		}
+	if volume.Status.State == longhorn.VolumeStateDetached {
+		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateCompleted
+		m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is detached"
 		return
 	}
 
-	if volume.Spec.TargetNodeID != "" {
-		if volume.Spec.TargetNodeID == volume.Spec.NodeID {
-			m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateSwitchingBack
-		} else {
-			m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateError
-			m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Unexpected target node that is different from the attached node"
-		}
-	} else {
-		m.nodeUpgradeStatus.Volumes[volume.Name].Message = "Volume is switched over"
+	if volume.Status.State != longhorn.VolumeStateAttached {
+		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateError
+		err = errors.Errorf("volume %v is in neither detached nor attached state", volume.Name)
+		return
+	}
+
+	if volume.Spec.TargetNodeID == "" {
+		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateCompleted
+		return
+	}
+
+	if volume.Spec.TargetNodeID == volume.Spec.NodeID {
+		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateSwitchingBack
 		return
 	}
 
 	if volume.Spec.TargetNodeID != targetNode {
 		volume.Spec.TargetNodeID = targetNode
-
-		log.Infof("Updating volume %v to target node %v for switch back", volumeName, targetNode)
 		_, err := m.ds.UpdateVolume(volume)
 		if err != nil {
 			return
 		}
-
 		m.nodeUpgradeStatus.Volumes[volume.Name].State = longhorn.UpgradeStateSwitchingBack
 	}
 }
@@ -818,13 +843,20 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumesSwitchedOver(nodeUpgrade *lo
 			continue
 		}
 
+		// TODO: should we introduce max retry count here?
 		if m.nodeUpgradeStatus.Volumes[name].State == longhorn.UpgradeStateError {
+			allSwitched = false
 			continue
 		}
 
 		volume, err := m.ds.GetVolume(name)
 		if err != nil {
-			// Error state will be caught in the next reconciliation
+			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
+			if !datastore.ErrorIsNotFound(err) {
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+				allSwitched = false
+			}
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
 			continue
 		}
 
@@ -855,7 +887,12 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumesSwitchedBack(nodeUpgrade *lo
 
 		volume, err := m.ds.GetVolumeRO(name)
 		if err != nil {
-			// Error state will be caught in the next reconciliation
+			m.nodeUpgradeStatus.Volumes[name].Message = err.Error()
+			if !datastore.ErrorIsNotFound(err) {
+				m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateError
+				allSwitched = false
+			}
+			m.nodeUpgradeStatus.Volumes[name].State = longhorn.UpgradeStateCompleted
 			continue
 		}
 
