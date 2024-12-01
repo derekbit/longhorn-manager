@@ -1416,6 +1416,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
 					}
+
+					if types.IsDataEngineV2(dataEngine) {
+						if node.Spec.DataEngineUpgradeRequested {
+							cleanupRequired = false
+						}
+					}
 				}
 				if cleanupRequired {
 					log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
