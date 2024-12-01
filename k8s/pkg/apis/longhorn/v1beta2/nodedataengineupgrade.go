@@ -9,6 +9,7 @@ const (
 	UpgradeStatePending                  = UpgradeState("pending")
 	UpgradeStateInitializing             = UpgradeState("initializing")
 	UpgradeStateSwitchingOver            = UpgradeState("switching-over")
+	UpgradeStateFailingReplicas          = UpgradeState("failing-replicas")
 	UpgradeStateSwitchedOver             = UpgradeState("switched-over")
 	UpgradeStateUpgrading                = UpgradeState("upgrading")
 	UpgradeStateUpgradingInstanceManager = UpgradeState("upgrading-instance-manager")

@@ -1909,6 +1909,25 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 		return err
 	}
 
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
+		for replicaName := range e.Status.CurrentReplicaAddressMap {
+			r, err := ec.ds.GetReplicaRO(replicaName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			requested, err := ec.ds.IsNodeDataEngineUpgradeRequested(r.Spec.NodeID)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			if requested {
+				logrus.Infof("Debug =====> replica %s is requested to upgrade", replicaName)
+				return nil
+			}
+		}
+	}
+
 	if err := ec.rebuildNewReplica(e); err != nil {
 		return err
 	}
@@ -1946,6 +1965,28 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 		return nil, err
 	}
 	return client, nil
+}
+
+func (ec *EngineController) removeFailedReplica(e *longhorn.Engine) error {
+	replicas, err := ec.ds.ListVolumeReplicasRO(e.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the engine client %v for removing failed replica from engine", e.Name)
+	}
+	defer engineClientProxy.Close()
+
+	for _, r := range replicas {
+		if r.Spec.LastFailedAt != "" {
+			if err := engineClientProxy.ReplicaRemove(e, "", r.Name); err != nil && !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to remove failed replica %v from engine", r.Name)
+			}
+		}
+	}
+	return nil
 }
 
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {

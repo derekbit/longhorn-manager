@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -146,6 +145,8 @@ func (m *NodeDataEngineUpgradeMonitor) handleNodeUpgrade(nodeUpgrade *longhorn.N
 		m.handleUpgradeStateUndefined()
 	case longhorn.UpgradeStateInitializing:
 		m.handleUpgradeStateInitializing(nodeUpgrade)
+	case longhorn.UpgradeStateFailingReplicas:
+		m.handleUpgradeStateFailingReplicas(nodeUpgrade)
 	case longhorn.UpgradeStateSwitchingOver:
 		m.handleUpgradeStateSwitchingOver(nodeUpgrade)
 	case longhorn.UpgradeStateUpgradingInstanceManager:
@@ -219,16 +220,50 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateInitializing(nodeUpgrad
 		err = errors.Wrapf(err, "failed to list volumes on node %v", nodeUpgrade.Status.OwnerID)
 		return
 	}
+	m.nodeUpgradeStatus.Volumes = volumes
 
+	// TODO: make this optional
 	err = m.snapshotVolumes(volumes)
 	if err != nil {
 		err = errors.Wrap(err, "failed to snapshot volumes")
 		return
 	}
 
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateFailingReplicas
+	m.nodeUpgradeStatus.Message = ""
+}
+
+func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateFailingReplicas(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
+			m.nodeUpgradeStatus.Message = err.Error()
+		}
+	}()
+
+	m.failReplicas(nodeUpgrade)
+
+	allStoppedOrFailed, err := m.areAllReplicasStoppedOrFailed(nodeUpgrade)
+	if !allStoppedOrFailed {
+		err = fmt.Errorf("not all replicas are stopped or failed")
+		return
+	}
+
+	m.deleteAllStoppedOrFailedReplicas(nodeUpgrade)
+	allDeleted, err := m.areAllStoppedOrFailedReplicasDeleted(nodeUpgrade)
+	if !allDeleted {
+		if err != nil {
+			err = errors.Wrapf(err, "not all stopped or failed replicas are deleted")
+		} else {
+			err = fmt.Errorf("not all stopped or failed replicas are deleted")
+		}
+		return
+	}
+
 	m.nodeUpgradeStatus.State = longhorn.UpgradeStateSwitchingOver
 	m.nodeUpgradeStatus.Message = ""
-	m.nodeUpgradeStatus.Volumes = volumes
 }
 
 func (m *NodeDataEngineUpgradeMonitor) areIndirectVolumesReadyForUpgrade(nodeUpgrade *longhorn.NodeDataEngineUpgrade) error {
@@ -304,10 +339,18 @@ func (m *NodeDataEngineUpgradeMonitor) snapshotVolumes(volumes map[string]*longh
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
+	var err error
+
+	defer func() {
+		if err != nil {
+			// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
+			m.nodeUpgradeStatus.Message = err.Error()
+		}
+	}()
+
 	targetNode, err := m.findAvailableNodeForTargetInstanceReplacement(nodeUpgrade)
 	if err != nil {
-		// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
-		m.nodeUpgradeStatus.Message = errors.Wrapf(err, "failed to find available node for target instance replacement").Error()
+		err = errors.Wrapf(err, "failed to find available node for target instance replacement")
 		return
 	}
 
@@ -315,10 +358,13 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingOver(nodeUpgra
 		m.updateVolumeForSwitchOver(name, nodeUpgrade.Spec.InstanceManagerImage, targetNode)
 	}
 
-	if m.areAllVolumesSwitchedOver(nodeUpgrade) {
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateUpgradingInstanceManager
-		m.nodeUpgradeStatus.Message = ""
+	if !m.areAllVolumesSwitchedOver(nodeUpgrade) {
+		err = fmt.Errorf("not all volumes are switched over")
+		return
 	}
+
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateUpgradingInstanceManager
+	m.nodeUpgradeStatus.Message = ""
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateSwitchingBack(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
@@ -399,10 +445,18 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateRebuildingReplica(nodeU
 		}
 	}
 
-	if m.areAllVolumeHealthy(nodeUpgrade) {
-		m.nodeUpgradeStatus.State = longhorn.UpgradeStateFinalizing
-		m.nodeUpgradeStatus.Message = ""
+	allHealthy, err := m.areAllVolumeHealthy(nodeUpgrade)
+	if !allHealthy {
+		if err != nil {
+			err = errors.Wrap(err, "not all volumes are healthy")
+		} else {
+			err = fmt.Errorf("not all volumes are healthy")
+		}
+		return
 	}
+
+	m.nodeUpgradeStatus.State = longhorn.UpgradeStateFinalizing
+	m.nodeUpgradeStatus.Message = ""
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateFinalizing(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
@@ -452,11 +506,10 @@ func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUnknown() {
 	m.nodeUpgradeStatus.Message = fmt.Sprintf("Unknown state %v", m.nodeUpgradeStatus.State)
 }
 
-func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn.NodeDataEngineUpgrade) bool {
+func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (bool, error) {
 	volumes, err := m.ds.ListVolumesRO()
 	if err != nil {
-		m.nodeUpgradeStatus.Message = errors.Wrap(err, "failed to list volumes").Error()
-		return false
+		return false, errors.Wrapf(err, "failed to list volumes")
 	}
 
 	for _, volume := range volumes {
@@ -465,28 +518,37 @@ func (m *NodeDataEngineUpgradeMonitor) areAllVolumeHealthy(nodeUpgrade *longhorn
 		}
 
 		if volume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-			m.nodeUpgradeStatus.Message = fmt.Sprintf("Need to make sure all volumes are healthy before proceeding to the next state")
-			return false
+			return false, fmt.Errorf("need to make sure all volumes are healthy before proceeding to the next state")
 		}
 	}
 
-	return true
+	return true, nil
 }
 
 func (m *NodeDataEngineUpgradeMonitor) handleUpgradeStateUpgradingInstanceManager(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
-	m.removeRunningReplicasFromEngines(nodeUpgrade)
+	var err error
 
-	allStoppedOrFailed, err := m.areAllReplicasStoppedOrFailed(nodeUpgrade)
-	if !allStoppedOrFailed {
-		m.nodeUpgradeStatus.Message = err.Error()
-		return
-	}
+	defer func() {
+		if err != nil {
+			// Don't set nodeUpgradeStatus state to error here, so that the monitor will retry
+			m.nodeUpgradeStatus.Message = err.Error()
+		}
+	}()
+
+	// m.removeRunningReplicasFromEngines(nodeUpgrade)
+
+	// allStoppedOrFailed, err := m.areAllReplicasStoppedOrFailed(nodeUpgrade)
+	// if !allStoppedOrFailed {
+	// 	m.nodeUpgradeStatus.Message = err.Error()
+	// 	return
+	// }
 
 	if !m.upgradeInstanceManager(nodeUpgrade) {
 		return
 	}
 
 	if !m.areAllInitiatorInstancesRecreated(nodeUpgrade) {
+		err = fmt.Errorf("not all initiator instances are recreated")
 		return
 	}
 
@@ -571,6 +633,15 @@ func (m *NodeDataEngineUpgradeMonitor) listDirectVolumes(nodeUpgrade *longhorn.N
 	return volumeUpgradeStatus, nil
 }
 
+func (m *NodeDataEngineUpgradeMonitor) areAllStoppedOrFailedReplicasDeleted(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (bool, error) {
+	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(replicas) == 0, nil
+}
+
 func (m *NodeDataEngineUpgradeMonitor) areAllReplicasStoppedOrFailed(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (bool, error) {
 	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
 	if err != nil {
@@ -586,44 +657,21 @@ func (m *NodeDataEngineUpgradeMonitor) areAllReplicasStoppedOrFailed(nodeUpgrade
 	return true, nil
 }
 
-func (m *NodeDataEngineUpgradeMonitor) removeRunningReplicasFromEngines(nodeUpgrade *longhorn.NodeDataEngineUpgrade) {
+func (m *NodeDataEngineUpgradeMonitor) deleteAllStoppedOrFailedReplicas(nodeUpgrade *longhorn.NodeDataEngineUpgrade) error {
 	replicas, err := m.ds.ListReplicasByNodeRO(nodeUpgrade.Status.OwnerID)
 	if err != nil {
-		return
+		return err
 	}
 
 	for _, r := range replicas {
-		if r.Status.CurrentState != longhorn.InstanceStateRunning {
-			continue
-		}
-
-		engine, err := m.ds.GetVolumeCurrentEngine(r.Spec.VolumeName)
-		if err != nil {
-			continue
-		}
-
-		if engine.Status.CurrentState == longhorn.InstanceStateStopped {
-			continue
-		}
-
-		engineCliClient, err := engineapi.GetEngineBinaryClient(m.ds, engine.Spec.VolumeName, engine.Status.OwnerID)
-		if err != nil {
-			continue
-		}
-
-		engineClientProxy, err := engineapi.GetCompatibleClient(engine, engineCliClient, m.ds, m.logger, m.proxyConnCounter)
-		if err != nil {
-			continue
-		}
-		defer engineClientProxy.Close()
-
-		err = engineClientProxy.ReplicaRemove(engine, "", r.Name)
-		if err != nil {
-			if !strings.Contains(err.Error(), " cannot find replica") {
-				m.logger.WithError(err).Warnf("Failed to remove replica %v from engine %v", r.Name, engine.Name)
+		if r.Status.CurrentState == longhorn.InstanceStateStopped || r.Spec.DesireState == longhorn.InstanceStateError {
+			if err := m.ds.DeleteReplica(r.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				return err
 			}
 		}
 	}
+
+	return nil
 }
 
 func (m *NodeDataEngineUpgradeMonitor) upgradeInstanceManager(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (upgradeCompleted bool) {

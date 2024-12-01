@@ -367,9 +367,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			}
 
 			if oldVolume.Spec.TargetNodeID == "" && newVolume.Spec.TargetNodeID != "" {
-				if oldVolume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-					return werror.NewInvalidError(fmt.Sprintf("unable to change targetNodeID for volume %v when the volume is not healthy during v2 data engine upgrade", newVolume.Name), "spec.targetNodeID")
-				}
+				// if oldVolume.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+				// 	return werror.NewInvalidError(fmt.Sprintf("unable to change targetNodeID for volume %v when the volume is not healthy during v2 data engine upgrade", newVolume.Name), "spec.targetNodeID")
+				// }
 
 				if newVolume.Spec.NumberOfReplicas <= 1 {
 					return werror.NewInvalidError(fmt.Sprintf("unable to change targetNodeID for volume %v when the volume has only one replica during v2 data engine upgrade", newVolume.Name), "spec.targetNodeID")

@@ -5070,9 +5070,9 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 	// TODO: Remove it once we can reuse failed replicas during v2 rebuilding
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		return true
-	}
+	// if types.IsDataEngineV2(v.Spec.DataEngine) {
+	// 	return true
+	// }
 	// Failed too long ago to be useful during a rebuild.
 	if v.Spec.StaleReplicaTimeout > 0 &&
 		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(v.Spec.StaleReplicaTimeout)*time.Minute) {
