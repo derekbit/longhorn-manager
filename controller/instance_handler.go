@@ -748,7 +748,7 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 		}
 
 		if !types.ErrorIsNotFound(err) && !(types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
-			return errors.Wrapf(err, "failed to get instance %v", instanceName)
+			return errors.Wrapf(err, "failed to get instance %v before creating", instanceName)
 		}
 
 		if !instanceExists {

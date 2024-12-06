@@ -3071,6 +3071,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 
 	if !isVolumeUpgrading(v) {
 		// it must be a rollback
+		logrus.Infof("Debug ----> volume is not upgrading, it must be a rollback")
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}

@@ -855,7 +855,7 @@ func (ec *EngineController) GetInstance(obj interface{}, isInstanceOnRemoteNode 
 		nodeID = e.Spec.TargetNodeID
 		im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
+			return nil, errors.Wrapf(err, "failed to get running instance manager on target node %v for engine %v", nodeID, e.Name)
 		}
 		instanceManagerName = im.Name
 	}
