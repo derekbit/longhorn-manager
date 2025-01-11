@@ -791,11 +791,6 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
-	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
-	if err != nil {
-		return nil, err
-	}
-
 	// get storage class of the pvc binding with the volume
 	kubernetesStatus := &volume.Status.KubernetesStatus
 	storageClassName := ""
@@ -881,8 +876,8 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	}
 
 	// Enable the backup monitor
-	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
-		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
+	monitor, err := bc.enableBackupMonitor(backup, volume, biChecksum, volume.Spec.BackupCompressionMethod,
+		int(concurrentLimit), storageClassName, backupTarget)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -957,9 +952,9 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 	return bc.monitors[backupName]
 }
 
-func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient,
-	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName string,
-	engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
+func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume,
+	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int,
+	storageClassName string, backupTarget *longhorn.BackupTarget) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
 		return monitor, nil
@@ -973,6 +968,15 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 		return nil, err
 	}
 
+	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			engineClientProxy.Close()
+		}
+	}()
 	monitor, err = engineapi.NewBackupMonitor(bc.logger, bc.ds, backup, volume, backupTargetClient,
 		biChecksum, compressionMethod, concurrentLimit, storageClassName, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
