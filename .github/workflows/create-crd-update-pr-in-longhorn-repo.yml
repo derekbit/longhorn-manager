@@ -11,6 +11,12 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
+    - name: Prepare Packages
+      run: |
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod 700 get_helm.sh
+        ./get_helm.sh
+
     - name: Log triggering PR information
       shell: bash
       run: |
@@ -19,13 +25,14 @@ jobs:
         echo "PR URL: ${{ github.event.pull_request.html_url }}"
     - uses: actions/checkout@v4
       with:
-        repository: longhorn/longhorn
+        repository: derekbit/longhorn
         ref: master
 
     - name: Update crds.yaml and manifests
       shell: bash
       run: |
         curl -L https://github.com/longhorn/longhorn-manager/raw/master/k8s/crds.yaml -o chart/templates/crds.yaml
+        bash scripts/generate-longhorn-yaml.sh
 
     - name: Create Pull Request
       id: cpr
@@ -42,4 +49,4 @@ jobs:
         title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         body: |
           This PR updates the crds.yaml and manifests in the Longhorn repository.
-          It was triggered by longhorn/longhorn-manager#${{ github.event.pull_request.number}}.
+          It was triggered by derekbit/longhorn-manager#${{ github.event.pull_request.number}}.
