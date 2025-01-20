@@ -25,7 +25,7 @@ jobs:
         echo "PR was merged into branch: ${{ github.event.pull_request.base.ref }}"
     - uses: actions/checkout@v4
       with:
-        repository: longhorn/longhorn
+        repository: derekbit/longhorn
         ref: ${{ github.event.pull_request.base.ref }}
 
     - name: Update crds.yaml and manifests
@@ -47,7 +47,7 @@ jobs:
         author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
         committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
         commit-message: "chore(crd): update crds.yaml and manifests"
-        title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
+        title: "chore(crd): update crds.yaml and manifests (PR derekbit/longhorn-manager#${{ github.event.pull_request.number}})"
         body: |
           This PR updates the crds.yaml and manifests.
-          It was triggered by longhorn/longhorn-manager#${{ github.event.pull_request.number}}.
+          It was triggered by derekbit/longhorn-manager#${{ github.event.pull_request.number}}.
