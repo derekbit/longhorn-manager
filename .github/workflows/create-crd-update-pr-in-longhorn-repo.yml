@@ -39,7 +39,7 @@ jobs:
       id: cpr
       uses: peter-evans/create-pull-request@v7
       with:
-        token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         branch: "update-image-tags-${{ inputs.branch }}"
         delete-branch: true
         sign-commits: true
