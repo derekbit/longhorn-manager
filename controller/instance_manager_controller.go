@@ -1488,7 +1488,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
-		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		processProbe := "[ $(ps aux | grep 'nvmf_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
 		livenessProbes = append(livenessProbes, processProbe)
 	}
 	livenessProbeCommand := fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
