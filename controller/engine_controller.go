@@ -1718,6 +1718,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
 
+	logrus.Infof("Debug ===> startRebuilding")
+
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 	if err != nil {
 		return err
@@ -1817,6 +1819,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			}
 		}
 
+		logrus.Infof("Debug ===> startRebuilding 2")
+
 		replica, err := ec.ds.GetReplica(replicaName)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to get replica %v unable to mark failed rebuild", replica)
@@ -1835,6 +1839,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			ec.logger.WithError(err).Warnf("Failed to initiate file local sync for replica %v, use remote sync", replicaName)
 		}
 
+		logrus.Infof("Debug ===> startRebuilding 3")
+
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
@@ -1852,6 +1858,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		if err == nil && types.IsDataEngineV2(e.Spec.DataEngine) {
 			err = ec.waitForV2EngineRebuild(e, replicaName, grpcTimeoutSeconds)
 		}
+
+		logrus.Infof("Debug ===> startRebuilding 4")
 
 		if err != nil {
 			replicaRebuildErrMsg := err.Error()
@@ -1897,16 +1905,22 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			log.Debugf("Engine is still in backoff for replica %v rebuild failure", replicaName)
 			return
 		}
+
+		logrus.Infof("Debug ===> startRebuilding 5")
 		// Replica rebuild succeeded, clear Backoff.
 		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilt,
 			"Replica %v with Address %v has been rebuilt for volume %v", replicaName, addr, e.Spec.VolumeName)
 
+		logrus.Infof("Debug ==================> Finsh ReplicaAdd")
+
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
 		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
-			log.Info("Starting snapshot purge after rebuilding")
+			log.Info("Starting snapshot purge after rebuilding sleep start")
+			time.Sleep(60 * time.Second)
+			log.Info("Starting snapshot purge after rebuilding sleep end")
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,

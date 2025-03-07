@@ -4365,6 +4365,9 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 	// Sync migration replicas with old replicas
 	currentAvailableReplicas := map[string]*longhorn.Replica{}
 	migrationReplicas := map[string]*longhorn.Replica{}
+	if len(currentEngine.Status.ReplicaModeMap) != len(currentEngine.Spec.ReplicaAddressMap) {
+		return false, true, nil
+	}
 	for _, r := range rs {
 		isUnavailable, err := c.IsReplicaUnavailable(r)
 		if err != nil {

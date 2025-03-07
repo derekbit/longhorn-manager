@@ -24,6 +24,7 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 }
 
 func isVolumeUpgrading(v *longhorn.Volume) bool {
+	logrus.Infof("Debug ====> v.Status.CurrentImage %s, v.Spec.Image %s", v.Status.CurrentImage, v.Spec.Image)
 	return v.Status.CurrentImage != v.Spec.Image
 }
 
