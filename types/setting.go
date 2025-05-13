@@ -1064,8 +1064,7 @@ var (
 			"List the enabled resource types in a semicolon-separated list. \n\n" +
 			"Available items are: \n\n" +
 			"- **replicaData**: replica data store \n\n" +
-			"- **engineInstance**: engine runtime instance \n\n" +
-			"- **replicaInstance**: replica runtime instance \n\n",
+			"- **instance**: engine and replica runtime instance \n\n",
 		Category: SettingCategoryOrphan,
 		Type:     SettingTypeString,
 		Required: false,
@@ -1605,9 +1604,8 @@ const (
 type OrphanResourceType string
 
 const (
-	OrphanResourceTypeReplicaData     = OrphanResourceType("replicaData")
-	OrphanResourceTypeEngineInstance  = OrphanResourceType("engineInstance")
-	OrphanResourceTypeReplicaInstance = OrphanResourceType("replicaInstance")
+	OrphanResourceTypeReplicaData = OrphanResourceType("replicaData")
+	OrphanResourceTypeInstance    = OrphanResourceType("instance")
 )
 
 func ValidateSetting(name, value string) (err error) {
@@ -1791,9 +1789,8 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 
 func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResourceType]bool, error) {
 	resourceTypes := map[OrphanResourceType]bool{
-		OrphanResourceTypeReplicaData:     false,
-		OrphanResourceTypeEngineInstance:  false,
-		OrphanResourceTypeReplicaInstance: false,
+		OrphanResourceTypeReplicaData: false,
+		OrphanResourceTypeInstance:    false,
 	}
 
 	resourceTypesSetting = strings.Trim(resourceTypesSetting, " ")
