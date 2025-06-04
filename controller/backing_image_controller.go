@@ -901,9 +901,33 @@ func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi
 		// only this controller can gather all the information of all the copies of this backing image at once.
 		// By deleting the disk from the spec, backing image manager controller will delete the copy on that disk.
 		// TODO: introduce a new CRD for the backing image copy so we can delete the copy like volume controller deletes replicas.
-		delete(bi.Spec.DiskFileSpecMap, diskUUID)
-		log.Infof("Evicted backing image copy on disk %v", diskUUID)
+		beingUsed, err := bic.isBIDiskFileBeingUsedByReplicas(bi.Name, diskUUID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to check if the backing image copy on disk %v is used by replicas", diskUUID)
+			continue
+		}
+		if !beingUsed {
+			delete(bi.Spec.DiskFileSpecMap, diskUUID)
+			log.Infof("Evicted backing image copy on disk %v", diskUUID)
+		}
 	}
+}
+
+func (bic *BackingImageController) isBIDiskFileBeingUsedByReplicas(biName, diskUUID string) (bool, error) {
+	replicas, err := bic.ds.ListReplicasRO()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list replicas")
+	}
+
+	for _, replica := range replicas {
+		logrus.Infof("Debug --> replica=%v, BackingImage=%v, biName=%v, DiskID=%v, diskUUID=%v",
+			replica.Name, replica.Spec.BackingImage, biName, replica.Spec.DiskID, diskUUID)
+		if replica.Spec.BackingImage == biName && diskUUID == replica.Spec.DiskID {
+			return true, nil
+		}
+	}
+
+	return false, fmt.Errorf("no replica is using the backing image %v on disk %v", biName, diskUUID)
 }
 
 func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.BackingImage) (cleaned bool, err error) {
