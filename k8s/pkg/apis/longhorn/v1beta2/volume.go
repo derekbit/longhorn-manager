@@ -116,6 +116,7 @@ const (
 	VolumeConditionTypeRestore             = "Restore"
 	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
 	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
+	VolumeConditionTypeLiveMigration       = "LiveMigration"
 )
 
 const (
@@ -126,6 +127,8 @@ const (
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
 	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
+	VolumeConditionReasonLiveMigrationFailed           = "LiveMigrationFailed"
+	VolumeConditionReasonLiveMigrationSucceeded        = "LiveMigrationSucceeded"
 )
 
 type SnapshotDataIntegrity string

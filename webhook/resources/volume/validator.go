@@ -324,12 +324,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
-	if newVolume.Status.CurrentMigrationNodeID != "" &&
-		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
-		newVolume.Spec.MigrationNodeID != newVolume.Status.CurrentMigrationNodeID &&
-		newVolume.Spec.MigrationNodeID != "" {
-		err := fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ", newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
+	if err := v.validateLiveMigration(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -441,6 +436,19 @@ func (v *volumeValidator) hasLocalReplicaOnSameNodeAsStrictLocalVolume(volume *l
 	}
 
 	return false, fmt.Errorf("moving a %v volume %v to another node is not supported", longhorn.DataLocalityStrictLocal, volume.Name)
+}
+
+func (v *volumeValidator) validateLiveMigration(oldVolume, newVolume *longhorn.Volume) error {
+	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
+	if newVolume.Status.CurrentMigrationNodeID != "" &&
+		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != newVolume.Status.CurrentMigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != "" {
+		return fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ",
+			newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
+	}
+
+	return nil
 }
 
 func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
