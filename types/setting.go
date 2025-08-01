@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -1708,33 +1709,28 @@ func ValidateSetting(name, value string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "value %v of settings %v is invalid", value, name)
 	}()
-	sName := SettingName(name)
 
-	definition, ok := GetSettingDefinition(sName)
+	definition, ok := GetSettingDefinition(SettingName(name))
 	if !ok {
-		return fmt.Errorf("setting %v is not supported", sName)
+		return fmt.Errorf("setting %v is not supported", name)
 	}
+
 	if definition.Required && value == "" {
-		return fmt.Errorf("required setting %v shouldn't be empty", sName)
+		return fmt.Errorf("required setting %v shouldn't be empty", name)
 	}
 
-	if err := validateBool(definition, value); err != nil {
-		return errors.Wrapf(err, "failed to validate the setting %v", sName)
+	switch definition.Type {
+	case SettingTypeBool:
+		err = validateBool(definition, value)
+	case SettingTypeInt:
+		err = validateInt(definition, value)
+	case SettingTypeFloat:
+		err = validateFloat(definition, value)
+	case SettingTypeString:
+		err = validateString(SettingName(name), definition, value)
 	}
 
-	if err := validateInt(definition, value); err != nil {
-		return errors.Wrapf(err, "failed to validate the setting %v", sName)
-	}
-
-	if err := validateFloat(definition, value); err != nil {
-		return errors.Wrapf(err, "failed to validate the setting %v", sName)
-	}
-
-	if err := validateString(sName, definition, value); err != nil {
-		return errors.Wrapf(err, "failed to validate the setting %v", sName)
-	}
-
-	return nil
+	return err
 }
 
 // isValidChoice checks if the passed value is part of the choices array,
@@ -1785,26 +1781,6 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 			break
 		}
 		defaultSettings[name] = value
-	}
-
-	// GuaranteedInstanceManagerCPU for v1 data engine
-	guaranteedInstanceManagerCPU := SettingDefinitionGuaranteedInstanceManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
-		guaranteedInstanceManagerCPU = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
-	}
-	if err := ValidateCPUReservationValues(SettingNameGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU); err != nil {
-		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
-		defaultSettings = map[string]string{}
-	}
-
-	// GuaranteedInstanceManagerCPU for v2 data engine
-	v2DataEngineGuaranteedInstanceManagerCPU := SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU.Default
-	if defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)] != "" {
-		v2DataEngineGuaranteedInstanceManagerCPU = defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)]
-	}
-	if err := ValidateCPUReservationValues(SettingNameV2DataEngineGuaranteedInstanceManagerCPU, v2DataEngineGuaranteedInstanceManagerCPU); err != nil {
-		logrus.WithError(err).Error("Customized settings V2DataEngineGuaranteedInstanceManagerCPU is invalid, will give up using it")
-		defaultSettings = map[string]string{}
 	}
 
 	return defaultSettings, nil
@@ -1942,116 +1918,404 @@ func GetDangerZoneSettings() sets.Set[SettingName] {
 	return settingList
 }
 
+// IsJSONFormat checks if the input string starts with '{' indicating JSON format.
+func IsJSONFormat(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), "{")
+}
+
+// validateBool validates a boolean setting value based on the provided definition.
+// It supports both single boolean values and JSON-formatted data-engine-specific values.
 func validateBool(definition SettingDefinition, value string) error {
-	if definition.Type != SettingTypeBool {
-		return nil
-	}
+	var values map[longhorn.DataEngineType]any
 
-	if value != "true" && value != "false" {
-		return fmt.Errorf("value %v should be true or false", value)
-	}
-	return nil
-}
-
-func validateInt(definition SettingDefinition, value string) error {
-	if definition.Type != SettingTypeInt {
-		return nil
-	}
-
-	intValue, err := strconv.Atoi(value)
-	if err != nil {
-		return errors.Wrapf(err, "value %v is not a number", value)
-	}
-
-	valueIntRange := definition.ValueIntRange
-	if minValue, exists := valueIntRange[ValueIntRangeMinimum]; exists {
-		if intValue < minValue {
-			return fmt.Errorf("value %v should be larger than %v", intValue, minValue)
-		}
-	}
-
-	if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
-		if intValue > maxValue {
-			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
-		}
-	}
-	return nil
-}
-
-func validateFloat(definition SettingDefinition, value string) error {
-	if definition.Type != SettingTypeFloat {
-		return nil
-	}
-
-	floatValue, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		return errors.Wrapf(err, "value %v is not a valid floating point number", value)
-	}
-
-	valueFloatRange := definition.ValueFloatRange
-	if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
-		if floatValue < minValue {
-			return fmt.Errorf("value %v should be larger than or equal to %v", floatValue, minValue)
-		}
-	}
-
-	if maxValue, exists := valueFloatRange[ValueFloatRangeMaximum]; exists {
-		if floatValue > maxValue {
-			return fmt.Errorf("value %v should be less than or equal to %v", floatValue, maxValue)
-		}
-	}
-	return nil
-}
-
-func validateString(sName SettingName, definition SettingDefinition, value string) error {
-	if definition.Type != SettingTypeString {
-		return nil
-	}
-
-	// multi-choices
-	if len(definition.Choices) > 0 {
-		if !isValidChoice(definition.Choices, value) {
-			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
-		}
-		return nil
-	}
-
-	switch sName {
-	case SettingNameSnapshotDataIntegrityCronJob:
-		schedule, err := cron.ParseStandard(value)
+	if IsJSONFormat(value) {
+		parsedValues, err := ParseBoolsInJSONFormat(definition, value)
 		if err != nil {
-			return errors.Wrapf(err, "invalid cron job format: %v", value)
+			return err
+		}
+		values = parsedValues
+	} else {
+		parsedValues, err := parseSingleBool(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	}
+
+	return validateBoolValues(values)
+}
+
+func ParseBoolsInJSONFormat(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	if !definition.DataEngineSpecific {
+		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
+	}
+
+	var jsonValues map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
+		return values, errors.Wrap(err, "failed to parse JSON-formatted value")
+	}
+
+	for dataEngine, valueStr := range jsonValues {
+		boolValue, err := strconv.ParseBool(valueStr)
+		if err != nil {
+			return values, errors.Wrapf(err, "failed to parse bool value %s for data engine %s", valueStr, dataEngine)
+		}
+		values[dataEngine] = boolValue
+	}
+
+	return values, nil
+}
+
+// parseSingleBool processes a single boolean value for both general and data-engine-specific settings.
+func parseSingleBool(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	boolValue, err := strconv.ParseBool(trimmedValue)
+	if err != nil {
+		return values, errors.Wrapf(err, "failed to parse single bool value %s", value)
+	}
+
+	if definition.DataEngineSpecific {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(definition.Default), &jsonValues); err != nil {
+			return values, errors.Wrapf(err, "failed to parse JSON-formatted default value %+v", definition)
+		}
+		for dataEngine := range jsonValues {
+			values[dataEngine] = boolValue
+		}
+	} else {
+		values[longhorn.DataEngineTypeAll] = boolValue
+	}
+
+	return values, nil
+}
+
+// validateValues ensures all values in the map are valid booleans (true or false).
+func validateBoolValues(values map[longhorn.DataEngineType]any) error {
+	for _, value := range values {
+		if boolValue, ok := value.(bool); !ok || (boolValue != true && boolValue != false) {
+			return fmt.Errorf("value %v should be true or false", value)
+		}
+	}
+	return nil
+}
+
+// validateInt validates an integer setting value based on the provided definition.
+// It supports both single integer values and JSON-formatted data-engine-specific values.
+func validateInt(definition SettingDefinition, value string) error {
+	var values map[longhorn.DataEngineType]any
+
+	if IsJSONFormat(strings.TrimSpace(value)) {
+		parsedValues, err := ParseIntsInJSONFormat(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	} else {
+		parsedValues, err := parseSingleInt(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	}
+
+	return validateIntValues(definition, values)
+}
+
+// ParseIntsInJSONFormat processes JSON-formatted input for data-engine-specific integer settings.
+func ParseIntsInJSONFormat(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	if !definition.DataEngineSpecific {
+		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
+	}
+
+	var jsonValues map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
+		return values, errors.Wrap(err, "failed to parse JSON-formatted value")
+	}
+
+	for dataEngine, valueStr := range jsonValues {
+		intValue, err := strconv.ParseInt(valueStr, 10, 64)
+		if err != nil {
+			return values, errors.Wrapf(err, "failed to parse int value %s for data engine %s", valueStr, dataEngine)
+		}
+		values[dataEngine] = int64(intValue)
+	}
+
+	return values, nil
+}
+
+// parseSingleInt processes a single integer value for both general and data-engine-specific settings.
+func parseSingleInt(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	intValue, err := strconv.ParseInt(trimmedValue, 10, 64)
+	if err != nil {
+		return values, errors.Wrapf(err, "failed to parse single int value %s", value)
+	}
+
+	if definition.DataEngineSpecific {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(definition.Default), &jsonValues); err != nil {
+			return values, errors.Wrap(err, "failed to parse JSON-formatted default value")
+		}
+		for dataEngine := range jsonValues {
+			values[dataEngine] = int64(intValue)
+		}
+	} else {
+		values[longhorn.DataEngineTypeAll] = int64(intValue)
+	}
+
+	return values, nil
+}
+
+// validateValues ensures all integer values are within the defined range.
+func validateIntValues(definition SettingDefinition, values map[longhorn.DataEngineType]any) error {
+	for dataEngine, value := range values {
+		intValue, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("value for data engine %v is not an int: %v", dataEngine, value)
 		}
 
-		runAt := schedule.Next(time.Unix(0, 0))
-		nextRunAt := schedule.Next(runAt)
-
-		logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
-
-	case SettingNameTaintToleration:
-		if _, err := UnmarshalTolerations(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameSystemManagedComponentsNodeSelector:
-		if _, err := UnmarshalNodeSelector(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		valueIntRange := definition.ValueIntRange
+		if minValue, exists := valueIntRange[ValueIntRangeMinimum]; exists {
+			if int(intValue) < minValue {
+				return fmt.Errorf("value %v should be larger than %v", intValue, minValue)
+			}
 		}
 
-	case SettingNameStorageNetwork:
-		if err := ValidateStorageNetwork(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-
-	case SettingNameV2DataEngineLogFlags:
-		if err := ValidateV2DataEngineLogFlags(value); err != nil {
-			return errors.Wrapf(err, "failed to validate v2 data engine log flags %v", value)
-		}
-
-	case SettingNameOrphanResourceAutoDeletion:
-		if _, err := UnmarshalOrphanResourceTypes(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
+			if int(intValue) > maxValue {
+				return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
+			}
 		}
 	}
 
 	return nil
+}
+
+// validateFloat validates a float64 setting value based on the provided definition.
+// It supports both single float64 values and JSON-formatted data-engine-specific values.
+func validateFloat(definition SettingDefinition, value string) error {
+	var values map[longhorn.DataEngineType]any
+
+	if IsJSONFormat(strings.TrimSpace(value)) {
+		parsedValues, err := ParseFloatsInJSONFormat(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	} else {
+		parsedValues, err := parseSingleFloat(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	}
+
+	return validateFloatValues(definition, values)
+}
+
+// ParseFloatsInJSONFormat processes JSON-formatted input for data-engine-specific float64 settings.
+func ParseFloatsInJSONFormat(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	if !definition.DataEngineSpecific {
+		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
+	}
+
+	var jsonValues map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
+		return values, errors.Wrap(err, "failed to parse JSON-formatted value")
+	}
+
+	for dataEngine, valueStr := range jsonValues {
+		floatValue, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			return values, errors.Wrapf(err, "failed to parse float value %s for data engine %s", valueStr, dataEngine)
+		}
+		values[dataEngine] = floatValue
+	}
+
+	return values, nil
+}
+
+// parseSingleFloat processes a single float64 value for both general and data-engine-specific settings.
+func parseSingleFloat(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	floatValue, err := strconv.ParseFloat(trimmedValue, 64)
+	if err != nil {
+		return values, errors.Wrapf(err, "failed to parse single float value %s", value)
+	}
+
+	if definition.DataEngineSpecific {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(definition.Default), &jsonValues); err != nil {
+			return values, errors.Wrap(err, "failed to parse JSON-formatted default value")
+		}
+		for dataEngine := range jsonValues {
+			values[dataEngine] = floatValue
+		}
+	} else {
+		values[longhorn.DataEngineTypeAll] = floatValue
+	}
+
+	return values, nil
+}
+
+// validateFloatValues ensures all float64 values are within the defined range.
+func validateFloatValues(definition SettingDefinition, values map[longhorn.DataEngineType]any) error {
+	for dataEngine, value := range values {
+		floatValue, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("value for data engine %v is not a float64: %v", dataEngine, value)
+		}
+
+		valueFloatRange := definition.ValueFloatRange
+		if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
+			if floatValue < minValue {
+				return fmt.Errorf("value %v should be larger than or equal to %v", floatValue, minValue)
+			}
+		}
+
+		if maxValue, exists := valueFloatRange[ValueFloatRangeMaximum]; exists {
+			if floatValue > maxValue {
+				return fmt.Errorf("value %v should be less than or equal to %v", floatValue, maxValue)
+			}
+		}
+	}
+	return nil
+}
+
+// validateString validates a string setting value based on the provided definition.
+// It supports both single string values and JSON-formatted data-engine-specific values.
+func validateString(name SettingName, definition SettingDefinition, value string) error {
+	var values map[longhorn.DataEngineType]any
+
+	if IsJSONFormat(strings.TrimSpace(value)) {
+		parsedValues, err := ParseStringsInJSONFormat(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	} else {
+		parsedValues, err := ParseSingleString(definition, value)
+		if err != nil {
+			return err
+		}
+		values = parsedValues
+	}
+
+	for _, raw := range values {
+		strValue, ok := raw.(string)
+		if !ok {
+			return fmt.Errorf("expected string value but got %T", raw)
+		}
+
+		// multi-choices
+		if len(definition.Choices) > 0 {
+			if !isValidChoice(definition.Choices, strValue) {
+				return fmt.Errorf("value %v is not a valid choice, available choices %v", strValue, definition.Choices)
+			}
+			return nil
+		}
+
+		switch name {
+		case SettingNameSnapshotDataIntegrityCronJob:
+			schedule, err := cron.ParseStandard(strValue)
+			if err != nil {
+				return errors.Wrapf(err, "invalid cron job format: %v", strValue)
+			}
+
+			runAt := schedule.Next(time.Unix(0, 0))
+			nextRunAt := schedule.Next(runAt)
+
+			logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
+
+		case SettingNameTaintToleration:
+			if _, err := UnmarshalTolerations(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+		case SettingNameSystemManagedComponentsNodeSelector:
+			if _, err := UnmarshalNodeSelector(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameStorageNetwork:
+			if err := ValidateStorageNetwork(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameSpdkTgtLogFlags:
+			if err := ValidateSpdkTgtLogFlags(strValue); err != nil {
+				return errors.Wrapf(err, "failed to validate SPDK target log flags %v", strValue)
+			}
+
+		case SettingNameOrphanResourceAutoDeletion:
+			if _, err := UnmarshalOrphanResourceTypes(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ParseStringsInJSONFormat processes JSON-formatted input for data-engine-specific string settings.
+func ParseStringsInJSONFormat(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	if !definition.DataEngineSpecific {
+		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
+	}
+
+	var jsonValues map[longhorn.DataEngineType]string
+	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
+		return values, errors.Wrap(err, "failed to parse JSON-formatted value")
+	}
+
+	for dataEngine, valueStr := range jsonValues {
+		values[dataEngine] = valueStr
+	}
+
+	return values, nil
+}
+
+// ParseSingleString processes a single string value for both general and data-engine-specific settings.
+func ParseSingleString(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	trimmedValue := strings.TrimSpace(value)
+
+	values := make(map[longhorn.DataEngineType]any)
+
+	if definition.DataEngineSpecific {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(definition.Default), &jsonValues); err != nil {
+			return values, errors.Wrap(err, "failed to parse JSON format in default value")
+		}
+		for dataEngine := range jsonValues {
+			values[dataEngine] = trimmedValue
+		}
+	} else {
+		values[longhorn.DataEngineTypeAll] = trimmedValue
+	}
+
+	return values, nil
 }
