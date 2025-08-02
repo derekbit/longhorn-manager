@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/bits"
 	"math/rand"
@@ -272,12 +273,86 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 			continue
 		}
 
-		if value, ok := customizedDefaultSettings[string(sName)]; ok {
+		if raw, ok := customizedDefaultSettings[string(sName)]; ok {
+			value, err := s.getDefaultFromValue(definition, raw)
+			if err != nil {
+				return err
+			}
+			logrus.Infof("Setting %v default value is updated to a customized value %v (raw value %v)", sName, value, raw)
 			definition.Default = value
 			types.SetSettingDefinition(sName, definition)
 		}
 	}
 	return nil
+}
+
+func (s *DataStore) getDefaultFromValue(definition types.SettingDefinition, value string) (string, error) {
+	if !definition.DataEngineSpecific {
+		return value, nil
+	}
+
+	if !types.IsJSONFormat(definition.Default) {
+		return "", fmt.Errorf("setting %v is data engine specific but default value %v is not in JSON-formatted string", definition.DisplayName, definition.Default)
+	}
+
+	var values map[longhorn.DataEngineType]any
+	var err error
+
+	// Get default values from definition
+	defaultValues, err := types.ParseStringsInJSONFormat(definition, definition.Default)
+	if err != nil {
+		return "", err
+	}
+
+	// Get values from customized value
+	if types.IsJSONFormat(value) {
+		values, err = types.ParseStringsInJSONFormat(definition, value)
+	} else {
+		values, err = types.ParseSingleString(definition, value)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// Remove any data engine types that are not in the default values
+	for dataEngine := range values {
+		if _, ok := defaultValues[dataEngine]; !ok {
+			delete(values, dataEngine)
+		}
+	}
+
+	return convertValuesToJSONString(values)
+}
+
+func convertValuesToJSONString(values map[longhorn.DataEngineType]any) (string, error) {
+	converted := make(map[longhorn.DataEngineType]string)
+
+	for dataEngine, raw := range values {
+		var value string
+		switch v := raw.(type) {
+		case string:
+			value = v
+		case bool:
+			value = strconv.FormatBool(v)
+		case int:
+			value = strconv.Itoa(v)
+		case int64:
+			value = strconv.FormatInt(v, 10)
+		case float64:
+			value = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			return "", fmt.Errorf("unsupported value type: %T", v)
+		}
+
+		converted[dataEngine] = value
+	}
+
+	jsonBytes, err := json.Marshal(converted)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
 }
 
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
