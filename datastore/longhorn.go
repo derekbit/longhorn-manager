@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -452,31 +451,18 @@ func (s *DataStore) deleteSetting(name string) error {
 
 // ValidateSetting checks the given setting value types and condition
 func (s *DataStore) ValidateSetting(name, value string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to set the setting %v with invalid value %v", name, value)
-	}()
-	sName := types.SettingName(name)
-
 	if err := types.ValidateSetting(name, value); err != nil {
 		return err
 	}
 
-	switch sName {
+	switch types.SettingName(name) {
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
 			}
 		}
-	case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
-		if err != nil {
-			return err
-		}
-		guaranteedInstanceManagerCPU.Value = value
-		if err := types.ValidateCPUReservationValues(sName, guaranteedInstanceManagerCPU.Value); err != nil {
-			return err
-		}
+
 	case types.SettingNameV1DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV1DataEngine)
 		if err != nil {
@@ -512,13 +498,28 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return err
 			}
 		}
-	case types.SettingNameV2DataEngineCPUMask:
-		if value == "" {
-			return errors.Errorf("cannot set %v setting to empty value", name)
+	case types.SettingNameCPUMask:
+		lhNodes, err := s.ListNodesRO()
+		if err != nil {
+			return errors.Wrapf(err, "failed to list nodes for %v setting validation", types.SettingNameCPUMask)
+		}
+
+		// Ensure if the CPU mask can be satisfied on each node
+		for _, lhnode := range lhNodes {
+			kubeNode, err := s.GetKubernetesNodeRO(lhnode.Name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node", lhnode.Name)
+					continue
+				}
+				return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation", lhnode.Name, types.SettingNameCPUMask)
 			}
-		if err := s.ValidateCPUMask(value); err != nil {
+
+			if err := s.ValidateCPUMask(kubeNode, value); err != nil {
 				return err
 			}
+		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -594,13 +595,16 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineHugepageLimit)
+	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return nil, err
 	}
 
-	{
-		hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+	// hugepageRequestedInMiB is integer
+	hugepageRequested, err := resource.ParseQuantity(fmt.Sprintf("%dMi", hugepageRequestedInMiB))
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
+	}
 
 	_ims, err := s.ListInstanceManagersRO()
 	if err != nil {
@@ -628,11 +632,13 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
 			}
 
-				hugepageCapacity := resource.MustParse(capacity.String())
+			hugepageCapacity, err := resource.ParseQuantity(capacity.String())
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
+			}
 
 			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
 				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
-				}
 			}
 		}
 	}
@@ -640,7 +646,11 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	return
 }
 
-func (s *DataStore) ValidateCPUMask(value string) error {
+func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
+	if value == "" {
+		return fmt.Errorf("failed to validate CPU mask: cannot be empty")
+	}
+
 	// CPU mask must start with 0x
 	cpuMaskRegex := regexp.MustCompile(`^0x[1-9a-fA-F][0-9a-fA-F]*$`)
 	if !cpuMaskRegex.MatchString(value) {
@@ -653,24 +663,49 @@ func (s *DataStore) ValidateCPUMask(value string) error {
 	}
 
 	// Validate the mask value is not larger than the number of available CPUs
-	numCPUs := runtime.NumCPU()
+	numCPUs, err := s.getMinNumCPUs()
+	if err != nil {
+		return errors.Wrap(err, "failed to get minimum number of CPUs for CPU mask validation")
+	}
+
 	maxCPUMaskValue := (1 << numCPUs) - 1
 	if maskValue > uint64(maxCPUMaskValue) {
 		return fmt.Errorf("CPU mask exceeds the maximum allowed value %v for the current system: %s", maxCPUMaskValue, value)
 	}
 
-	guaranteedInstanceManagerCPU, err := s.GetSettingAsInt(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	// CPU mask currently only supports v2 data engine
+	guaranteedInstanceManagerCPUInPercentage, err := s.GetSettingAsFloat(types.SettingNameGuaranteedInstanceManagerCPU)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting for CPU mask validation", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+		return errors.Wrapf(err, "failed to get %v setting for CPU mask validation", types.SettingNameGuaranteedInstanceManagerCPU)
 	}
+
+	guaranteedInstanceManagerCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue()) * guaranteedInstanceManagerCPUInPercentage
 
 	numMilliCPUsRequrestedByMaskValue := calculateMilliCPUs(maskValue)
 	if numMilliCPUsRequrestedByMaskValue > int(guaranteedInstanceManagerCPU) {
 		return fmt.Errorf("number of CPUs (%v) requested by CPU mask (%v) is larger than the %v setting value (%v)",
-			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
+			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
 	}
 
 	return nil
+}
+
+func (s *DataStore) getMinNumCPUs() (int64, error) {
+	kubeNodes, err := s.ListKubeNodesRO()
+	if err != nil {
+		return -1, errors.Wrapf(err, "failed to list Kubernetes nodes")
+	}
+
+	// Assign max value to minNumCPUs of the max value of int64
+	minNumCPUs := int64(^uint64(0) >> 1)
+	for _, node := range kubeNodes {
+		numCPUs := node.Status.Allocatable.Cpu().Value()
+		if numCPUs < minNumCPUs {
+			minNumCPUs = numCPUs
+		}
+	}
+
+	return minNumCPUs, nil
 }
 
 func calculateMilliCPUs(mask uint64) int {
@@ -946,7 +981,7 @@ func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume, logg
 
 	var err error
 	if setting == "" {
-		globalSetting, _ := s.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
+		globalSetting, _ := s.GetSettingValueExistedByDataEngine(types.SettingNameReplicaAutoBalance, volume.Spec.DataEngine)
 
 		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
 			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
@@ -973,20 +1008,9 @@ func (s *DataStore) GetVolumeSnapshotDataIntegrity(volumeName string) (longhorn.
 		return volume.Spec.SnapshotDataIntegrity, nil
 	}
 
-	var dataIntegrity string
-	switch volume.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1:
-		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
+	dataIntegrity, err := s.GetSettingValueExistedByDataEngine(types.SettingNameSnapshotDataIntegrity, volume.Spec.DataEngine)
 	if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
-		}
-	case longhorn.DataEngineTypeV2:
-		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		}
-	default:
-		return "", fmt.Errorf("unknown data engine type %v for snapshot data integrity get", volume.Spec.DataEngine)
+		return "", errors.Wrapf(err, "failed to assert %v value for data engine %v", types.SettingNameSnapshotDataIntegrity, volume.Spec.DataEngine)
 	}
 
 	return longhorn.SnapshotDataIntegrity(dataIntegrity), nil
@@ -6533,7 +6557,7 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (b
 		return volume.Spec.FreezeFilesystemForSnapshot == longhorn.FreezeFilesystemForSnapshotEnabled, nil
 	}
 
-	return s.GetSettingAsBool(types.SettingNameFreezeFilesystemForSnapshot)
+	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, e.Spec.DataEngine)
 }
 
 func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {
