@@ -26,8 +26,8 @@ import (
 // with apply.
 type BackupVolumeSpecApplyConfiguration struct {
 	BackupTargetName *string  `json:"backupTargetName,omitempty"`
-	SyncRequestedAt  *v1.Time `json:"syncRequestedAt,omitempty"`
 	VolumeName       *string  `json:"volumeName,omitempty"`
+	SyncRequestedAt  *v1.Time `json:"syncRequestedAt,omitempty"`
 }
 
 // BackupVolumeSpecApplyConfiguration constructs a declarative configuration of the BackupVolumeSpec type for use with
@@ -44,18 +44,18 @@ func (b *BackupVolumeSpecApplyConfiguration) WithBackupTargetName(value string) 
 	return b
 }
 
-// WithSyncRequestedAt sets the SyncRequestedAt field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SyncRequestedAt field is set to the value of the last call.
-func (b *BackupVolumeSpecApplyConfiguration) WithSyncRequestedAt(value v1.Time) *BackupVolumeSpecApplyConfiguration {
-	b.SyncRequestedAt = &value
-	return b
-}
-
 // WithVolumeName sets the VolumeName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the VolumeName field is set to the value of the last call.
 func (b *BackupVolumeSpecApplyConfiguration) WithVolumeName(value string) *BackupVolumeSpecApplyConfiguration {
 	b.VolumeName = &value
+	return b
+}
+
+// WithSyncRequestedAt sets the SyncRequestedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SyncRequestedAt field is set to the value of the last call.
+func (b *BackupVolumeSpecApplyConfiguration) WithSyncRequestedAt(value v1.Time) *BackupVolumeSpecApplyConfiguration {
+	b.SyncRequestedAt = &value
 	return b
 }

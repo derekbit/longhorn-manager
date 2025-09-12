@@ -70,11 +70,13 @@ type BackingImageSpec struct {
 	// +optional
 	NodeSelector []string `json:"nodeSelector"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.spec.secret) && oldSelf.spec.secret != '' && self.spec.secret != oldSelf.spec.secret)",message="changing secret is not supported once it is set"
 	Secret string `json:"secret"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.spec.secretNamespace) && oldSelf.spec.secretNamespace != '' && self.spec.secretNamespace != oldSelf.spec.secretNamespace)",message="changing secretNamespace is not supported once it is set"
 	SecretNamespace string `json:"secretNamespace"`
-	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
+	// +kubebuilder:validation:Enum=v1;v2
 	// +kubebuilder:default:=v1
 	DataEngine DataEngineType `json:"dataEngine"`
 }

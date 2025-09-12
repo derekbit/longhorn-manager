@@ -15,10 +15,10 @@ const (
 
 // SnapshotSpec defines the desired state of Longhorn Snapshot
 type SnapshotSpec struct {
-	// the volume that this snapshot belongs to.
-	// This field is immutable after creation.
+	// The volume that this snapshot belongs to.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Volume is immutable"
 	Volume string `json:"volume"`
-	// require creating a new snapshot
+	// Require creating a new snapshot
 	// +optional
 	CreateSnapshot bool `json:"createSnapshot"`
 	// The labels of snapshot

@@ -372,8 +372,16 @@ spec:
                 type: array
               secret:
                 type: string
+                x-kubernetes-validations:
+                - message: changing secret is not supported once it is set
+                  rule: '!(has(oldSelf.spec.secret) && oldSelf.spec.secret != ''''
+                    && self.spec.secret != oldSelf.spec.secret)'
               secretNamespace:
                 type: string
+                x-kubernetes-validations:
+                - message: changing secretNamespace is not supported once it is set
+                  rule: '!(has(oldSelf.spec.secretNamespace) && oldSelf.spec.secretNamespace
+                    != '''' && self.spec.secretNamespace != oldSelf.spec.secretNamespace)'
               sourceParameters:
                 additionalProperties:
                   type: string
@@ -1007,8 +1015,10 @@ spec:
             properties:
               backupTargetName:
                 description: The backup target name that the backup volume was synced.
-                nullable: true
                 type: string
+                x-kubernetes-validations:
+                - message: BackupTargetName cannot be empty
+                  rule: self != ''
               syncRequestedAt:
                 description: The time to request run sync the remote backup volume.
                 format: date-time
@@ -1017,6 +1027,12 @@ spec:
               volumeName:
                 description: The volume name that the backup volume was used to backup.
                 type: string
+                x-kubernetes-validations:
+                - message: VolumeName cannot be empty
+                  rule: self != ''
+            required:
+            - backupTargetName
+            - volumeName
             type: object
           status:
             description: BackupVolumeStatus defines the observed state of the Longhorn
@@ -1306,6 +1322,10 @@ spec:
                 - v1
                 - v2
                 type: string
+                x-kubernetes-validations:
+                - message: changing dataEngine is not supported once it is set
+                  rule: '!(has(oldSelf.spec.dataEngine) && oldSelf.spec.dataEngine
+                    != '''' && self.spec.dataEngine != oldSelf.spec.dataEngine)'
               desireState:
                 type: string
               disableFrontend:
@@ -1352,6 +1372,8 @@ spec:
               volumeSize:
                 format: int64
                 type: string
+            required:
+            - dataEngine
             type: object
           status:
             description: EngineStatus defines the observed state of the Longhorn engine
@@ -1645,6 +1667,9 @@ spec:
             properties:
               dataEngine:
                 type: string
+                x-kubernetes-validations:
+                - message: DataEngine must be set
+                  rule: self != ''
               dataEngineSpec:
                 properties:
                   v2:
@@ -1663,6 +1688,12 @@ spec:
                 - engine
                 - replica
                 type: string
+                x-kubernetes-validations:
+                - message: Type must be set
+                  rule: self != ''
+            required:
+            - dataEngine
+            - type
             type: object
           status:
             description: InstanceManagerStatus defines the observed state of the Longhorn
@@ -1981,12 +2012,21 @@ spec:
                 type: boolean
               instanceManagerCPURequest:
                 type: integer
+                x-kubernetes-validations:
+                - message: instanceManagerCPURequest should be greater than or equal
+                    to 0
+                  rule: self >= 0
               name:
                 type: string
+                x-kubernetes-validations:
+                - message: name must not be empty
+                  rule: self != ''
               tags:
                 items:
                   type: string
                 type: array
+            required:
+            - name
             type: object
           status:
             description: NodeStatus defines the observed state of the Longhorn node
@@ -2448,6 +2488,10 @@ spec:
                 - v1
                 - v2
                 type: string
+                x-kubernetes-validations:
+                - message: changing dataEngine is not supported once it is set
+                  rule: '!(has(oldSelf.spec.dataEngine) && oldSelf.spec.dataEngine
+                    != '''' && self.spec.dataEngine != oldSelf.spec.dataEngine)'
               desireState:
                 type: string
               diskID:
@@ -2524,6 +2568,8 @@ spec:
               volumeSize:
                 format: int64
                 type: string
+            required:
+            - dataEngine
             type: object
           status:
             description: ReplicaStatus defines the observed state of the Longhorn
@@ -2823,7 +2869,7 @@ spec:
             description: SnapshotSpec defines the desired state of Longhorn Snapshot
             properties:
               createSnapshot:
-                description: require creating a new snapshot
+                description: Require creating a new snapshot
                 type: boolean
               labels:
                 additionalProperties:
@@ -2832,10 +2878,11 @@ spec:
                 nullable: true
                 type: object
               volume:
-                description: |-
-                  the volume that this snapshot belongs to.
-                  This field is immutable after creation.
+                description: The volume that this snapshot belongs to.
                 type: string
+                x-kubernetes-validations:
+                - message: Volume is immutable
+                  rule: self == oldSelf
             required:
             - volume
             type: object
@@ -3336,6 +3383,9 @@ spec:
               volume:
                 description: The name of Longhorn volume of this VolumeAttachment
                 type: string
+                x-kubernetes-validations:
+                - message: volume is immutable
+                  rule: self == oldSelf
             required:
             - volume
             type: object
@@ -3497,6 +3547,11 @@ spec:
                 - lz4
                 - gzip
                 type: string
+                x-kubernetes-validations:
+                - message: changing backupCompressionMethod is not supported once
+                    it is set
+                  rule: '!(has(oldSelf.spec.backupCompressionMethod) && oldSelf.spec.backupCompressionMethod
+                    != '''' && self.spec.backupCompressionMethod != oldSelf.spec.backupCompressionMethod)'
               backupTargetName:
                 description: The backup target name that the volume will be backed
                   up to or is synced.
@@ -3507,11 +3562,18 @@ spec:
                 - full-copy
                 - linked-clone
                 type: string
+                x-kubernetes-validations:
+                - message: cloneMode is immutable
+                  rule: self == oldSelf
               dataEngine:
                 enum:
                 - v1
                 - v2
                 type: string
+                x-kubernetes-validations:
+                - message: changing dataEngine is not supported once it is set
+                  rule: '!(has(oldSelf.spec.dataEngine) && oldSelf.spec.dataEngine
+                    != '''' && self.spec.dataEngine != oldSelf.spec.dataEngine)'
               dataLocality:
                 enum:
                 - disabled
@@ -3520,6 +3582,9 @@ spec:
                 type: string
               dataSource:
                 type: string
+                x-kubernetes-validations:
+                - message: dataSource is immutable
+                  rule: self == oldSelf
               disableFrontend:
                 type: boolean
               diskSelector:
@@ -3643,6 +3708,9 @@ spec:
                 - disabled
                 - enabled
                 type: string
+            required:
+            - backupCompressionMethod
+            - dataEngine
             type: object
           status:
             description: VolumeStatus defines the observed state of the Longhorn volume

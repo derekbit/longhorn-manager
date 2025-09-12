@@ -5,16 +5,15 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // BackupVolumeSpec defines the desired state of the Longhorn backup volume
 type BackupVolumeSpec struct {
 	// The backup target name that the backup volume was synced.
-	// +optional
-	// +nullable
+	// +kubebuilder:validation:XValidation:rule="self != ''",message="BackupTargetName cannot be empty"
 	BackupTargetName string `json:"backupTargetName"`
+	// The volume name that the backup volume was used to backup.
+	// +kubebuilder:validation:XValidation:rule="self != ''",message="VolumeName cannot be empty"
+	VolumeName string `json:"volumeName"`
 	// The time to request run sync the remote backup volume.
 	// +optional
 	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
-	// The volume name that the backup volume was used to backup.
-	// +optional
-	VolumeName string `json:"volumeName"`
 }
 
 // BackupVolumeStatus defines the observed state of the Longhorn backup volume

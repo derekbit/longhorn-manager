@@ -71,10 +71,6 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return nil
 	}
 
-	if newVA.Spec.Volume != oldVA.Spec.Volume {
-		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
-	}
-
 	if len(oldVA.OwnerReferences) != 0 && !reflect.DeepEqual(newVA.OwnerReferences, oldVA.OwnerReferences) {
 		return werror.NewInvalidError("VolumeAttachment's OwnerReferences field is immutable", "metadata.ownerReferences")
 	}

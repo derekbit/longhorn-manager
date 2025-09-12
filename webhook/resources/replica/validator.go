@@ -35,7 +35,6 @@ func (r *replicaValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.Replica{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
-			admissionregv1.Update,
 			admissionregv1.Delete,
 		},
 	}
@@ -50,25 +49,6 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 	err := wcommon.ValidateRequiredDataEngineEnabled(r.ds, replica.Spec.DataEngine)
 	if err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldReplica, ok := oldObj.(*longhorn.Replica)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", oldObj), "")
-	}
-	newReplica, ok := newObj.(*longhorn.Replica)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
-	}
-	if oldReplica.Spec.DataEngine != "" {
-		if oldReplica.Spec.DataEngine != newReplica.Spec.DataEngine {
-			err := fmt.Errorf("changing data engine for replica %v is not supported", oldReplica.Name)
-			return werror.NewInvalidError(err.Error(), "")
-		}
 	}
 
 	return nil

@@ -127,11 +127,6 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 }
 
 func (b *backingImageValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldBackingImage, ok := oldObj.(*longhorn.BackingImage)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", oldObj), "")
-	}
-
 	backingImage, ok := newObj.(*longhorn.BackingImage)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
@@ -139,20 +134,6 @@ func (b *backingImageValidator) Update(request *admission.Request, oldObj runtim
 
 	if err := validateMinNumberOfBackingImageCopies(backingImage.Spec.MinNumberOfCopies); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
-	}
-
-	if oldBackingImage.Spec.Secret != "" {
-		if oldBackingImage.Spec.Secret != backingImage.Spec.Secret {
-			err := fmt.Errorf("changing secret for BackingImage %v is not supported", oldBackingImage.Name)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
-	if oldBackingImage.Spec.SecretNamespace != "" {
-		if oldBackingImage.Spec.SecretNamespace != backingImage.Spec.SecretNamespace {
-			err := fmt.Errorf("changing secret namespace for BackingImage %v is not supported", oldBackingImage.Name)
-			return werror.NewInvalidError(err.Error(), "")
-		}
 	}
 
 	return nil

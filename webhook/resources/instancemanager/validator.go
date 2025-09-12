@@ -71,14 +71,6 @@ func (i *instanceManagerValidator) validate(im *longhorn.InstanceManager) error 
 		return fmt.Errorf("ownerReferences for instanceManager %s is not set", im.Name)
 	}
 
-	if im.Spec.Type == "" {
-		return fmt.Errorf("type for instanceManager %s is not set", im.Name)
-	}
-
-	if im.Spec.DataEngine == "" {
-		return fmt.Errorf("data engine for instanceManager %s is not set", im.Name)
-	}
-
 	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
 		kubeNode, err := i.ds.GetKubernetesNodeRO(im.Spec.NodeID)
 		if err != nil {

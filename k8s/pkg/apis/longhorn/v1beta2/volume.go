@@ -243,8 +243,10 @@ type VolumeSpec struct {
 	// +optional
 	RestoreVolumeRecurringJob RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="dataSource is immutable"
 	DataSource VolumeDataSource `json:"dataSource"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="cloneMode is immutable"
 	CloneMode CloneMode `json:"cloneMode,omitempty"`
 	// +optional
 	DataLocality DataLocality `json:"dataLocality"`
@@ -295,7 +297,7 @@ type VolumeSpec struct {
 	// +optional
 	SnapshotDataIntegrity SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
 	// +kubebuilder:validation:Enum=none;lz4;gzip
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.spec.backupCompressionMethod) && oldSelf.spec.backupCompressionMethod != '' && self.spec.backupCompressionMethod != oldSelf.spec.backupCompressionMethod)",message="changing backupCompressionMethod is not supported once it is set"
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
 	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
 	// +kubebuilder:validation:Type=string
@@ -303,7 +305,7 @@ type VolumeSpec struct {
 	// +optional
 	BackupBlockSize int64 `json:"backupBlockSize,string"`
 	// +kubebuilder:validation:Enum=v1;v2
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.spec.dataEngine) && oldSelf.spec.dataEngine != '' && self.spec.dataEngine != oldSelf.spec.dataEngine)",message="changing dataEngine is not supported once it is set"
 	DataEngine DataEngineType `json:"dataEngine"`
 	// +optional
 	SnapshotMaxCount int `json:"snapshotMaxCount"`

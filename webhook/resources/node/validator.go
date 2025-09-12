@@ -51,10 +51,6 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", newObj), "")
 	}
 
-	if node.Spec.InstanceManagerCPURequest < 0 {
-		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
-	}
-
 	v2DataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get spdk setting")
@@ -97,10 +93,6 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		return nil
 	}
 
-	if newNode.Spec.InstanceManagerCPURequest < 0 {
-		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
-	}
-
 	// Only scheduling disabled node can be evicted
 	// Can not enable scheduling on an evicting node
 	if newNode.Spec.EvictionRequested && newNode.Spec.AllowScheduling {
@@ -141,11 +133,6 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
-	}
-
-	// We need to ensure that the name is not empty because it can lead to errors in the Longhorn
-	if newNode.Spec.Name == "" {
-		return werror.NewInvalidError("node name is invalid. You can't have a Spec.Name empty", "")
 	}
 
 	// Only scheduling disabled disk can be evicted

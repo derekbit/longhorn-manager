@@ -14,7 +14,6 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
-	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -253,14 +252,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.offlineRebuilding")
 	}
 
-	if err := validateImmutable(".spec.dataSource", oldVolume.Spec.DataSource, newVolume.Spec.DataSource); err != nil {
-		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
-	}
-
-	if err := validateImmutable(".spec.cloneMode", oldVolume.Spec.CloneMode, newVolume.Spec.CloneMode); err != nil {
-		return werror.NewInvalidError(err.Error(), ".spec.cloneMode")
-	}
-
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
 		if err := v.ds.CheckDataEngineImageCompatiblityByImage(newVolume.Spec.Image, newVolume.Spec.DataEngine); err != nil {
 			return werror.NewInvalidError(err.Error(), "volume.spec.image")
@@ -283,13 +274,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if oldVolume.Spec.BackupCompressionMethod != "" {
-		if oldVolume.Spec.BackupCompressionMethod != newVolume.Spec.BackupCompressionMethod {
-			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
-			return werror.NewInvalidError(err.Error(), "spec.backupCompressionMethod")
-		}
-	}
-
 	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
 	isValidOldBackupBlockSize := types.ValidateBackupBlockSize(oldVolume.Spec.Size, oldVolume.Spec.BackupBlockSize) == nil
 	if isValidOldBackupBlockSize && oldVolume.Spec.BackupBlockSize != newVolume.Spec.BackupBlockSize {
@@ -302,13 +286,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := types.ValidateReplicaRebuildingBandwidthLimit(newVolume.Spec.DataEngine, newVolume.Spec.ReplicaRebuildingBandwidthLimit); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.replicaRebuildingBandwidthLimit")
-	}
-
-	if oldVolume.Spec.DataEngine != "" {
-		if oldVolume.Spec.DataEngine != newVolume.Spec.DataEngine {
-			err := fmt.Errorf("changing data engine for volume %v is not supported", oldVolume.Name)
-			return werror.NewInvalidError(err.Error(), "")
-		}
 	}
 
 	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
@@ -578,13 +555,6 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, new
 
 	if currentSnapshotCount > newVolume.Spec.SnapshotMaxCount || (newVolume.Spec.SnapshotMaxSize != 0 && currentTotalSnapshotSize > newVolume.Spec.SnapshotMaxSize) {
 		return werror.NewInvalidError("can't make snapshotMaxCount or snapshotMaxSize be smaller than current usage, please remove snapshots first", "")
-	}
-	return nil
-}
-
-func validateImmutable(field string, oldVal, newVal any) error {
-	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
-		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
 	}
 	return nil
 }

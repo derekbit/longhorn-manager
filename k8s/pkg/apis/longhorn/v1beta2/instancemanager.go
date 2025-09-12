@@ -82,7 +82,7 @@ type InstanceSpec struct {
 	// +optional
 	SalvageRequested bool `json:"salvageRequested"`
 	// +kubebuilder:validation:Enum=v1;v2
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.spec.dataEngine) && oldSelf.spec.dataEngine != '' && self.spec.dataEngine != oldSelf.spec.dataEngine)",message="changing dataEngine is not supported once it is set"
 	DataEngine DataEngineType `json:"dataEngine"`
 }
 
@@ -164,9 +164,9 @@ type InstanceManagerSpec struct {
 	Image string `json:"image"`
 	// +optional
 	NodeID string `json:"nodeID"`
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="self != ''",message="Type must be set"
 	Type InstanceManagerType `json:"type"`
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="self != ''",message="DataEngine must be set"
 	DataEngine DataEngineType `json:"dataEngine"`
 	// +optional
 	DataEngineSpec DataEngineSpec `json:"dataEngineSpec"`

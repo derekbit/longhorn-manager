@@ -156,6 +156,7 @@ type VolumeAttachmentSpec struct {
 	// +optional
 	AttachmentTickets map[string]*AttachmentTicket `json:"attachmentTickets"`
 	// The name of Longhorn volume of this VolumeAttachment
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="volume is immutable"
 	Volume string `json:"volume"`
 }
 

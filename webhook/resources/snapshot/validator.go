@@ -72,10 +72,6 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
 	}
 
-	if newSnapshot.Spec.Volume != oldSnapshot.Spec.Volume {
-		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
-	}
-
 	if len(oldSnapshot.OwnerReferences) != 0 && !reflect.DeepEqual(newSnapshot.OwnerReferences, oldSnapshot.OwnerReferences) {
 		return werror.NewInvalidError("snapshot OwnerReferences field is immutable", "metadata.ownerReferences")
 	}

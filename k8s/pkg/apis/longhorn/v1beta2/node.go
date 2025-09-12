@@ -141,7 +141,7 @@ type DiskStatus struct {
 
 // NodeSpec defines the desired state of the Longhorn node
 type NodeSpec struct {
-	// +optional
+	// +kubebuilder:validation:XValidation:rule="self != ''",message="name must not be empty"
 	Name string `json:"name"`
 	// +optional
 	Disks map[string]DiskSpec `json:"disks"`
@@ -152,6 +152,7 @@ type NodeSpec struct {
 	// +optional
 	Tags []string `json:"tags"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self >= 0",message="instanceManagerCPURequest should be greater than or equal to 0"
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
 }
 

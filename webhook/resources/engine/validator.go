@@ -35,7 +35,6 @@ func (e *engineValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.Engine{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
-			admissionregv1.Update,
 		},
 	}
 }
@@ -61,26 +60,6 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	return e.validateNumberOfEngines(engine, volume)
-}
-
-func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldEngine, ok := oldObj.(*longhorn.Engine)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", oldObj), "")
-	}
-	newEngine, ok := newObj.(*longhorn.Engine)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
-	}
-
-	if oldEngine.Spec.DataEngine != "" {
-		if oldEngine.Spec.DataEngine != newEngine.Spec.DataEngine {
-			err := fmt.Errorf("changing data engine for engine %v is not supported", oldEngine.Name)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
-	return nil
 }
 
 func (e *engineValidator) validateNumberOfEngines(newEngine *longhorn.Engine, volume *longhorn.Volume) error {
