@@ -1376,14 +1376,15 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
-	ClusterInfoBackingImageCount      = util.StructName("LonghornBackingImageCount")
-	ClusterInfoOrphanCount            = util.StructName("LonghornOrphanCount")
-	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
-	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeBytes")
-	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
-	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
-	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
-	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
+	ClusterInfoBackingImageCount = util.StructName("LonghornBackingImageCount")
+	ClusterInfoOrphanCount       = util.StructName("LonghornOrphanCount")
+
+	ClusterInfoVolumeAvgSnapshotCount    = "LonghornVolumeAverageSnapshotCount"
+	ClusterInfoVolumeNumOfSnapshots      = util.StructName("LonghornVolumeNumberOfSnapshots")
+	ClusterInfoVolumeAvgActualSizeFmt    = "Longhorn%sVolumeAverageActualSizeBytes"
+	ClusterInfoVolumeAvgSizeFmt          = "Longhorn%sVolumeAverageSizeBytes"
+	ClusterInfoVolumeAvgNumOfReplicasFmt = "Longhorn%sVolumeAverageNumberOfReplicas"
+	ClusterInfoVolumeNumOfReplicasFmt    = "Longhorn%sVolumeNumberOfReplicas"
 
 	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
 	ClusterInfoPodAvgMemoryUsageFmt                                  = "Longhorn%sAverageMemoryUsageBytes"
@@ -1684,17 +1685,29 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn Volumes")
 	}
-	volumeCount := len(volumesRO)
-	volumeCountV1 := 0
-	for _, volume := range volumesRO {
-		if types.IsDataEngineV1(volume.Spec.DataEngine) {
-			volumeCountV1++
-		}
+
+	volumeCountByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+	totalVolumeSizeByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+	totalVolumeActualSizeByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+	totalVolumeNumOfReplicasByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
 	}
 
-	var totalVolumeSize int
-	var totalVolumeActualSize int
-	var totalVolumeNumOfReplicas int
+	volumeCount := len(volumesRO)
+	for _, volume := range volumesRO {
+		volumeCountByDataEngine[volume.Spec.DataEngine]++
+	}
+
 	newStruct := func() map[util.StructName]int { return make(map[util.StructName]int, volumeCount) }
 	accessModeCountStruct := newStruct()
 	dataEngineCountStruct := newStruct()
@@ -1716,14 +1729,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataEngineCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataEngineCountFmt, dataEngine))]++
 
-		// TODO: Remove this condition when v2 volume actual size is implemented.
-		//       https://github.com/longhorn/longhorn/issues/5947
-		isVolumeUsingV2DataEngine := types.IsDataEngineV2(volume.Spec.DataEngine)
-		if !isVolumeUsingV2DataEngine {
-			totalVolumeSize += int(volume.Spec.Size)
-			totalVolumeActualSize += int(volume.Status.ActualSize)
-		}
-		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
+		totalVolumeSizeByDataEngine[volume.Spec.DataEngine] += int(volume.Spec.Size)
+		totalVolumeActualSizeByDataEngine[volume.Spec.DataEngine] += int(volume.Status.ActualSize)
+		totalVolumeNumOfReplicasByDataEngine[volume.Spec.DataEngine] += volume.Spec.NumberOfReplicas
 
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
@@ -1740,7 +1748,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		encrypted := util.ConvertToCamel(strconv.FormatBool(volume.Spec.Encrypted), "-")
 		encryptedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeEncryptedCountFmt, encrypted))]++
 
-		if volume.Spec.Frontend != "" && !isVolumeUsingV2DataEngine {
+		if volume.Spec.Frontend != "" {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
@@ -1771,7 +1779,11 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			freezeFilesystemForSnapshotCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFreezeFilesystemForV1DataEngineSnapshotCountFmt, util.ConvertToCamel(string(freezeFilesystemForSnapshot), "-")))]++
 		}
 	}
-	info.structFields.fields.Append(ClusterInfoVolumeNumOfReplicas, totalVolumeNumOfReplicas)
+
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+		info.structFields.fields.Append(util.StructName(fmt.Sprintf(ClusterInfoVolumeNumOfReplicasFmt, dataEngine)), totalVolumeNumOfReplicasByDataEngine[dataEngine])
+	}
+
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataEngineCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
@@ -1788,33 +1800,54 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 	// TODO: Use the total volume count instead when v2 volume actual size is implemented.
 	//       https://github.com/longhorn/longhorn/issues/5947
-	var avgVolumeSize int
-	var avgVolumeActualSize int
-	if volumeCountV1 > 0 && totalVolumeSize > 0 {
-		avgVolumeSize = totalVolumeSize / volumeCountV1
+	avgVolumeSizeByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+	avgVolumeActualSizeByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+	for dataEngine, count := range volumeCountByDataEngine {
+		if count > 0 {
+			avgVolumeSizeByDataEngine[dataEngine] = totalVolumeSizeByDataEngine[dataEngine] / count
 
-		if totalVolumeActualSize > 0 {
-			avgVolumeActualSize = totalVolumeActualSize / volumeCountV1
+			if totalVolumeActualSizeByDataEngine[dataEngine] > 0 {
+				avgVolumeActualSizeByDataEngine[dataEngine] = totalVolumeActualSizeByDataEngine[dataEngine] / count
+			}
+		}
+	}
+
+	avgVolumeNumOfReplicasByDataEngine := map[longhorn.DataEngineType]int{
+		longhorn.DataEngineTypeV1: 0,
+		longhorn.DataEngineTypeV2: 0,
+	}
+
+	for dataEngine, count := range volumeCountByDataEngine {
+		if count > 0 {
+			totalVolumeNumOfReplicas := totalVolumeNumOfReplicasByDataEngine[dataEngine]
+			avgVolumeNumOfReplicasByDataEngine[dataEngine] = totalVolumeNumOfReplicas / count
 		}
 	}
 
 	var avgVolumeSnapshotCount int
-	var avgVolumeNumOfReplicas int
 	var totalVolumeNumOfSnapshots int
 	if volumeCount > 0 {
-		avgVolumeNumOfReplicas = totalVolumeNumOfReplicas / volumeCount
-
 		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
 		if err != nil {
 			return errors.Wrapf(err, "failed to list Longhorn Snapshots")
 		}
 		totalVolumeNumOfSnapshots = len(snapshotsRO)
-		avgVolumeSnapshotCount = totalVolumeNumOfSnapshots / volumeCount
+		avgVolumeSnapshotCount = volumeCount
 	}
-	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, avgVolumeSize)
-	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, avgVolumeActualSize)
-	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, avgVolumeSnapshotCount)
-	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
+
+	for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+		info.structFields.fields.Append(util.StructName(fmt.Sprintf(ClusterInfoVolumeAvgSizeFmt, dataEngine)), avgVolumeSizeByDataEngine[dataEngine])
+		info.structFields.fields.Append(util.StructName(fmt.Sprintf(ClusterInfoVolumeAvgActualSizeFmt, dataEngine)), avgVolumeActualSizeByDataEngine[dataEngine])
+		info.structFields.fields.Append(util.StructName(fmt.Sprintf(ClusterInfoVolumeAvgNumOfReplicasFmt, dataEngine)), avgVolumeNumOfReplicasByDataEngine[dataEngine])
+	}
+
+	info.structFields.fields.Append(util.StructName(ClusterInfoVolumeAvgSnapshotCount), avgVolumeSnapshotCount)
 	info.structFields.fields.Append(ClusterInfoVolumeNumOfSnapshots, totalVolumeNumOfSnapshots)
 
 	return nil
