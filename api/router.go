@@ -67,7 +67,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/volumes").Handler(f(schemas, s.VolumeList))
 	r.Methods("GET").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeGet))
 	r.Methods("DELETE").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeDelete))
-	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.VolumeCreate)))
+	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.VolumeCreate)))
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"attach":                                s.VolumeAttach,
 		"detach":                                s.VolumeDetach,
@@ -135,16 +135,16 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/backuptargets/{backupTargetName}").Queries("action", name).Handler(f(schemas, action))
 	}
 
-	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeList)))
-	r.Methods("PUT").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeSyncAll)))
-	r.Methods("GET").Path("/v1/backupvolumes/{backupVolumeName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeGet)))
-	r.Methods("DELETE").Path("/v1/backupvolumes/{backupVolumeName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeDelete)))
+	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupVolumeList)))
+	r.Methods("PUT").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupVolumeSyncAll)))
+	r.Methods("GET").Path("/v1/backupvolumes/{backupVolumeName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupVolumeGet)))
+	r.Methods("DELETE").Path("/v1/backupvolumes/{backupVolumeName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupVolumeDelete)))
 	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backupList":         s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupListByBackupVolume),
-		"backupListByVolume": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupListByVolume),
-		"backupGet":          s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupGet),
-		"backupDelete":       s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupDelete),
-		"backupVolumeSync":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.SyncBackupVolume),
+		"backupList":         s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupListByBackupVolume),
+		"backupListByVolume": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupListByVolume),
+		"backupGet":          s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupGet),
+		"backupDelete":       s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.BackupDelete),
+		"backupVolumeSync":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeDataEngineIsReady(s.m)), s.SyncBackupVolume),
 	}
 	for name, action := range backupActions {
 		r.Methods("POST").Path("/v1/backupvolumes/{backupVolumeName}").Queries("action", name).Handler(f(schemas, action))

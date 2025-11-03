@@ -78,6 +78,27 @@ func (m *VolumeManager) ListNodes() (map[string]*longhorn.Node, error) {
 	return nodeList, nil
 }
 
+func (m *VolumeManager) ListReadyV2DataEngineEnabledNodesRO() (map[string]*longhorn.Node, error) {
+	v2Nodes := make(map[string]*longhorn.Node)
+
+	readyNodes, err := m.ds.ListReadyNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for name, node := range readyNodes {
+		disabled, err := m.ds.IsV2DataEngineDisabledForNode(name)
+		if err != nil {
+			return nil, err
+		}
+		if !disabled {
+			v2Nodes[name] = node
+		}
+	}
+
+	return v2Nodes, nil
+}
+
 func (m *VolumeManager) ListReadyNodesContainingEngineImageRO(image string) (map[string]*longhorn.Node, error) {
 	return m.ds.ListReadyNodesContainingEngineImageRO(image)
 }

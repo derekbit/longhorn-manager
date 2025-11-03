@@ -170,7 +170,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	// Check engine version before disable revision counter
 	if volume.Spec.RevisionCounterDisabled {
 		if ok, err := v.canDisableRevisionCounter(volume.Spec.Image, volume.Spec.DataEngine); !ok {
-			err := errors.Wrapf(err, "can not create volume with current engine image that doesn't support disable revision counter")
+			err := errors.Wrapf(err, "cannot create volume with current engine image that doesn't support disable revision counter")
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}

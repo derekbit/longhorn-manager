@@ -2344,6 +2344,44 @@ func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longh
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
+func (s *DataStore) CheckEitherDataEngineReadiness(image string, nodes ...string) (isReady bool, err error) {
+	// By default, we check v1 data engine readiness first
+	v1DataEngineEnabled, err := s.IsDataEngineEnabled(longhorn.DataEngineTypeV1)
+	if err != nil {
+		return false, err
+	}
+	if v1DataEngineEnabled {
+		return s.CheckEngineImageReadiness(image, nodes...)
+	}
+
+	// If v1 data engine is not enabled, check v2 data engine readiness
+	v2DataEngineEnabled, err := s.IsDataEngineEnabled(longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, err
+	}
+	if v2DataEngineEnabled {
+		if len(nodes) == 0 {
+			return false, nil
+		}
+		if len(nodes) == 1 && nodes[0] == "" {
+			return false, nil
+		}
+		// Make sure v2 data engine is not disabled on any of the nodes
+		for _, name := range nodes {
+			disabled, err := s.IsV2DataEngineDisabledForNode(name)
+			if err != nil {
+				return false, err
+			}
+			if disabled {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // IsDataEngineImageReady checks if the IMAGE is deployed on the NODEID and, if data locality is disabled, also on at least one replica node of the volume.
 func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
 	isReady, err := s.CheckDataEngineImageReadiness(image, dataEngine, nodeID)

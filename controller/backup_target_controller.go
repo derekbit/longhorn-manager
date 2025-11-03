@@ -868,11 +868,11 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 
 	isResponsible := isControllerResponsibleFor(btc.controllerID, btc.ds, bt.Name, "", bt.Status.OwnerID)
 
-	currentOwnerEngineAvailable, err := btc.ds.CheckEngineImageReadiness(defaultEngineImage, bt.Status.OwnerID)
+	currentOwnerEngineAvailable, err := btc.ds.CheckEitherDataEngineReadiness(defaultEngineImage, bt.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeEngineAvailable, err := btc.ds.CheckEngineImageReadiness(defaultEngineImage, btc.controllerID)
+	currentNodeEngineAvailable, err := btc.ds.CheckEitherDataEngineReadiness(defaultEngineImage, btc.controllerID)
 	if err != nil {
 		return false, err
 	}

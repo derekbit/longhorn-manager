@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/gorilla/mux"
+	"github.com/rancher/go-rancher/api"
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
@@ -58,35 +61,92 @@ func OwnerIDFromBackupTarget(m *manager.VolumeManager) func(req *http.Request) (
 	}
 }
 
-// NodeHasDefaultEngineImage picks a node that is ready and has default engine image deployed.
-// To prevent the repeatedly forwarding the request around, prioritize the current node if it meets the requirement.
-// When v1 data engine is disabled just pick the current node.
-func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
+// NodeDataEngineIsReady picks a node that is ready and has the required data engine enabled.
+func NodeDataEngineIsReady(m *manager.VolumeManager) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
-		v1EngineEnabled, err := m.GetSettingAsBool(types.SettingNameV1DataEngine)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameV1DataEngine)
-		}
-		if !v1EngineEnabled {
-			return m.GetCurrentNodeID(), nil
-		}
+		var input interface{}
 
-		engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+		bodyBytes, err := io.ReadAll(req.Body)
 		if err != nil {
 			return "", err
 		}
-		nodes, err := m.ListReadyNodesContainingEngineImageRO(engineImage)
-		if err != nil {
+		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes)) // reset body
+
+		// parse body content for data engine decision
+		apiContext := api.GetApiContext(req)
+		if err := apiContext.Read(&input); err != nil {
 			return "", err
 		}
-		if _, ok := nodes[m.GetCurrentNodeID()]; ok {
-			return m.GetCurrentNodeID(), nil
+
+		// restore again for proxy to read later
+		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		dataEngine := longhorn.DataEngineTypeV1
+		switch resource := input.(type) {
+		case longhorn.Volume:
+			if resource.Spec.DataEngine != "" {
+				dataEngine = resource.Spec.DataEngine
+			}
+		default:
+			// If v1 data engine is disabled, use v2 data engine instead
+			v1DataEngineEnabled, err := m.GetSettingAsBool(types.SettingNameV1DataEngine)
+			if err != nil {
+				return "", err
+			}
+			if !v1DataEngineEnabled {
+				dataEngine = longhorn.DataEngineTypeV2
+			}
 		}
 
-		for nodeID := range nodes {
-			return nodeID, nil
+		logrus.Infof("Debug ===> Data engine type: %v", dataEngine)
+
+		switch dataEngine {
+		case longhorn.DataEngineTypeV1:
+			engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+			if err != nil {
+				return "", err
+			}
+			nodes, err := m.ListReadyNodesContainingEngineImageRO(engineImage)
+			if err != nil {
+				return "", err
+			}
+			if _, ok := nodes[m.GetCurrentNodeID()]; ok {
+				return m.GetCurrentNodeID(), nil
+			}
+			for nodeID := range nodes {
+				return nodeID, nil
+			}
+
+			return "", fmt.Errorf("failed to find a node that is ready and has the default engine image %v deployed", engineImage)
+		case longhorn.DataEngineTypeV2:
+			v2DataEngineEnabled, err := m.GetSettingAsBool(types.SettingNameV2DataEngine)
+			if err != nil {
+				return "", err
+			}
+			logrus.Infof("Debug =======> v2DataEngineEnabled=%v", v2DataEngineEnabled)
+			if !v2DataEngineEnabled {
+				return "", fmt.Errorf("v2 data engine is not enabled")
+			}
+
+			nodes, err := m.ListReadyV2DataEngineEnabledNodesRO()
+			if err != nil {
+				return "", err
+			}
+			logrus.Infof("Debug =======> v2 data engine ready nodes: %v", nodes)
+			if _, ok := nodes[m.GetCurrentNodeID()]; ok {
+				logrus.Infof("Debug =======> node m.GetCurrentNodeID()=%v is ready and v2 data engine enabled", m.GetCurrentNodeID())
+				return m.GetCurrentNodeID(), nil
+			}
+			for nodeID := range nodes {
+				logrus.Infof("Debug =======> nodeID=%v is ready and v2 data engine enabled", nodeID)
+				return nodeID, nil
+			}
+
+			logrus.Infof("Debug =======> failed to find a node that is ready and v2 data engine enabled")
+			return "", fmt.Errorf("failed to find a node that is ready and v2 data engine enabled")
+		default:
+			return "", fmt.Errorf("unsupported data engine type: %v", dataEngine)
 		}
-		return "", fmt.Errorf("failed to find a node that is ready and has the default engine image %v deployed", engineImage)
 	}
 }
 
