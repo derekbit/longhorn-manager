@@ -39,8 +39,9 @@ const (
 )
 
 const (
-	InstanceTypeEngine  = "engine"
-	InstanceTypeReplica = "replica"
+	InstanceTypeEngine       = "engine"
+	InstanceTypeEngineTarget = "engine-target"
+	InstanceTypeReplica      = "replica"
 )
 
 const (

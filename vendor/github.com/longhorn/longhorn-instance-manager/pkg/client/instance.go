@@ -98,6 +98,12 @@ type EngineCreateRequest struct {
 	SalvageRequested  bool
 }
 
+type EngineTargetCreateRequest struct {
+	ReplicaAddressMap map[string]string
+	Address           string
+	SalvageRequested  bool
+}
+
 type ReplicaCreateRequest struct {
 	DiskName         string
 	DiskUUID         string
@@ -117,8 +123,9 @@ type InstanceCreateRequest struct {
 	Binary     string
 	BinaryArgs []string
 
-	Engine  EngineCreateRequest
-	Replica ReplicaCreateRequest
+	Engine       EngineCreateRequest
+	EngineTarget EngineTargetCreateRequest
+	Replica      ReplicaCreateRequest
 
 	// Deprecated: replaced by DataEngine.
 	BackendStoreDriver string
@@ -156,6 +163,12 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				SalvageRequested:  req.Engine.SalvageRequested,
 				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
 				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
+			}
+		case types.InstanceTypeEngineTarget:
+			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
+				Size:              req.Size,
+				ReplicaAddressMap: req.EngineTarget.ReplicaAddressMap,
+				SalvageRequested:  req.EngineTarget.SalvageRequested,
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
