@@ -810,7 +810,27 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if areAllReplicaUnknownAndErrored(e.Status.ReplicaModeMap) {
+	ets, err := c.ds.ListVolumeEngineTargets(v.Name)
+	if err != nil {
+		return err
+	}
+	var et *longhorn.EngineTarget
+	for _, _et := range ets {
+		et = _et
+		break
+	}
+
+	var replicaModeMap map[string]longhorn.ReplicaMode
+	switch e.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		replicaModeMap = e.Status.ReplicaModeMap
+	case longhorn.DataEngineTypeV2:
+		replicaModeMap = et.Status.ReplicaModeMap
+	default:
+		return fmt.Errorf("unknown data engine type %v for engine %v", e.Spec.DataEngine, e.Name)
+	}
+	logrus.Infof("Debug ------> Volume: %v, Engine: %v, ReplicaModeMap: %v", v.Name, e.Name, replicaModeMap)
+	if areAllReplicaUnknownAndErrored(replicaModeMap) {
 		shouldLogWarning := false
 		for _, r := range rs {
 			if r.Spec.EngineName != e.Name {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -543,7 +544,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		}
 		for _, et := range ets {
 			if et.Status.CurrentState == longhorn.InstanceStateRunning {
-				targetAddress = et.Status.StorageIP
+				// combine ip and port to form the target address. Don't use fmt.Sprintf. Use correct network package
+				targetAddress = net.JoinHostPort(et.Status.IP, strconv.Itoa(et.Status.Port))
 				break
 			}
 		}
