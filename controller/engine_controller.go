@@ -531,9 +531,24 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		initiatorAddress = instanceManagerStorageIP
 	}
 
-	targetAddress := e.Spec.TargetAddress
-	if targetAddress == "" {
+	targetAddress := ""
+	switch e.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
 		targetAddress = instanceManagerStorageIP
+	case longhorn.DataEngineTypeV2:
+		// Find a running engine target for the engine
+		ets, err := ec.ds.ListVolumeEngineTargetsRO(e.Spec.VolumeName)
+		if err != nil {
+			return nil, err
+		}
+		for _, et := range ets {
+			if et.Status.CurrentState == longhorn.InstanceStateRunning {
+				targetAddress = et.Status.StorageIP
+				break
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unknown data engine type %v for engine %v", e.Spec.DataEngine, e.Name)
 	}
 
 	e.Status.Starting = true
