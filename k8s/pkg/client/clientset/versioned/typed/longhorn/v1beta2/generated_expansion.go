@@ -36,6 +36,8 @@ type EngineExpansion interface{}
 
 type EngineImageExpansion interface{}
 
+type EngineTargetExpansion interface{}
+
 type InstanceManagerExpansion interface{}
 
 type NodeExpansion interface{}

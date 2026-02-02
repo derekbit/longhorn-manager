@@ -32,11 +32,12 @@ type InstanceManagerTestCase struct {
 	nodeDown     bool
 	nodeID       string
 
-	currentPodStatus *corev1.PodStatus
-	currentOwnerID   string
-	currentState     longhorn.InstanceManagerState
-	currentEngines   map[string]longhorn.InstanceProcess
-	currentReplicas  map[string]longhorn.InstanceProcess
+	currentPodStatus     *corev1.PodStatus
+	currentOwnerID       string
+	currentState         longhorn.InstanceManagerState
+	currentEngines       map[string]longhorn.InstanceProcess
+	currentEngineTargets map[string]longhorn.InstanceProcess
+	currentReplicas      map[string]longhorn.InstanceProcess
 
 	expectedPodCount int
 	expectedStatus   longhorn.InstanceManagerStatus
@@ -494,7 +495,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		im := newInstanceManager(
 			TestInstanceManagerName, tc.currentState,
 			tc.currentOwnerID, tc.nodeID, currentIP,
-			tc.currentEngines, tc.currentReplicas,
+			tc.currentEngines, tc.currentReplicas, tc.currentEngineTargets,
 			longhorn.DataEngineTypeV1,
 			TestInstanceManagerImage,
 			false,

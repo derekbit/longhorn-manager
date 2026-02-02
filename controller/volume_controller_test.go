@@ -1398,6 +1398,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				TestOwnerID2, TestNode2, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,

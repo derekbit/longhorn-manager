@@ -5,9 +5,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type InstanceType string
 
 const (
-	InstanceTypeEngine  = InstanceType("engine")
-	InstanceTypeReplica = InstanceType("replica")
-	InstanceTypeNone    = InstanceType("")
+	InstanceTypeEngine       = InstanceType("engine")
+	InstanceTypeEngineTarget = InstanceType("engine-target")
+	InstanceTypeReplica      = InstanceType("replica")
+	InstanceTypeNone         = InstanceType("")
 )
 
 type InstanceManagerState string
@@ -43,8 +44,9 @@ type InstanceManagerType string
 const (
 	InstanceManagerTypeAllInOne = InstanceManagerType("aio")
 	// Deprecate
-	InstanceManagerTypeEngine  = InstanceManagerType("engine")
-	InstanceManagerTypeReplica = InstanceManagerType("replica")
+	InstanceManagerTypeEngine       = InstanceManagerType("engine")
+	InstanceManagerTypeEngineTarget = InstanceManagerType("engine-target")
+	InstanceManagerTypeReplica      = InstanceManagerType("replica")
 )
 
 const (
@@ -218,6 +220,9 @@ type InstanceManagerStatus struct {
 	// +optional
 	// +nullable
 	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`
+	// +optional
+	// +nullable
+	InstanceEngineTargets map[string]InstanceProcess `json:"instanceEngineTargets,omitempty"`
 	// +optional
 	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`

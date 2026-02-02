@@ -526,6 +526,16 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 
 	instanceManagerStorageIP := ec.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
 
+	initiatorAddress := e.Spec.InitiatorAddress
+	if initiatorAddress == "" {
+		initiatorAddress = instanceManagerStorageIP
+	}
+
+	targetAddress := e.Spec.TargetAddress
+	if targetAddress == "" {
+		targetAddress = instanceManagerStorageIP
+	}
+
 	e.Status.Starting = true
 	engineName := e.Name
 	if e, err = ec.ds.UpdateEngineStatus(e); err != nil {
@@ -543,8 +553,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		EngineCLIAPIVersion:              cliAPIVersion,
 		UpgradeRequired:                  false,
-		InitiatorAddress:                 instanceManagerStorageIP,
-		TargetAddress:                    instanceManagerStorageIP,
+		InitiatorAddress:                 initiatorAddress,
+		TargetAddress:                    targetAddress,
 	})
 }
 

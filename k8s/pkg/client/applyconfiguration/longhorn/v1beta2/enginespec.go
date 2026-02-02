@@ -28,6 +28,10 @@ import (
 // EngineSpec defines the desired state of the Longhorn engine
 type EngineSpecApplyConfiguration struct {
 	Frontend *longhornv1beta2.VolumeFrontend `json:"frontend,omitempty"`
+	// InitiatorAddress is used by the data engine for a separated initiator/target design.
+	InitiatorAddress *string `json:"initiatorAddress,omitempty"`
+	// TargetAddress is used by the data engine for a separated initiator/target design.
+	TargetAddress *string `json:"targetAddress,omitempty"`
 	// ublkQueueDepth controls the depth of each queue for ublk frontend.
 	UblkQueueDepth *int `json:"ublkQueueDepth,omitempty"`
 	// ublkNumberOfQueue controls the number of queues for ublk frontend.
@@ -60,6 +64,22 @@ func EngineSpec() *EngineSpecApplyConfiguration {
 // If called multiple times, the Frontend field is set to the value of the last call.
 func (b *EngineSpecApplyConfiguration) WithFrontend(value longhornv1beta2.VolumeFrontend) *EngineSpecApplyConfiguration {
 	b.Frontend = &value
+	return b
+}
+
+// WithInitiatorAddress sets the InitiatorAddress field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InitiatorAddress field is set to the value of the last call.
+func (b *EngineSpecApplyConfiguration) WithInitiatorAddress(value string) *EngineSpecApplyConfiguration {
+	b.InitiatorAddress = &value
+	return b
+}
+
+// WithTargetAddress sets the TargetAddress field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TargetAddress field is set to the value of the last call.
+func (b *EngineSpecApplyConfiguration) WithTargetAddress(value string) *EngineSpecApplyConfiguration {
+	b.TargetAddress = &value
 	return b
 }
 

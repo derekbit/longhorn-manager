@@ -359,6 +359,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			return err
 		}
 	}
+
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case longhorn.InstanceStateRunning:
@@ -461,6 +462,8 @@ func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, in
 	switch obj.(type) {
 	case *longhorn.Engine:
 		return types.ConsolidateInstances(instanceManager.Status.InstanceEngines), nil
+	case *longhorn.EngineTarget:
+		return types.ConsolidateInstances(instanceManager.Status.InstanceEngineTargets), nil
 	case *longhorn.Replica:
 		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas), nil
 	}

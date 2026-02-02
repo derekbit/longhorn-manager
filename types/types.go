@@ -342,9 +342,10 @@ func (e *ErrorInvalidState) Error() string {
 }
 
 const (
-	engineSuffix    = "-e"
-	replicaSuffix   = "-r"
-	recurringSuffix = "-c"
+	engineSuffix       = "-e"
+	engineTargetSuffix = "-et"
+	replicaSuffix      = "-r"
+	recurringSuffix    = "-c"
 
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
@@ -371,6 +372,18 @@ func GenerateEngineNameForVolume(vName, currentEngineName string) string {
 		return vName + engineSuffix + "-" + "1"
 	}
 	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
+}
+
+func GenerateEngineTargetNameForVolume(vName, currentEngineTargetName string) string {
+	if currentEngineTargetName == "" {
+		return vName + engineTargetSuffix + "-" + "0"
+	}
+	parts := strings.Split(currentEngineTargetName, "-")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return vName + engineTargetSuffix + "-" + "1"
+	}
+	return vName + engineTargetSuffix + "-" + strconv.Itoa(suffix+1)
 }
 
 func GenerateReplicaNameForVolume(vName string) string {

@@ -146,6 +146,15 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.EngineInformer.HasSynced)
 
+	if _, err = ds.EngineTargetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
+		DeleteFunc: c.enqueueControlleeChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.EngineTargetInformer.HasSynced)
+
 	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
@@ -334,6 +343,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		return err
 	}
+	engineTargets, err := c.ds.ListVolumeEngineTargets(volume.Name)
+	if err != nil {
+		return err
+	}
 	replicas, err := c.ds.ListVolumeReplicas(volume.Name)
 	if err != nil {
 		return err
@@ -370,6 +383,13 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		for _, e := range engines {
 			if e.DeletionTimestamp == nil {
 				if err := c.ds.DeleteEngine(e.Name); err != nil {
+					return err
+				}
+			}
+		}
+		for _, et := range engineTargets {
+			if et.DeletionTimestamp == nil {
+				if err := c.ds.DeleteEngineTarget(et.Name); err != nil {
 					return err
 				}
 			}
@@ -433,6 +453,11 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		} else if len(engines) > 0 {
 			return nil
 		}
+		if engineTargets, err := c.ds.ListVolumeEngineTargetsRO(volume.Name); err != nil {
+			return err
+		} else if len(engineTargets) > 0 {
+			return nil
+		}
 		if replicas, err := c.ds.ListVolumeReplicasRO(volume.Name); err != nil {
 			return err
 		} else if len(replicas) > 0 {
@@ -447,6 +472,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	existingEngines := map[string]*longhorn.Engine{}
 	for k, e := range engines {
 		existingEngines[k] = e.DeepCopy()
+	}
+	existingEngineTargets := map[string]*longhorn.EngineTarget{}
+	for k, et := range engineTargets {
+		existingEngineTargets[k] = et.DeepCopy()
 	}
 	existingReplicas := map[string]*longhorn.Replica{}
 	for k, r := range replicas {
@@ -476,6 +505,17 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 		// stop updating if engines and replicas weren't fully updated
+		if lastErr == nil {
+			for k, et := range engineTargets {
+				if existingEngineTargets[k] == nil ||
+					!reflect.DeepEqual(existingEngineTargets[k].Spec, et.Spec) {
+					if _, err := c.ds.UpdateEngineTarget(et); err != nil {
+						lastErr = err
+					}
+				}
+			}
+		}
+		// stop updating if engines, engine targets, and replicas weren't fully updated
 		if lastErr == nil {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
@@ -538,7 +578,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := c.ReconcileVolumeState(volume, engines, replicas); err != nil {
+	if err := c.ReconcileVolumeState(volume, engines, engineTargets, replicas); err != nil {
 		return err
 	}
 
@@ -1495,7 +1535,7 @@ func (c *VolumeController) reconcileBackingImageCompatibilityCondition(v *longho
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, ets map[string]*longhorn.EngineTarget, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to reconcile volume state for %v", v.Name)
 	}()
@@ -1503,6 +1543,11 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	log := getLoggerForVolume(c.logger, v)
 
 	e, err := c.ds.PickVolumeCurrentEngine(v, es)
+	if err != nil {
+		return err
+	}
+
+	et, err := c.pickCurrentVolumeEngineTarget(v, ets)
 	if err != nil {
 		return err
 	}
@@ -1527,7 +1572,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
-	isNewVolume, e, err := c.reconcileVolumeCreation(v, e, es, rs)
+	isNewVolume, e, err := c.reconcileVolumeCreation(v, e, es, et, ets, rs)
 	if err != nil {
 		return err
 	}
@@ -1694,7 +1739,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	// check volume mount status
 	c.requestRemountIfFileSystemReadOnly(v, e)
 
-	if err := c.reconcileAttachDetachStateMachine(v, e, rs, isNewVolume, log); err != nil {
+	if err := c.reconcileAttachDetachStateMachine(v, e, et, rs, isNewVolume, log); err != nil {
 		return err
 	}
 
@@ -1759,7 +1804,7 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 	}
 }
 
-func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
+func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
 	// Here is the AD state machine graph
 	// https://github.com/longhorn/longhorn/blob/master/enhancements/assets/images/longhorn-volumeattachment/volume-controller-ad-logic.png
 
@@ -1772,29 +1817,29 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 		if v.Status.CurrentNodeID == "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching, longhorn.VolumeStateCreating:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, et, rs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, et, rs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, et, rs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
 				// This is a stable state.
 				// We attempt to close the resources anyway to make sure that they are closed
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, et, rs)
 			}
 			return nil
 		}
 		if v.Status.CurrentNodeID != "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttaching, longhorn.VolumeStateAttached, longhorn.VolumeStateDetached:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, et, rs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, et, rs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, et, rs) {
 					v.Status.CurrentNodeID = ""
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
@@ -1808,24 +1853,24 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 		if v.Status.CurrentNodeID == "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttached:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, et, rs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, et, rs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, et, rs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
-				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+				if err := c.openVolumeDependentResources(v, e, et, rs, log); err != nil {
 					return err
 				}
 				v.Status.State = longhorn.VolumeStateAttaching
 			case longhorn.VolumeStateAttaching:
-				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+				if err := c.openVolumeDependentResources(v, e, et, rs, log); err != nil {
 					return err
 				}
-				if c.areVolumeDependentResourcesOpened(e, rs) {
+				if c.areVolumeDependentResourcesOpened(v, e, et, rs) {
 					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
@@ -1838,11 +1883,11 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 			if v.Spec.NodeID == v.Status.CurrentNodeID {
 				switch v.Status.State {
 				case longhorn.VolumeStateAttaching, longhorn.VolumeStateDetached:
-					c.closeVolumeDependentResources(v, e, rs)
+					c.closeVolumeDependentResources(v, e, et, rs)
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
-					c.closeVolumeDependentResources(v, e, rs)
-					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					c.closeVolumeDependentResources(v, e, et, rs)
+					if c.verifyVolumeDependentResourcesClosed(v, e, et, rs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
@@ -1850,10 +1895,10 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				case longhorn.VolumeStateAttached:
 					// This is a stable state
 					// Try to openVolumeDependentResources so that we start the newly added replicas if they exist
-					if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+					if err := c.openVolumeDependentResources(v, e, et, rs, log); err != nil {
 						return err
 					}
-					if !c.areVolumeDependentResourcesOpened(e, rs) {
+					if !c.areVolumeDependentResourcesOpened(v, e, et, rs) {
 						log.Warnf("Volume is attached but dependent resources are not opened")
 					}
 				}
@@ -1862,25 +1907,25 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				switch v.Status.State {
 				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttaching:
-					c.closeVolumeDependentResources(v, e, rs)
+					c.closeVolumeDependentResources(v, e, et, rs)
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
-					c.closeVolumeDependentResources(v, e, rs)
-					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					c.closeVolumeDependentResources(v, e, et, rs)
+					if c.verifyVolumeDependentResourcesClosed(v, e, et, rs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
 					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
-						if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+						if err := c.openVolumeDependentResources(v, e, et, rs, log); err != nil {
 							return err
 						}
-						if !c.areVolumeDependentResourcesOpened(e, rs) {
+						if !c.areVolumeDependentResourcesOpened(v, e, et, rs) {
 							log.Warnf("Volume is attached but dependent resources are not opened")
 						}
 					} else {
-						c.closeVolumeDependentResources(v, e, rs)
+						c.closeVolumeDependentResources(v, e, et, rs)
 						v.Status.State = longhorn.VolumeStateDetaching
 					}
 				}
@@ -1892,7 +1937,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 	return nil
 }
 
-func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (bool, *longhorn.Engine, error) {
+func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, et *longhorn.EngineTarget, ets map[string]*longhorn.EngineTarget, rs map[string]*longhorn.Replica) (bool, *longhorn.Engine, error) {
 	// first time engine creation etc
 
 	var isNewVolume bool
@@ -1906,6 +1951,17 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 		}
 		isNewVolume = true
 		es[e.Name] = e
+	}
+
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		if len(ets) == 0 {
+			// first time creation
+			et, err = c.createEngineTarget(v, "")
+			if err != nil {
+				return false, e, err
+			}
+			ets[et.Name] = et
+		}
 	}
 
 	if len(rs) == 0 {
@@ -2058,7 +2114,7 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
 }
 
-func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
@@ -2154,6 +2210,26 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		return fmt.Errorf("no healthy or scheduled replica for starting")
 	}
 
+	if types.IsDataEngineV2(v.Spec.DataEngine) && et != nil {
+		// For V2 data engine, start the engine target first and wait for it to be running before starting the engine.
+		if et.Spec.NodeID == "" {
+			engineTargetNodeID, err := c.selectEngineTargetNode(v, et, rs)
+			if err != nil {
+				return err
+			}
+
+			log.Infof("Selected engine target node %v for volume", engineTargetNodeID)
+			et.Spec.NodeID = engineTargetNodeID
+		}
+
+		et.Spec.ReplicaAddressMap = replicaAddressMap
+		et.Spec.DesireState = longhorn.InstanceStateRunning
+
+		if et.Status.CurrentState != longhorn.InstanceStateRunning {
+			return nil
+		}
+	}
+
 	if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
 		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
 			e.Spec.NodeID, v.Status.CurrentNodeID)
@@ -2170,7 +2246,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	return nil
 }
 
-func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica) bool {
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {
@@ -2179,10 +2255,16 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine,
 			break
 		}
 	}
-	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
+	if !hasRunningReplica || e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false
+	}
+	if types.IsDataEngineV2(v.Spec.DataEngine) && et != nil {
+		return et.Status.CurrentState == longhorn.InstanceStateRunning
+	}
+	return true
 }
 
-func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica) {
 	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 
@@ -2206,6 +2288,16 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		e.Spec.RequestedBackupRestore = ""
 		e.Spec.NodeID = ""
 		e.Spec.DesireState = longhorn.InstanceStateStopped
+	}
+	if et != nil {
+		if et.Spec.DesireState != longhorn.InstanceStateStopped || et.Spec.NodeID != "" {
+			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+				et.Spec.LogRequested = true
+			}
+			et.Spec.NodeID = ""
+			et.Spec.ReplicaAddressMap = map[string]string{}
+			et.Spec.DesireState = longhorn.InstanceStateStopped
+		}
 	}
 	// must make sure engine stopped first before stopping replicas
 	// otherwise we may corrupt the data
@@ -2241,7 +2333,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	}
 }
 
-func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volume, e *longhorn.Engine, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica) bool {
 	allReplicasStopped := func() bool {
 		for _, r := range rs {
 			if r.Status.CurrentState != longhorn.InstanceStateStopped {
@@ -2250,7 +2342,13 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engi
 		}
 		return true
 	}
-	return e.Status.CurrentState == longhorn.InstanceStateStopped && allReplicasStopped()
+	if e.Status.CurrentState != longhorn.InstanceStateStopped || !allReplicasStopped() {
+		return false
+	}
+	if types.IsDataEngineV2(v.Spec.DataEngine) && et != nil {
+		return et.Status.CurrentState == longhorn.InstanceStateStopped
+	}
+	return true
 }
 
 func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
@@ -3960,6 +4058,142 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	return c.ds.CreateEngine(engine)
+}
+
+func (c *VolumeController) createEngineTarget(v *longhorn.Volume, currentEngineTargetName string) (*longhorn.EngineTarget, error) {
+	log := getLoggerForVolume(c.logger, v)
+
+	engineTarget := &longhorn.EngineTarget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateEngineTargetNameForVolume(v.Name, currentEngineTargetName),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+		},
+		Spec: longhorn.EngineTargetSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
+				Image:       v.Status.CurrentImage,
+				DataEngine:  v.Spec.DataEngine,
+				DesireState: longhorn.InstanceStateStopped,
+			},
+			ReplicaAddressMap: map[string]string{},
+			SnapshotMaxCount:  v.Spec.SnapshotMaxCount,
+			SnapshotMaxSize:   v.Spec.SnapshotMaxSize,
+		},
+	}
+
+	log.Infof("Creating engine target %v for volume", engineTarget.Name)
+	return c.ds.CreateEngineTarget(engineTarget)
+}
+
+func (c *VolumeController) reconcileEngineTargetCreation(v *longhorn.Volume, e *longhorn.Engine, ets map[string]*longhorn.EngineTarget, log *logrus.Entry) (*longhorn.EngineTarget, error) {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return nil, nil
+	}
+
+	if len(ets) == 0 {
+		et, err := c.createEngineTarget(v, e.Name)
+		if err != nil {
+			return nil, err
+		}
+		ets[et.Name] = et
+		return et, nil
+	}
+
+	return nil, nil
+}
+
+func (c *VolumeController) pickCurrentVolumeEngineTarget(v *longhorn.Volume, ets map[string]*longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return nil, nil
+	}
+
+	return c.pickEngineTargetForVolume(v, ets)
+}
+
+func (c *VolumeController) pickEngineTargetForVolume(v *longhorn.Volume, ets map[string]*longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	if len(ets) == 0 {
+		return nil, nil
+	}
+
+	for _, et := range ets {
+		return et, nil
+	}
+
+	return nil, nil
+}
+
+func (c *VolumeController) getSchedulableEngineTargetNodes(v *longhorn.Volume) (map[string]*longhorn.Node, error) {
+	nodes, err := c.scheduler.ListSchedulableNodes(v.Spec.DataEngine)
+	if err != nil {
+		return nil, err
+	}
+
+	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+
+	if len(v.Spec.NodeSelector) != 0 {
+		for nodeName, node := range nodes {
+			if !types.IsSelectorsInTags(node.Spec.Tags, v.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
+				delete(nodes, nodeName)
+			}
+		}
+	}
+
+	return nodes, nil
+}
+
+func (c *VolumeController) selectEngineTargetNode(v *longhorn.Volume, et *longhorn.EngineTarget, rs map[string]*longhorn.Replica) (string, error) {
+	nodes, err := c.getSchedulableEngineTargetNodes(v)
+	if err != nil {
+		return "", err
+	}
+	if len(nodes) == 0 {
+		return "", fmt.Errorf("no schedulable nodes available for engine target")
+	}
+
+	if et != nil && et.Spec.NodeID != "" {
+		if _, ok := nodes[et.Spec.NodeID]; ok {
+			return et.Spec.NodeID, nil
+		}
+	}
+
+	if v.Spec.NodeID != "" {
+		if _, ok := nodes[v.Spec.NodeID]; ok {
+			return v.Spec.NodeID, nil
+		}
+	}
+
+	// Prefer nodes that already host running replicas
+	replicaCounts := map[string]int{}
+	for _, r := range rs {
+		if r.Spec.NodeID == "" || r.Spec.FailedAt != "" {
+			continue
+		}
+		if r.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+		replicaCounts[r.Spec.NodeID]++
+	}
+
+	names := make([]string, 0, len(nodes))
+	for name := range nodes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	selected := names[0]
+	maxReplicas := replicaCounts[selected]
+	for _, name := range names[1:] {
+		if replicaCounts[name] > maxReplicas {
+			selected = name
+			maxReplicas = replicaCounts[name]
+		}
+	}
+
+	return selected, nil
 }
 
 func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, string, string, error) {

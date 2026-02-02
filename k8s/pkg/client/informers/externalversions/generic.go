@@ -71,6 +71,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().Engines().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("engineimages"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().EngineImages().Informer()}, nil
+	case v1beta2.SchemeGroupVersion.WithResource("enginetargets"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().EngineTargets().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("instancemanagers"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Longhorn().V1beta2().InstanceManagers().Informer()}, nil
 	case v1beta2.SchemeGroupVersion.WithResource("nodes"):

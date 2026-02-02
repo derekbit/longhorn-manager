@@ -125,6 +125,12 @@ type EngineSpec struct {
 	InstanceSpec `json:""`
 	// +optional
 	Frontend VolumeFrontend `json:"frontend"`
+	// InitiatorAddress is used by the data engine for a separated initiator/target design.
+	// +optional
+	InitiatorAddress string `json:"initiatorAddress"`
+	// TargetAddress is used by the data engine for a separated initiator/target design.
+	// +optional
+	TargetAddress string `json:"targetAddress"`
 	// ublkQueueDepth controls the depth of each queue for ublk frontend.
 	// +optional
 	UblkQueueDepth int `json:"ublkQueueDepth,omitempty"`

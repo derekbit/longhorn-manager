@@ -27,18 +27,19 @@ import (
 //
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager
 type InstanceManagerStatusApplyConfiguration struct {
-	OwnerID            *string                                             `json:"ownerID,omitempty"`
-	CurrentState       *longhornv1beta2.InstanceManagerState               `json:"currentState,omitempty"`
-	Conditions         []ConditionApplyConfiguration                       `json:"conditions,omitempty"`
-	InstanceEngines    map[string]InstanceProcessApplyConfiguration        `json:"instanceEngines,omitempty"`
-	InstanceReplicas   map[string]InstanceProcessApplyConfiguration        `json:"instanceReplicas,omitempty"`
-	BackingImages      map[string]BackingImageV2CopyInfoApplyConfiguration `json:"backingImages,omitempty"`
-	IP                 *string                                             `json:"ip,omitempty"`
-	APIMinVersion      *int                                                `json:"apiMinVersion,omitempty"`
-	APIVersion         *int                                                `json:"apiVersion,omitempty"`
-	ProxyAPIMinVersion *int                                                `json:"proxyApiMinVersion,omitempty"`
-	ProxyAPIVersion    *int                                                `json:"proxyApiVersion,omitempty"`
-	DataEngineStatus   *DataEngineStatusApplyConfiguration                 `json:"dataEngineStatus,omitempty"`
+	OwnerID               *string                                             `json:"ownerID,omitempty"`
+	CurrentState          *longhornv1beta2.InstanceManagerState               `json:"currentState,omitempty"`
+	Conditions            []ConditionApplyConfiguration                       `json:"conditions,omitempty"`
+	InstanceEngines       map[string]InstanceProcessApplyConfiguration        `json:"instanceEngines,omitempty"`
+	InstanceEngineTargets map[string]InstanceProcessApplyConfiguration        `json:"instanceEngineTargets,omitempty"`
+	InstanceReplicas      map[string]InstanceProcessApplyConfiguration        `json:"instanceReplicas,omitempty"`
+	BackingImages         map[string]BackingImageV2CopyInfoApplyConfiguration `json:"backingImages,omitempty"`
+	IP                    *string                                             `json:"ip,omitempty"`
+	APIMinVersion         *int                                                `json:"apiMinVersion,omitempty"`
+	APIVersion            *int                                                `json:"apiVersion,omitempty"`
+	ProxyAPIMinVersion    *int                                                `json:"proxyApiMinVersion,omitempty"`
+	ProxyAPIVersion       *int                                                `json:"proxyApiVersion,omitempty"`
+	DataEngineStatus      *DataEngineStatusApplyConfiguration                 `json:"dataEngineStatus,omitempty"`
 }
 
 // InstanceManagerStatusApplyConfiguration constructs a declarative configuration of the InstanceManagerStatus type for use with
@@ -86,6 +87,20 @@ func (b *InstanceManagerStatusApplyConfiguration) WithInstanceEngines(entries ma
 	}
 	for k, v := range entries {
 		b.InstanceEngines[k] = v
+	}
+	return b
+}
+
+// WithInstanceEngineTargets puts the entries into the InstanceEngineTargets field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the InstanceEngineTargets field,
+// overwriting an existing map entries in InstanceEngineTargets field with the same key.
+func (b *InstanceManagerStatusApplyConfiguration) WithInstanceEngineTargets(entries map[string]InstanceProcessApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
+	if b.InstanceEngineTargets == nil && len(entries) > 0 {
+		b.InstanceEngineTargets = make(map[string]InstanceProcessApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.InstanceEngineTargets[k] = v
 	}
 	return b
 }

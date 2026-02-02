@@ -14,6 +14,7 @@ import (
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -470,6 +471,11 @@ type EngineInstanceCreateRequest struct {
 	TargetAddress                    string
 }
 
+type EngineTargetInstanceCreateRequest struct {
+	EngineTarget *longhorn.EngineTarget
+	Address      string
+}
+
 // EngineInstanceCreate creates a new engine instance
 func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
@@ -528,6 +534,48 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			InitiatorAddress:  req.InitiatorAddress,
 			TargetAddress:     req.TargetAddress,
 			SalvageRequested:  req.Engine.Spec.SalvageRequested,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return parseInstance(instance), nil
+}
+
+// EngineTargetInstanceCreate creates a new engine target instance
+func (c *InstanceManagerClient) EngineTargetInstanceCreate(req *EngineTargetInstanceCreateRequest) (*longhorn.InstanceProcess, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return nil, err
+	}
+
+	if req.EngineTarget == nil {
+		return nil, fmt.Errorf("engine target is nil")
+	}
+
+	if types.IsDataEngineV1(req.EngineTarget.Spec.DataEngine) {
+		return nil, fmt.Errorf("engine target is only supported for v2 data engine")
+	}
+
+	replicaAddresses := req.EngineTarget.Spec.ReplicaAddressMap
+	if len(replicaAddresses) == 0 {
+		replicaAddresses = req.EngineTarget.Status.CurrentReplicaAddressMap
+	}
+
+	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
+		BackendStoreDriver: string(req.EngineTarget.Spec.DataEngine),
+		DataEngine:         string(req.EngineTarget.Spec.DataEngine),
+		Name:               req.EngineTarget.Name,
+		InstanceType:       string(imtypes.InstanceTypeEngineTarget),
+		VolumeName:         req.EngineTarget.Spec.VolumeName,
+		Size:               uint64(req.EngineTarget.Spec.VolumeSize),
+		PortCount:          DefaultEnginePortCount,
+		PortArgs:           []string{DefaultPortArg},
+
+		EngineTarget: imclient.EngineTargetCreateRequest{
+			ReplicaAddressMap: replicaAddresses,
+			Address:           req.Address,
+			SalvageRequested:  req.EngineTarget.Spec.SalvageRequested,
 		},
 	})
 

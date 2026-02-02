@@ -90,6 +90,14 @@ type EngineImageListerExpansion interface{}
 // EngineImageNamespaceLister.
 type EngineImageNamespaceListerExpansion interface{}
 
+// EngineTargetListerExpansion allows custom methods to be added to
+// EngineTargetLister.
+type EngineTargetListerExpansion interface{}
+
+// EngineTargetNamespaceListerExpansion allows custom methods to be added to
+// EngineTargetNamespaceLister.
+type EngineTargetNamespaceListerExpansion interface{}
+
 // InstanceManagerListerExpansion allows custom methods to be added to
 // InstanceManagerLister.
 type InstanceManagerListerExpansion interface{}

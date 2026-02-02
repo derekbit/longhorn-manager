@@ -31,6 +31,7 @@ import (
 
 const (
 	CRDEngineName                 = "engines.longhorn.io"
+	CRDEngineTargetName           = "enginetargets.longhorn.io"
 	CRDReplicaName                = "replicas.longhorn.io"
 	CRDVolumeName                 = "volumes.longhorn.io"
 	CRDEngineImageName            = "engineimages.longhorn.io"
@@ -112,6 +113,12 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.EngineInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDEngineTargetName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.EngineTargetInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.EngineTargetInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDReplicaName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.ReplicaInformer.AddEventHandler(c.controlleeHandler()); err != nil {

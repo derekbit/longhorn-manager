@@ -619,8 +619,9 @@ type InstanceManager struct {
 	ManagerType  string                        `json:"managerType"`
 	DataEngine   string                        `json:"dataEngine"`
 
-	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
-	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
+	InstanceEngines       map[string]longhorn.InstanceProcess `json:"instanceEngines"`
+	InstanceEngineTargets map[string]longhorn.InstanceProcess `json:"instanceEngineTargets"`
+	InstanceReplicas      map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
 
 	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
@@ -2415,14 +2416,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:     im.Status.CurrentState,
-		Image:            im.Spec.Image,
-		Name:             im.Name,
-		NodeID:           im.Spec.NodeID,
-		ManagerType:      string(im.Spec.Type),
-		DataEngine:       string(im.Spec.DataEngine),
-		InstanceEngines:  im.Status.InstanceEngines,
-		InstanceReplicas: im.Status.InstanceReplicas,
+		CurrentState:          im.Status.CurrentState,
+		Image:                 im.Spec.Image,
+		Name:                  im.Name,
+		NodeID:                im.Spec.NodeID,
+		ManagerType:           string(im.Spec.Type),
+		DataEngine:            string(im.Spec.DataEngine),
+		InstanceEngines:       im.Status.InstanceEngines,
+		InstanceEngineTargets: im.Status.InstanceEngineTargets,
+		InstanceReplicas:      im.Status.InstanceReplicas,
 	}
 }
 

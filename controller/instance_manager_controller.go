@@ -551,6 +551,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
 		im.Status.InstanceEngines = nil
+		im.Status.InstanceEngineTargets = nil
 		im.Status.InstanceReplicas = nil
 		im.Status.BackingImages = nil
 	}
@@ -750,7 +751,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		return false, true, false, nil
 	}
 
-	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceEngineTargets, im.Status.InstanceReplicas) {
 		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 			return false, false, true, nil
 		}
@@ -1163,11 +1164,17 @@ const ITERATE_NAME_LIMIT = 5
 
 func formatInstanceMessage(im *longhorn.InstanceManager) string {
 	msg := ""
-	if len(im.Status.InstanceEngines) > 0 {
-		msg = fmt.Sprintf("InstanceEngines count %v", len(im.Status.InstanceEngines))
+	if len(im.Status.InstanceEngines)+len(im.Status.InstanceEngineTargets) > 0 {
+		msg = fmt.Sprintf("InstanceEngines and InstanceEngineTargets count %v;", len(im.Status.InstanceEngines)+len(im.Status.InstanceEngineTargets))
 		i := 0
 		// only fetch the key, format: pvc-546894e9-d41a-4e34-bfa8-a4442f8dce20-e-0
 		for k := range im.Status.InstanceEngines {
+			msg = msg + " " + k
+			if i++; i >= ITERATE_NAME_LIMIT {
+				break
+			}
+		}
+		for k := range im.Status.InstanceEngineTargets {
 			msg = msg + " " + k
 			if i++; i >= ITERATE_NAME_LIMIT {
 				break
@@ -1196,6 +1203,13 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
 		if len(im.Status.InstanceEngines) == 0 {
+			return true, "", nil
+		}
+		return false, fmt.Sprintf("some instances are still running %v", formatInstanceMessage(im)), nil
+	}
+
+	if im.Spec.Type == longhorn.InstanceManagerTypeEngineTarget {
+		if len(im.Status.InstanceEngineTargets) == 0 {
 			return true, "", nil
 		}
 		return false, fmt.Sprintf("some instances are still running %v", formatInstanceMessage(im)), nil
@@ -1945,6 +1959,8 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 		case longhorn.OrphanTypeEngineInstance:
 			_, instanceExist = im.Status.InstanceEngines[instanceName]
 			instanceCRScheduledBack, err = imc.isEngineOnInstanceManager(instanceManager, instanceName)
+		case longhorn.OrphanTypeReplicaTargetInstance:
+			// TODO: handle engine target orphan deletion
 		case longhorn.OrphanTypeReplicaInstance:
 			_, instanceExist = im.Status.InstanceReplicas[instanceName]
 			instanceCRScheduledBack, err = imc.isReplicaOnInstanceManager(instanceManager, instanceName)
@@ -2454,16 +2470,18 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, instanceMap instanceProcessMap) bool {
 	switch {
 	default:
-		engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+		engineProcesses, engineTargetProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
 
 		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
 		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
 		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcesses)) &&
+			((len(im.Status.InstanceEngineTargets) == 0 && len(engineProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceEngineTargets, engineProcesses)) &&
 			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcesses) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcesses)) {
 			return false
 		}
 
 		im.Status.InstanceEngines = engineProcesses
+		im.Status.InstanceEngineTargets = engineTargetProcesses
 		im.Status.InstanceReplicas = replicaProcesses
 	}
 	return true
@@ -2482,7 +2500,8 @@ func (m *InstanceManagerMonitor) StopMonitorWithLock() {
 }
 
 func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, instanceMap instanceProcessMap) {
-	engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
+	// TODO: handle engineTargetProcesses
+	engineProcesses, _, replicaProcesses := m.categorizeProcesses(instanceMap)
 	existOrphansList, err := m.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		m.logger.WithError(err).Errorf("Failed to list orphans on node %s", im.Spec.NodeID)
@@ -2625,18 +2644,21 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	return m.ds.CreateOrphan(orphan)
 }
 
-func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap) {
+func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcessMap) (instanceProcessMap, instanceProcessMap, instanceProcessMap) {
 	engineProcesses := make(instanceProcessMap)
+	engineTargetProcesses := make(instanceProcessMap)
 	replicaProcesses := make(instanceProcessMap)
 	for name, process := range instanceMap {
 		switch process.Status.Type {
 		case longhorn.InstanceTypeEngine:
 			engineProcesses[name] = process
+		case longhorn.InstanceTypeEngineTarget:
+			engineTargetProcesses[name] = process
 		case longhorn.InstanceTypeReplica:
 			replicaProcesses[name] = process
 		}
 	}
-	return engineProcesses, replicaProcesses
+	return engineProcesses, engineTargetProcesses, replicaProcesses
 }
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {

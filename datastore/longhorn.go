@@ -1568,6 +1568,13 @@ func checkEngine(engine *longhorn.Engine) error {
 	return nil
 }
 
+func checkEngineTarget(engineTarget *longhorn.EngineTarget) error {
+	if engineTarget.Name == "" || engineTarget.Spec.VolumeName == "" {
+		return fmt.Errorf("BUG: missing required field %+v", engineTarget)
+	}
+	return nil
+}
+
 // GetCurrentEngineAndExtras pick the current Engine and extra Engines from the Engine list of a volume with the given namespace
 func GetCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engine) (currentEngine *longhorn.Engine, extras []*longhorn.Engine, err error) {
 	for _, e := range es {
@@ -1722,6 +1729,37 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	return ret.DeepCopy(), nil
 }
 
+// CreateEngineTarget creates a Longhorn EngineTarget resource and verifies creation
+func (s *DataStore) CreateEngineTarget(et *longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	if err := checkEngineTarget(et); err != nil {
+		return nil, err
+	}
+	if err := labelNode(et.Spec.NodeID, et); err != nil {
+		return nil, err
+	}
+
+	ret, err := s.lhClient.LonghornV1beta2().EngineTargets(s.namespace).Create(context.TODO(), et, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(et.Name, "enginetarget", func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineTargetRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.EngineTarget)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for enginetarget")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
 // UpdateEngine updates Longhorn Engine and verifies update
 func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err := checkEngine(e); err != nil {
@@ -1741,6 +1779,25 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	return obj, nil
 }
 
+// UpdateEngineTarget updates Longhorn EngineTarget and verifies update
+func (s *DataStore) UpdateEngineTarget(et *longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	if err := checkEngineTarget(et); err != nil {
+		return nil, err
+	}
+	if err := labelNode(et.Spec.NodeID, et); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().EngineTargets(s.namespace).Update(context.TODO(), et, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(et.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineTargetRO(name)
+	})
+	return obj, nil
+}
+
 // UpdateEngineStatus updates Longhorn Engine status and verifies update
 func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	obj, err := s.lhClient.LonghornV1beta2().Engines(s.namespace).UpdateStatus(context.TODO(), e, metav1.UpdateOptions{})
@@ -1753,10 +1810,28 @@ func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, er
 	return obj, nil
 }
 
+// UpdateEngineTargetStatus updates Longhorn EngineTarget status and verifies update
+func (s *DataStore) UpdateEngineTargetStatus(et *longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	obj, err := s.lhClient.LonghornV1beta2().EngineTargets(s.namespace).UpdateStatus(context.TODO(), et, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(et.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetEngineTargetRO(name)
+	})
+	return obj, nil
+}
+
 // DeleteEngine won't result in immediately deletion since finalizer was set by
 // default
 func (s *DataStore) DeleteEngine(name string) error {
 	return s.lhClient.LonghornV1beta2().Engines(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// DeleteEngineTarget won't result in immediately deletion since finalizer was set by
+// default
+func (s *DataStore) DeleteEngineTarget(name string) error {
+	return s.lhClient.LonghornV1beta2().EngineTargets(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // RemoveFinalizerForEngine will result in deletion if DeletionTimestamp was set
@@ -1779,13 +1854,48 @@ func (s *DataStore) RemoveFinalizerForEngine(obj *longhorn.Engine) error {
 	return nil
 }
 
+// RemoveFinalizerForEngineTarget will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForEngineTarget(obj *longhorn.EngineTarget) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().EngineTargets(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for enginetarget %v", obj.Name)
+	}
+	return nil
+}
+
 func (s *DataStore) GetEngineRO(name string) (*longhorn.Engine, error) {
 	return s.engineLister.Engines(s.namespace).Get(name)
+}
+
+func (s *DataStore) GetEngineTargetRO(name string) (*longhorn.EngineTarget, error) {
+	return s.engineTargetLister.EngineTargets(s.namespace).Get(name)
 }
 
 // GetEngine returns the Engine for the given name and namespace
 func (s *DataStore) GetEngine(name string) (*longhorn.Engine, error) {
 	resultRO, err := s.GetEngineRO(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetEngineTarget returns the EngineTarget for the given name and namespace
+func (s *DataStore) GetEngineTarget(name string) (*longhorn.EngineTarget, error) {
+	resultRO, err := s.GetEngineTargetRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1807,14 +1917,37 @@ func (s *DataStore) listEngines(selector labels.Selector) (map[string]*longhorn.
 	return engines, nil
 }
 
+func (s *DataStore) listEngineTargets(selector labels.Selector) (map[string]*longhorn.EngineTarget, error) {
+	list, err := s.engineTargetLister.EngineTargets(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	engineTargets := map[string]*longhorn.EngineTarget{}
+	for _, et := range list {
+		// Cannot use cached object from lister
+		engineTargets[et.Name] = et.DeepCopy()
+	}
+	return engineTargets, nil
+}
+
 // ListEngines returns an object contains all Engine for the given namespace
 func (s *DataStore) ListEngines() (map[string]*longhorn.Engine, error) {
 	return s.listEngines(labels.Everything())
 }
 
+// ListEngineTargets returns an object contains all EngineTargets for the given namespace
+func (s *DataStore) ListEngineTargets() (map[string]*longhorn.EngineTarget, error) {
+	return s.listEngineTargets(labels.Everything())
+}
+
 // ListEnginesRO returns a list of all Engine for the given namespace
 func (s *DataStore) ListEnginesRO() ([]*longhorn.Engine, error) {
 	return s.engineLister.Engines(s.namespace).List(labels.Everything())
+}
+
+// ListEngineTargetsRO returns a list of all EngineTargets for the given namespace
+func (s *DataStore) ListEngineTargetsRO() ([]*longhorn.EngineTarget, error) {
+	return s.engineTargetLister.EngineTargets(s.namespace).List(labels.Everything())
 }
 
 // ListVolumeEngines returns an object contains all Engines with the given
@@ -1825,6 +1958,16 @@ func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.E
 		return nil, err
 	}
 	return s.listEngines(selector)
+}
+
+// ListVolumeEngineTargets returns an object contains all EngineTargets with the given
+// LonghornLabelVolume name and namespace
+func (s *DataStore) ListVolumeEngineTargets(volumeName string) (map[string]*longhorn.EngineTarget, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listEngineTargets(selector)
 }
 
 func (s *DataStore) ListVolumeEnginesRO(volumeName string) (map[string]*longhorn.Engine, error) {
@@ -1844,6 +1987,27 @@ func (s *DataStore) ListVolumeEnginesRO(volumeName string) (map[string]*longhorn
 	}
 
 	return engineMap, nil
+}
+
+// ListVolumeEngineTargetsRO returns a list of all EngineTargets with the given
+// LonghornLabelVolume name and namespace
+func (s *DataStore) ListVolumeEngineTargetsRO(volumeName string) (map[string]*longhorn.EngineTarget, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineTargetList, err := s.engineTargetLister.EngineTargets(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	engineTargetMap := make(map[string]*longhorn.EngineTarget, len(engineTargetList))
+	for _, et := range engineTargetList {
+		engineTargetMap[et.Name] = et
+	}
+
+	return engineTargetMap, nil
 }
 
 func checkReplica(r *longhorn.Replica) error {
@@ -4394,6 +4558,10 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 
 	switch obj := obj.(type) {
 	case *longhorn.Engine:
+		name = obj.Name
+		dataEngine = obj.Spec.DataEngine
+		nodeID = obj.Spec.NodeID
+	case *longhorn.EngineTarget:
 		name = obj.Name
 		dataEngine = obj.Spec.DataEngine
 		nodeID = obj.Spec.NodeID
