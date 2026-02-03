@@ -1822,6 +1822,17 @@ func (s *DataStore) UpdateEngineTargetStatus(et *longhorn.EngineTarget) (*longho
 	return obj, nil
 }
 
+// ResetMonitoringEngineTargetStatus clean and update EngineTarget status
+func (s *DataStore) ResetMonitoringEngineTargetStatus(et *longhorn.EngineTarget) (*longhorn.EngineTarget, error) {
+	et.Status.Endpoint = ""
+	et.Status.ReplicaModeMap = nil
+	ret, err := s.UpdateEngineTargetStatus(et)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to reset engine target status for %v", et.Name)
+	}
+	return ret, nil
+}
+
 // DeleteEngine won't result in immediately deletion since finalizer was set by
 // default
 func (s *DataStore) DeleteEngine(name string) error {

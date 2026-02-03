@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"reflect"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -20,6 +23,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	spdkclient "github.com/longhorn/longhorn-spdk-engine/pkg/client"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -28,6 +33,13 @@ import (
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+)
+
+var (
+	EngineTargetPollInterval = 5 * time.Second
+	EngineTargetPollTimeout  = 30 * time.Second
+
+	EngineTargetMonitorConflictRetryCount = 5
 )
 
 // EngineTargetController is a placeholder controller for the separated engine target lifecycle.
@@ -45,6 +57,25 @@ type EngineTargetController struct {
 	instanceHandler *InstanceHandler
 
 	cacheSyncs []cache.InformerSynced
+
+	engineTargetMonitorMutex *sync.RWMutex
+	engineTargetMonitorMap   map[string]chan struct{}
+}
+
+// EngineTargetMonitor monitors the status of a running engine target
+type EngineTargetMonitor struct {
+	logger logrus.FieldLogger
+
+	namespace     string
+	ds            *datastore.DataStore
+	eventRecorder record.EventRecorder
+
+	Name   string
+	stopCh chan struct{}
+
+	controllerID string
+	// used to notify the controller that monitoring has stopped
+	monitorVoluntaryStopCh chan struct{}
 }
 
 func NewEngineTargetController(
@@ -68,6 +99,9 @@ func NewEngineTargetController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-engine-target-controller"}),
 
 		ds: ds,
+
+		engineTargetMonitorMutex: &sync.RWMutex{},
+		engineTargetMonitorMap:   map[string]chan struct{}{},
 	}
 	etc.instanceHandler = NewInstanceHandler(ds, etc, etc.eventRecorder)
 
@@ -210,10 +244,11 @@ func (etc *EngineTargetController) syncEngineTarget(key string) (err error) {
 	}
 
 	if engineTarget.DeletionTimestamp != nil {
+		etc.stopMonitoring(engineTarget.Name)
 		if err := etc.DeleteInstance(engineTarget); err != nil {
 			return err
 		}
-		return nil
+		return etc.ds.RemoveFinalizerForEngineTarget(engineTarget)
 	}
 
 	if engineTarget.Status.OwnerID != etc.controllerID {
@@ -248,6 +283,16 @@ func (etc *EngineTargetController) syncEngineTarget(key string) (err error) {
 	if err := etc.instanceHandler.ReconcileInstanceState(engineTarget, &engineTarget.Spec.InstanceSpec, &engineTarget.Status.InstanceStatus); err != nil {
 		return err
 	}
+
+	if engineTarget.Status.CurrentState == longhorn.InstanceStateRunning {
+		if !etc.isMonitoring(engineTarget) {
+			etc.startMonitoring(engineTarget)
+		}
+	} else if etc.isMonitoring(engineTarget) {
+		// engine target is not running
+		etc.resetAndStopMonitoring(engineTarget)
+	}
+
 	return nil
 }
 
@@ -409,4 +454,181 @@ func (etc *EngineTargetController) LogInstance(ctx context.Context, obj interfac
 
 func getLoggerForEngineTarget(logger logrus.FieldLogger, et *longhorn.EngineTarget) *logrus.Entry {
 	return logger.WithField("engineTarget", et.Name)
+}
+
+func (etc *EngineTargetController) isMonitoring(et *longhorn.EngineTarget) bool {
+	etc.engineTargetMonitorMutex.RLock()
+	defer etc.engineTargetMonitorMutex.RUnlock()
+
+	_, ok := etc.engineTargetMonitorMap[et.Name]
+	return ok
+}
+
+func (etc *EngineTargetController) startMonitoring(et *longhorn.EngineTarget) {
+	stopCh := make(chan struct{})
+	monitorVoluntaryStopCh := make(chan struct{})
+	monitor := &EngineTargetMonitor{
+		logger:                 etc.logger.WithField("engineTarget", et.Name),
+		Name:                   et.Name,
+		namespace:              et.Namespace,
+		ds:                     etc.ds,
+		eventRecorder:          etc.eventRecorder,
+		stopCh:                 stopCh,
+		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
+		controllerID:           etc.controllerID,
+	}
+
+	etc.engineTargetMonitorMutex.Lock()
+	defer etc.engineTargetMonitorMutex.Unlock()
+
+	if _, ok := etc.engineTargetMonitorMap[et.Name]; ok {
+		return
+	}
+	etc.engineTargetMonitorMap[et.Name] = stopCh
+
+	go monitor.Run()
+	go func() {
+		<-monitorVoluntaryStopCh
+		etc.engineTargetMonitorMutex.Lock()
+		delete(etc.engineTargetMonitorMap, et.Name)
+		etc.engineTargetMonitorMutex.Unlock()
+	}()
+}
+
+func (etc *EngineTargetController) resetAndStopMonitoring(et *longhorn.EngineTarget) {
+	if _, err := etc.ds.ResetMonitoringEngineTargetStatus(et); err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to update engine target %v to stop monitoring", et.Name))
+		// better luck next time
+		return
+	}
+
+	etc.stopMonitoring(et.Name)
+}
+
+func (etc *EngineTargetController) stopMonitoring(engineTargetName string) {
+	etc.engineTargetMonitorMutex.Lock()
+	defer etc.engineTargetMonitorMutex.Unlock()
+
+	stopCh, ok := etc.engineTargetMonitorMap[engineTargetName]
+	if !ok {
+		return
+	}
+
+	select {
+	case <-stopCh:
+		// stopCh channel is already closed
+	default:
+		close(stopCh)
+	}
+}
+
+func (m *EngineTargetMonitor) Run() {
+	m.logger.Info("Starting monitoring engine target")
+	defer func() {
+		m.logger.Info("Stopping monitoring engine target")
+		close(m.monitorVoluntaryStopCh)
+	}()
+
+	ticker := time.NewTicker(EngineTargetPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if needStop := m.sync(); needStop {
+				return
+			}
+		case <-m.stopCh:
+			return
+		}
+	}
+}
+
+func (m *EngineTargetMonitor) sync() bool {
+	for count := 0; count < EngineTargetMonitorConflictRetryCount; count++ {
+		engineTarget, err := m.ds.GetEngineTarget(m.Name)
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				m.logger.Warn("Stopping monitoring because the engine target no longer exists")
+				return true
+			}
+			utilruntime.HandleError(errors.Wrapf(err, "failed to get engine target %v for monitoring", m.Name))
+			return false
+		}
+
+		if engineTarget.Status.OwnerID != m.controllerID {
+			m.logger.Warnf("Stopping monitoring the engine target on this node (%v) because the engine target has new ownerID %v", m.controllerID, engineTarget.Status.OwnerID)
+			return true
+		}
+
+		// engine target is maybe starting
+		if engineTarget.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+
+		if err := m.refresh(engineTarget); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
+			utilruntime.HandleError(errors.Wrapf(err, "failed to update status for engine target %v", m.Name))
+			break
+		}
+		// Retry if the error is due to conflict
+	}
+
+	return false
+}
+
+func (m *EngineTargetMonitor) refresh(engineTarget *longhorn.EngineTarget) error {
+	existingEngineTarget := engineTarget.DeepCopy()
+
+	im, err := m.ds.GetInstanceManagerRO(engineTarget.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
+
+	// Get SPDK client to query engine target status
+	serviceURL := net.JoinHostPort(im.Status.IP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort))
+	spdkCli, err := spdkclient.NewSPDKClient(serviceURL)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create SPDK client for engine target %v", engineTarget.Name)
+	}
+	defer spdkCli.Close()
+
+	// Get engine target list to find the status of this engine target
+	engineTargets, err := spdkCli.EngineTargetList()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list engine targets from SPDK service for engine target %v", engineTarget.Name)
+	}
+
+	et, ok := engineTargets[engineTarget.Name]
+	if !ok {
+		m.logger.Warnf("Engine target %v not found in SPDK service", engineTarget.Name)
+		return nil
+	}
+
+	// Update ReplicaModeMap from the running engine target
+	currentReplicaModeMap := map[string]longhorn.ReplicaMode{}
+	for replicaName, mode := range et.ReplicaModeMap {
+		switch mode {
+		case "RW":
+			currentReplicaModeMap[replicaName] = longhorn.ReplicaModeRW
+		case "WO":
+			currentReplicaModeMap[replicaName] = longhorn.ReplicaModeWO
+		default:
+			currentReplicaModeMap[replicaName] = longhorn.ReplicaModeERR
+		}
+	}
+	engineTarget.Status.ReplicaModeMap = currentReplicaModeMap
+	//engineTarget.Status.ReplicaTransitionTimeMap = currentReplicaTransitionTimeMap
+
+	// Update Endpoint
+	if et.Port > 0 && et.IP != "" {
+		engineTarget.Status.Endpoint = fmt.Sprintf("nvme-tcp://%s:%d", et.IP, et.Port)
+	}
+
+	// Only update if status changed
+	if !reflect.DeepEqual(existingEngineTarget.Status, engineTarget.Status) {
+		if _, err = m.ds.UpdateEngineTargetStatus(engineTarget); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
