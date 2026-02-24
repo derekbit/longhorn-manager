@@ -5,9 +5,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type InstanceType string
 
 const (
-	InstanceTypeEngine  = InstanceType("engine")
-	InstanceTypeReplica = InstanceType("replica")
-	InstanceTypeNone    = InstanceType("")
+	InstanceTypeEngine         = InstanceType("engine")
+	InstanceTypeReplica        = InstanceType("replica")
+	InstanceTypeEngineFrontend = InstanceType("engine-frontend") // v2 initiator
+	InstanceTypeNone           = InstanceType("")
 )
 
 type InstanceManagerState string
