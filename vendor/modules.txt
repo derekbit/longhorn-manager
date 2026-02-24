@@ -22,6 +22,9 @@ github.com/anmitsu/go-shlex
 # github.com/avast/retry-go v3.0.0+incompatible
 ## explicit
 github.com/avast/retry-go
+# github.com/avast/retry-go/v4 v4.7.0
+## explicit; go 1.20
+github.com/avast/retry-go/v4
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -305,7 +308,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.5.0
+# github.com/longhorn/go-spdk-helper v0.5.0 => ../go-spdk-helper
 ## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -321,7 +324,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260308
+# github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260308 => ../longhorn-instance-manager
 ## explicit; go 1.25.3
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -332,7 +335,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.25.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260304090835-8b93a5453dcd
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20260304090835-8b93a5453dcd => ../longhorn-spdk-engine
 ## explicit; go 1.25.3
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -346,7 +349,7 @@ github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/pkg/util
 github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
-# github.com/longhorn/types v0.0.0-20260304051809-1002ef5005c7
+# github.com/longhorn/types v0.0.0-20260304051809-1002ef5005c7 => ../longhorn-types
 ## explicit; go 1.24.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1405,3 +1408,7 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.35.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.35.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.35.2
+# github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
+# github.com/longhorn/types => ../longhorn-types
+# github.com/longhorn/longhorn-spdk-engine => ../longhorn-spdk-engine
+# github.com/longhorn/go-spdk-helper => ../go-spdk-helper
