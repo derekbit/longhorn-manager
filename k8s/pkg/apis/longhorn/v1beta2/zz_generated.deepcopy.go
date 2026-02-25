@@ -1663,6 +1663,13 @@ func (in *InstanceManagerStatus) DeepCopyInto(out *InstanceManagerStatus) {
 			(*out)[key] = *val.DeepCopy()
 		}
 	}
+	if in.InstanceEngineFrontends != nil {
+		in, out := &in.InstanceEngineFrontends, &out.InstanceEngineFrontends
+		*out = make(map[string]InstanceProcess, len(*in))
+		for key, val := range *in {
+			(*out)[key] = *val.DeepCopy()
+		}
+	}
 	if in.InstanceReplicas != nil {
 		in, out := &in.InstanceReplicas, &out.InstanceReplicas
 		*out = make(map[string]InstanceProcess, len(*in))

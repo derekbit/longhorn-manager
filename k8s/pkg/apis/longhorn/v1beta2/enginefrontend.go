@@ -19,6 +19,9 @@ type EngineFrontendSpec struct {
 	// TargetPort is the port of the v2 engine target
 	// +optional
 	TargetPort int `json:"targetPort"`
+	// EngineName is the name of the v2 engine target (required for EngineFrontend instance creation)
+	// +optional
+	EngineName string `json:"engineName"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
 }

@@ -1155,6 +1155,10 @@ spec:
                 type: string
               disableFrontend:
                 type: boolean
+              engineName:
+                description: EngineName is the name of the v2 engine target (required
+                  for EngineFrontend instance creation)
+                type: string
               frontend:
                 enum:
                 - blockdev
@@ -1960,6 +1964,57 @@ spec:
                         - "false"
                         type: string
                     type: object
+                type: object
+              instanceEngineFrontends:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        dataEngine:
+                          type: string
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        conditions:
+                          additionalProperties:
+                            type: boolean
+                          nullable: true
+                          type: object
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        listen:
+                          type: string
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
+                        type:
+                          type: string
+                        ublkID:
+                          format: int32
+                          type: integer
+                        uuid:
+                          type: string
+                      type: object
+                  type: object
+                nullable: true
                 type: object
               instanceEngines:
                 additionalProperties:

@@ -35,8 +35,10 @@ type EngineFrontendSpecApplyConfiguration struct {
 	// TargetIP is the IP address of the v2 engine target
 	TargetIP *string `json:"targetIP,omitempty"`
 	// TargetPort is the port of the v2 engine target
-	TargetPort      *int  `json:"targetPort,omitempty"`
-	DisableFrontend *bool `json:"disableFrontend,omitempty"`
+	TargetPort *int `json:"targetPort,omitempty"`
+	// EngineName is the name of the v2 engine target (required for EngineFrontend instance creation)
+	EngineName      *string `json:"engineName,omitempty"`
+	DisableFrontend *bool   `json:"disableFrontend,omitempty"`
 }
 
 // EngineFrontendSpecApplyConfiguration constructs a declarative configuration of the EngineFrontendSpec type for use with
@@ -82,6 +84,14 @@ func (b *EngineFrontendSpecApplyConfiguration) WithTargetIP(value string) *Engin
 // If called multiple times, the TargetPort field is set to the value of the last call.
 func (b *EngineFrontendSpecApplyConfiguration) WithTargetPort(value int) *EngineFrontendSpecApplyConfiguration {
 	b.TargetPort = &value
+	return b
+}
+
+// WithEngineName sets the EngineName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the EngineName field is set to the value of the last call.
+func (b *EngineFrontendSpecApplyConfiguration) WithEngineName(value string) *EngineFrontendSpecApplyConfiguration {
+	b.EngineName = &value
 	return b
 }
 

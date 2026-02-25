@@ -221,6 +221,9 @@ type InstanceManagerStatus struct {
 	InstanceEngines map[string]InstanceProcess `json:"instanceEngines,omitempty"`
 	// +optional
 	// +nullable
+	InstanceEngineFrontends map[string]InstanceProcess `json:"instanceEngineFrontends,omitempty"`
+	// +optional
+	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
 	// +optional
 	// +nullable
