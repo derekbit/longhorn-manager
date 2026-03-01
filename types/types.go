@@ -30,6 +30,7 @@ const (
 	LonghornKindVolume              = "Volume"
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
+	LonghornKindEngineFrontend      = "EngineFrontend"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackupTarget        = "BackupTarget"
 	LonghornKindBackupVolume        = "BackupVolume"
@@ -371,6 +372,10 @@ func GenerateEngineNameForVolume(vName, currentEngineName string) string {
 		return vName + engineSuffix + "-" + "1"
 	}
 	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
+}
+
+func GenerateEngineFrontendNameForVolume(vName string) string {
+	return vName + "-ef"
 }
 
 func GenerateReplicaNameForVolume(vName string) string {

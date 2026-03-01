@@ -1401,9 +1401,17 @@ func isVolumeAvailableOn(vol *longhornclient.Volume, node string) bool {
 }
 
 func isEngineOnNodeAvailable(vol *longhornclient.Volume, node string) bool {
-	for _, controller := range vol.Controllers {
-		if controller.HostId == node && controller.Endpoint != "" {
-			return true
+	if types.IsDataEngineV2(longhorn.DataEngineType(vol.DataEngine)) {
+		for _, engineFrontend := range vol.EngineFrontends {
+			if engineFrontend.HostId == node && engineFrontend.Endpoint != "" {
+				return true
+			}
+		}
+	} else {
+		for _, controller := range vol.Controllers {
+			if controller.HostId == node && controller.Endpoint != "" {
+				return true
+			}
 		}
 	}
 

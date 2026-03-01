@@ -73,12 +73,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateSuspended = InstanceState("suspended")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateUnknown   = InstanceState("unknown")
 	// InstanceStateTerminated indicates the instance is deleted and not found
 	InstanceStateTerminated = InstanceState("terminated")
 )
@@ -139,6 +140,8 @@ type InstanceStatus struct {
 type InstanceProcessStatus struct {
 	// +optional
 	Endpoint string `json:"endpoint"`
+	// +optional
+	Frontend string `json:"frontend"`
 	// +optional
 	ErrorMsg string `json:"errorMsg"`
 	//+optional
