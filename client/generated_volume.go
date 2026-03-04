@@ -25,6 +25,8 @@ type Volume struct {
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
+	EngineFrontends []EngineFrontend `json:"engineFrontends,omitempty" yaml:"engine_frontends,omitempty"`
+
 	Controllers []Controller `json:"controllers,omitempty" yaml:"controllers,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`

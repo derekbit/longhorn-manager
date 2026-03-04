@@ -462,7 +462,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Check volume attachment status
-	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+	if volume.State != string(longhorn.VolumeStateAttached) ||
+		(types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) && volume.Controllers[0].Endpoint == "") ||
+		(types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) && volume.EngineFrontends[0].Endpoint == "") {
 		log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, stagingTargetPath)
 		if err := unmount(stagingTargetPath, mounter); err != nil {
 			log.WithError(err).Warnf("Failed to unmount stagingTargetPath %v", stagingTargetPath)
@@ -499,6 +501,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	devicePath := volume.Controllers[0].Endpoint
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		devicePath = volume.EngineFrontends[0].Endpoint
+	}
+
 	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem %v format: %v", devicePath, err)
@@ -832,6 +838,10 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 	isBlockVolume := volumeCapability.GetBlock() != nil
 	devicePath := volume.Controllers[0].Endpoint
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		devicePath = volume.EngineFrontends[0].Endpoint
+	}
+
 	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to evaluate device disk format for device %v node expansion: %v", devicePath, err.Error()))

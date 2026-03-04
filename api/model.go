@@ -92,6 +92,7 @@ type Volume struct {
 
 	Replicas         []Replica        `json:"replicas"`
 	Controllers      []Controller     `json:"controllers"`
+	EngineFrontends  []EngineFrontend `json:"engineFrontends"`
 	BackupStatus     []BackupStatus   `json:"backupStatus"`
 	RestoreStatus    []RestoreStatus  `json:"restoreStatus"`
 	PurgeStatus      []PurgeStatus    `json:"purgeStatus"`
@@ -219,6 +220,11 @@ type Instance struct {
 	Image               string `json:"image"`
 	CurrentImage        string `json:"currentImage"`
 	InstanceManagerName string `json:"instanceManagerName"`
+}
+
+type EngineFrontend struct {
+	NodeID   string `json:"hostId"`
+	Endpoint string `json:"endpoint"`
 }
 
 type Controller struct {
@@ -619,8 +625,9 @@ type InstanceManager struct {
 	ManagerType  string                        `json:"managerType"`
 	DataEngine   string                        `json:"dataEngine"`
 
-	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
-	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
+	InstanceEngines         map[string]longhorn.InstanceProcess `json:"instanceEngines"`
+	InstanceEngineFrontends map[string]longhorn.InstanceProcess `json:"instanceEngineFrontends"`
+	InstanceReplicas        map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
 
 	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
@@ -1482,8 +1489,9 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
+	engineFrontends := []EngineFrontend{}
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
@@ -1492,6 +1500,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	volumeAttachment := VolumeAttachment{
 		Attachments: make(map[string]Attachment),
 		Volume:      v.Name,
+	}
+	for _, ef := range vefs {
+		engineFrontends = append(engineFrontends, EngineFrontend{
+			NodeID:   ef.Spec.NodeID,
+			Endpoint: ef.Status.Endpoint,
+		})
 	}
 	for _, e := range ves {
 		actualSize := int64(0)
@@ -1524,6 +1538,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
 			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 		})
+
 		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
@@ -1720,6 +1735,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
+		EngineFrontends:  engineFrontends,
 		Controllers:      controllers,
 		Replicas:         replicas,
 		BackupStatus:     backupStatus,
@@ -2415,14 +2431,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:     im.Status.CurrentState,
-		Image:            im.Spec.Image,
-		Name:             im.Name,
-		NodeID:           im.Spec.NodeID,
-		ManagerType:      string(im.Spec.Type),
-		DataEngine:       string(im.Spec.DataEngine),
-		InstanceEngines:  im.Status.InstanceEngines,
-		InstanceReplicas: im.Status.InstanceReplicas,
+		CurrentState:            im.Status.CurrentState,
+		Image:                   im.Spec.Image,
+		Name:                    im.Name,
+		NodeID:                  im.Spec.NodeID,
+		ManagerType:             string(im.Spec.Type),
+		DataEngine:              string(im.Spec.DataEngine),
+		InstanceEngines:         im.Status.InstanceEngines,
+		InstanceEngineFrontends: im.Status.InstanceEngineFrontends,
+		InstanceReplicas:        im.Status.InstanceReplicas,
 	}
 }
 

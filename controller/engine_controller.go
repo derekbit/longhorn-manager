@@ -533,9 +533,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
-		Engine:         e,
-		VolumeFrontend: frontend,
-		// TODO: use default settings value if not set in engine spec
+		Engine:                           e,
+		VolumeFrontend:                   frontend,
 		UblkQueueDepth:                   ublkQueueDepth,
 		UblkNumberOfQueue:                ublkNumberOfQueue,
 		EngineReplicaTimeout:             engineReplicaTimeout,
@@ -924,7 +923,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if err != nil {
 			return err
 		}
-		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo, engine.Status.IP)
+		if volumeInfo == nil {
+			return fmt.Errorf("got nil volume info from engine client proxy")
+		}
+		endpoint, err := engineapi.GetEngineEndpoint(volumeInfo.Frontend, volumeInfo.Endpoint, engine.Status.IP)
 		if err != nil {
 			return err
 		}
@@ -954,10 +956,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
 
-		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
-			m.logger.Infof("Starting frontend %v", engine.Spec.Frontend)
-			if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
-				return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
+		if types.IsDataEngineV1(engine.Spec.DataEngine) {
+			if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
+				m.logger.Infof("Starting frontend %v", engine.Spec.Frontend)
+				if err := engineClientProxy.VolumeFrontendStart(engine); err != nil {
+					return errors.Wrapf(err, "failed to start frontend %v", engine.Spec.Frontend)
+				}
 			}
 		}
 
@@ -1024,7 +1028,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: Check if the purge failure is handled somewhere else
-	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(engine)
+	dataEngineObj, err := m.ds.GetDataEngineObject(engine)
+	if err != nil {
+		return err
+	}
+	purgeStatus, err := engineClientProxy.SnapshotPurgeStatus(dataEngineObj)
 	if err != nil {
 		m.logger.WithError(err).Warn("Failed to get snapshot purge status")
 	} else {
@@ -1065,8 +1073,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
 			// The error info and the backoff interval will be updated later.
 			m.expansionUpdateTime = time.Now()
-			if err := engineClientProxy.VolumeExpand(engine); err != nil {
-				return err
+			if types.IsDataEngineV1(engine.Spec.DataEngine) {
+				if err := engineClientProxy.VolumeExpand(engine); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -1920,7 +1930,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			}
 
 			log.Info("Starting snapshot purge before rebuilding")
-			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+			dataEngineObj, err := ec.ds.GetDataEngineObject(e)
+			if err != nil {
+				log.WithError(err).Error("Failed to get data engine object before rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
@@ -2066,7 +2083,14 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			}
 
 			log.Info("Starting snapshot purge after rebuilding")
-			if err := engineClientProxy.SnapshotPurge(e); err != nil {
+			dataEngineObj, err := ec.ds.GetDataEngineObject(e)
+			if err != nil {
+				log.WithError(err).Error("Failed to get data engine object after rebuilding")
+				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
+					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
+				return
+			}
+			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
@@ -2522,6 +2546,7 @@ func needStatusUpdateBesidesSize(existing, new *longhorn.EngineStatus) bool {
 	// If we don't have a volume-head snapshot in new and old status, just compare statuses directly.
 	existingSnapshot, existingSnapshotOK := existing.Snapshots[etypes.VolumeHeadName]
 	newSnapshot, newSnapshotOK := new.Snapshots[etypes.VolumeHeadName]
+
 	if !existingSnapshotOK || !newSnapshotOK {
 		return !reflect.DeepEqual(existing, new)
 	}
@@ -2529,6 +2554,7 @@ func needStatusUpdateBesidesSize(existing, new *longhorn.EngineStatus) bool {
 	// Otherwise, compare without the size of volume-head.
 	existingSize := existingSnapshot.Size
 	existingSnapshot.Size = newSnapshot.Size
+
 	needUpdate := !reflect.DeepEqual(existing, new)
 	existingSnapshot.Size = existingSize
 	return needUpdate

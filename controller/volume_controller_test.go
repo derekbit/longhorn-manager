@@ -1157,6 +1157,433 @@ func (s *TestSuite) TestVolumeBackingImageSizeIncompatibleAfterDownload(c *C) {
 	})
 }
 
+func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = true
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = TestVolumeSize
+	e.Status.CurrentSize = v.Spec.Size
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = TestVolumeSize
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name)
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: TestVolumeSize,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+		},
+	}
+
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(100),
+	}
+
+	rs := map[string]*longhorn.Replica{r.Name: r}
+	efs := map[string]*longhorn.EngineFrontend{efName: ef}
+
+	err := vc.reconcileVolumeSize(v, e, rs, efs)
+	c.Assert(err, IsNil)
+
+	c.Assert(v.Status.ExpansionRequired, Equals, false)
+	c.Assert(e.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(r.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
+}
+
+func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgress(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = false
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = TestVolumeSize
+	e.Status.CurrentSize = TestVolumeSize
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = TestVolumeSize
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name)
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: TestVolumeSize,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+		},
+	}
+
+	rs := map[string]*longhorn.Replica{r.Name: r}
+	efs := map[string]*longhorn.EngineFrontend{efName: ef}
+
+	err = vc.reconcileVolumeSize(v, e, rs, efs)
+	c.Assert(err, IsNil)
+
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+	c.Assert(e.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(r.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
+}
+
+func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nodeIndexer.Add(createdNode)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.MigrationNodeID = ""
+
+	currentEngine := newEngineForVolume(v)
+	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+	replica := newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+	replica.Spec.DesireState = longhorn.InstanceStateRunning
+	replica.Status.CurrentState = longhorn.InstanceStateRunning
+	replica.Status.IP = randomIP()
+	replica.Status.StorageIP = replica.Status.IP
+	replica.Status.Port = randomPort()
+
+	currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{replica.Name: longhorn.ReplicaModeRW}
+
+	migrationEngine := newEngineForVolume(v)
+	migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	migrationEngine.Spec.Active = false
+	migrationEngine.Spec.NodeID = TestNode1
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateStopped
+	migrationEngine.Status.CurrentState = longhorn.InstanceStateStopped
+
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+
+	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode1, currentEngine, migrationEngine, rs)
+	c.Assert(err, IsNil)
+	c.Assert(ready, Equals, false)
+	c.Assert(revertRequired, Equals, false)
+	c.Assert(migrationEngine.Spec.NodeID, Equals, TestNode1)
+	c.Assert(migrationEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 1)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+}
+
+func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2SupportsSplitFrontendAndEngineNodes(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nodeIndexer.Add(createdNode)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.NodeID = TestNode1
+	v.Spec.EngineNodeID = TestNode2
+
+	currentEngine := newEngineForVolume(v)
+	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	currentEngine.Spec.NodeID = TestNode1
+	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+	replica := newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+	replica.Spec.DesireState = longhorn.InstanceStateRunning
+	replica.Status.CurrentState = longhorn.InstanceStateRunning
+	replica.Status.IP = randomIP()
+	replica.Status.StorageIP = replica.Status.IP
+	replica.Status.Port = randomPort()
+
+	currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{replica.Name: longhorn.ReplicaModeRW}
+
+	migrationEngine := newEngineForVolume(v)
+	migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	migrationEngine.Spec.Active = false
+	migrationEngine.Spec.NodeID = TestNode2
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateStopped
+	migrationEngine.Status.CurrentState = longhorn.InstanceStateStopped
+
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+
+	ready, revertRequired, err := vc.prepareReplicasAndEngineForTargetNode(v, TestNode2, currentEngine, migrationEngine, rs)
+	c.Assert(err, IsNil)
+	c.Assert(ready, Equals, false)
+	c.Assert(revertRequired, Equals, false)
+
+	c.Assert(v.Spec.NodeID, Equals, TestNode1)
+	c.Assert(v.Spec.EngineNodeID, Equals, TestNode2)
+	c.Assert(migrationEngine.Spec.NodeID, Equals, TestNode2)
+	c.Assert(migrationEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(len(migrationEngine.Spec.ReplicaAddressMap), Equals, 1)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, migrationEngine.Name)
+}
+
+func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
+	testCases := []struct {
+		name     string
+		volume   *longhorn.Volume
+		engine   *longhorn.Engine
+		target   string
+		expected bool
+	}{
+		{
+			name: "v2 split target with current engine mismatch",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			target:   TestNode2,
+			expected: true,
+		},
+		{
+			name: "v2 already switched",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode2,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode2}},
+			},
+			target:   TestNode2,
+			expected: false,
+		},
+		{
+			name: "v2 transition window still in progress",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode2,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			target:   TestNode2,
+			expected: true,
+		},
+		{
+			name: "v1 never uses split switchover",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV1,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			target:   TestNode2,
+			expected: false,
+		},
+		{
+			name: "detached volume is not in live switchover",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       "",
+					CurrentEngineNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			target:   TestNode2,
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Assert(isV2EngineSwitchoverInProgress(tc.volume, tc.engine, tc.target), Equals, tc.expected, Commentf("case=%s", tc.name))
+	}
+}
+
+func (s *TestSuite) TestShouldRejectEngineNodeMismatch(c *C) {
+	testCases := []struct {
+		name                 string
+		volume               *longhorn.Volume
+		engine               *longhorn.Engine
+		switchoverInProgress bool
+		expected             bool
+	}{
+		{
+			name: "v2 switchover in progress allows mismatch",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			switchoverInProgress: true,
+			expected:             false,
+		},
+		{
+			name: "v2 no switchover rejects mismatch",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine:   longhorn.DataEngineTypeV2,
+					NodeID:       TestNode1,
+					EngineNodeID: TestNode2,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID:       TestNode1,
+					CurrentEngineNodeID: TestNode2,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			switchoverInProgress: false,
+			expected:             true,
+		},
+		{
+			name: "v1 rejects mismatch",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine: longhorn.DataEngineTypeV1,
+					NodeID:     TestNode1,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode2}},
+			},
+			switchoverInProgress: false,
+			expected:             true,
+		},
+		{
+			name: "already on target does not reject",
+			volume: &longhorn.Volume{
+				Spec: longhorn.VolumeSpec{
+					DataEngine: longhorn.DataEngineTypeV2,
+					NodeID:     TestNode1,
+				},
+				Status: longhorn.VolumeStatus{
+					CurrentNodeID: TestNode1,
+				},
+			},
+			engine: &longhorn.Engine{
+				Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+			},
+			switchoverInProgress: false,
+			expected:             false,
+		},
+	}
+
+	for _, tc := range testCases {
+		c.Assert(shouldRejectEngineNodeMismatch(tc.volume, tc.engine, tc.switchoverInProgress), Equals, tc.expected, Commentf("case=%s", tc.name))
+	}
+}
+
+func (s *TestSuite) TestEngineSwitchoverTransitionWindowDoesNotRejectMismatch(c *C) {
+	v := &longhorn.Volume{
+		Spec: longhorn.VolumeSpec{
+			DataEngine:   longhorn.DataEngineTypeV2,
+			NodeID:       TestNode1,
+			EngineNodeID: TestNode2,
+		},
+		Status: longhorn.VolumeStatus{
+			CurrentNodeID:       TestNode1,
+			CurrentEngineNodeID: TestNode2,
+		},
+	}
+
+	e := &longhorn.Engine{
+		Spec: longhorn.EngineSpec{InstanceSpec: longhorn.InstanceSpec{NodeID: TestNode1}},
+	}
+
+	targetEngineNodeID := TestNode2
+	switchoverInProgress := isV2EngineSwitchoverInProgress(v, e, targetEngineNodeID)
+
+	c.Assert(switchoverInProgress, Equals, true)
+	c.Assert(shouldRejectEngineNodeMismatch(v, e, switchoverInProgress), Equals, false)
+}
+
 func newVolume(name string, replicaCount int) *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1384,6 +1811,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
 				TestInstanceManagerImage,
 				false,
@@ -1396,6 +1824,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			newInstanceManager(
 				TestInstanceManagerName+"-"+TestNode2, longhorn.InstanceManagerStateRunning,
 				TestOwnerID2, TestNode2, TestIP1,
+				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,

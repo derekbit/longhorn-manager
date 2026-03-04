@@ -4,6 +4,12 @@ const (
 	CONTROLLER_TYPE = "controller"
 )
 
+type EngineFrontend struct {
+	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
+
+	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+}
+
 type Controller struct {
 	Resource `yaml:"-"`
 
