@@ -1828,6 +1828,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
+			MountPath:        types.MetadataDirectoryInContainer,
+			Name:             "metadata",
+			MountPropagation: &mountPropagationHostToContainer,
+		},
+		{
 			MountPath: types.UnixDomainSocketDirectoryInContainer,
 			Name:      "unix-domain-socket",
 		},
@@ -1855,6 +1860,14 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: types.EngineBinaryDirectoryOnHost,
+				},
+			},
+		},
+		{
+			Name: "metadata",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: types.MetadataDirectoryOnHost,
 				},
 			},
 		},

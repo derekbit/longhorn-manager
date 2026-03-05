@@ -108,6 +108,8 @@ const (
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
+	MetadataDirectoryInContainer     = "/metadata/"
+	MetadataDirectoryOnHost          = "/var/lib/longhorn/metadata/"
 	ReplicaHostPrefix                = "/host"
 	EngineBinaryName                 = "longhorn"
 
