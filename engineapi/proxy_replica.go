@@ -6,10 +6,20 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+type EngineFrontendReplicaAdder interface {
+	EngineFrontendReplicaAdd(ef *longhorn.EngineFrontend, replicaName, replicaAddress string, fastSync bool, grpcTimeoutSeconds int64) error
+}
+
 func (p *Proxy) ReplicaAdd(e *longhorn.Engine, replicaName, replicaAddress string, restore, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) (err error) {
-	return p.grpcClient.ReplicaAdd(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
+	return p.grpcClient.ReplicaAdd(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e), "",
 		replicaName, replicaAddress, restore, e.Spec.VolumeSize, e.Status.CurrentSize,
 		int(replicaFileSyncHTTPClientTimeout), fastSync, localSync, grpcTimeoutSeconds)
+}
+
+func (p *Proxy) EngineFrontendReplicaAdd(ef *longhorn.EngineFrontend, replicaName, replicaAddress string, fastSync bool, grpcTimeoutSeconds int64) (err error) {
+	return p.grpcClient.ReplicaAdd(string(ef.Spec.DataEngine), ef.Spec.EngineName, ef.Spec.VolumeName, p.DirectToURL(ef), ef.Name,
+		replicaName, replicaAddress, false, ef.Spec.VolumeSize, 0,
+		0, fastSync, nil, grpcTimeoutSeconds)
 }
 
 func (p *Proxy) ReplicaRemove(e *longhorn.Engine, address, replicaName string) (err error) {

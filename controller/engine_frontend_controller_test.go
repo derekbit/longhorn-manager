@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -30,6 +32,29 @@ func (s *TestSuite) TestShouldExpandEngineFrontend(c *C) {
 
 	v.Status.ExpansionRequired = true
 	c.Assert(shouldExpandEngineFrontend(ef, v), Equals, true)
+}
+
+func (s *TestSuite) TestGetReplicaRebuildCandidate(c *C) {
+	engine := &longhorn.Engine{}
+	engine.Spec.VolumeName = TestVolumeName
+	engine.Status.CurrentReplicaAddressMap = map[string]string{
+		"replica-1": "10.0.0.1:10000",
+	}
+
+	replicaName, addr, needRebuild := getReplicaRebuildCandidate(engine, logrus.StandardLogger())
+	c.Assert(needRebuild, Equals, true)
+	c.Assert(replicaName, Equals, "replica-1")
+	c.Assert(addr, Equals, "10.0.0.1:10000")
+
+	engine.Status.CurrentReplicaAddressMap["replica-2"] = "10.0.0.2:10000"
+	engine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		"replica-1": longhorn.ReplicaModeRW,
+		"replica-2": longhorn.ReplicaModeWO,
+	}
+	replicaName, addr, needRebuild = getReplicaRebuildCandidate(engine, logrus.StandardLogger())
+	c.Assert(needRebuild, Equals, false)
+	c.Assert(replicaName, Equals, "")
+	c.Assert(addr, Equals, "")
 }
 
 type fakeEngineFrontendSwitchoverClient struct {

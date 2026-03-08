@@ -48,7 +48,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	engineFrontendController, err := NewEngineFrontendController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter)
+	engineFrontendController, err := NewEngineFrontendController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return nil, err
 	}

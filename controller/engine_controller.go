@@ -1817,26 +1817,16 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
-	replicaExists := make(map[string]bool)
-	replicaRebuildingInProgress := make(map[string]bool)
-	for replica, mode := range e.Status.ReplicaModeMap {
-		replicaExists[replica] = true
-		if mode == longhorn.ReplicaModeWO {
-			replicaRebuildingInProgress[replica] = true
-		}
-	}
-	// We cannot rebuild more than one replica at one time
-	if len(replicaRebuildingInProgress) > 0 {
-		ec.logger.WithField("volume", e.Spec.VolumeName).Infof("Skipped rebuilding of replica because there is another rebuild in progress: %v, since we only rebuild one replica at a time", replicaRebuildingInProgress)
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
 		return nil
 	}
-	for replica, addr := range e.Status.CurrentReplicaAddressMap {
-		// one is enough
-		if !replicaExists[replica] {
-			return ec.startRebuilding(e, replica, addr)
-		}
+
+	replicaName, addr, needRebuild := getReplicaRebuildCandidate(e, ec.logger)
+	if !needRebuild {
+		return nil
 	}
-	return nil
+
+	return ec.startRebuilding(e, replicaName, addr)
 }
 
 func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy engineapi.EngineClientProxy) (bool, error) {
@@ -2159,112 +2149,15 @@ func (ec *EngineController) getFileLocalSync(targetReplica *longhorn.Replica, en
 
 // updateReplicaRebuildFailedCondition updates the rebuild failed condition if replica rebuilding failed
 func (ec *EngineController) updateReplicaRebuildFailedCondition(replica *longhorn.Replica, errMsg string) (*longhorn.Replica, error) {
-	replicaRebuildFailedReason, conditionStatus, err := ec.getReplicaRebuildFailedReason(replica.Spec.NodeID, errMsg)
-	if err != nil {
-		return nil, err
-	}
-
-	replica.Status.Conditions = types.SetCondition(
-		replica.Status.Conditions,
-		longhorn.ReplicaConditionTypeRebuildFailed,
-		conditionStatus,
-		replicaRebuildFailedReason,
-		errMsg)
-
-	replica, err = ec.ds.UpdateReplicaStatus(replica)
-
-	return replica, err
+	return updateReplicaRebuildFailedCondition(ec.ds, replica, errMsg)
 }
 
 func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg string) (failedReason string, conditionStatus longhorn.ConditionStatus, err error) {
-	failedReason, conditionStatus, isRebuildingFailedByNetwork := getReplicaRebuildFailedReasonFromError(errMsg)
-	if isRebuildingFailedByNetwork {
-		replicaNode, err := ec.ds.GetNodeRO(replicaNodeID)
-		if err != nil {
-			return "", "", err
-		}
-
-		replicaRebuildFailedCondition := types.GetCondition(replicaNode.Status.Conditions, longhorn.NodeConditionTypeReady)
-		switch replicaRebuildFailedCondition.Reason {
-		case longhorn.NodeConditionReasonManagerPodDown, longhorn.NodeConditionReasonKubernetesNodeGone, longhorn.NodeConditionReasonKubernetesNodeNotReady:
-			failedReason = replicaRebuildFailedCondition.Reason
-		}
-	}
-
-	return failedReason, conditionStatus, nil
-}
-
-func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.ConditionStatus, bool) {
-	switch {
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedCanceledErrorMSG):
-		fallthrough
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedDeadlineExceededErrorMSG):
-		fallthrough
-	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedUnavailableErrorMSG):
-		return longhorn.ReplicaConditionReasonRebuildFailedDisconnection, longhorn.ConditionStatusTrue, true
-	case errMsg == "":
-		return "", longhorn.ConditionStatusFalse, false
-	default:
-		return longhorn.ReplicaConditionReasonRebuildFailedGeneral, longhorn.ConditionStatusTrue, false
-	}
+	return getReplicaRebuildFailedReason(ec.ds, replicaNodeID, errMsg)
 }
 
 func (ec *EngineController) waitForV2EngineRebuild(engine *longhorn.Engine, replicaName string, timeout int64) (err error) {
-	if !types.IsDataEngineV2(engine.Spec.DataEngine) {
-		return nil
-	}
-
-	ticker := time.NewTicker(EnginePollInterval)
-	defer ticker.Stop()
-	timer := time.NewTimer(time.Duration(timeout) * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			e, err := ec.ds.GetEngineRO(engine.Name)
-			if err != nil {
-				// There is no need to continue if the engine is not found
-				if apierrors.IsNotFound(err) {
-					return errors.Wrapf(err, "engine %v not found during v2 replica %s rebuild wait", engine.Name, replicaName)
-				}
-				// There may be something wrong with the indexer or the API sever, will retry
-				continue
-			}
-			if e.Spec.ReplicaAddressMap[replicaName] == "" {
-				return fmt.Errorf("unknown replica %v for engine", replicaName)
-			}
-			// There is no need to continue when the replica is not found or the replica is not in a valid state for rebuilding
-			r, err := ec.ds.GetReplicaRO(replicaName)
-			if err != nil {
-				return err
-			}
-			if r.Status.CurrentState != longhorn.InstanceStateRunning {
-				return fmt.Errorf("replica %v is state %s, which is invalid for rebuilding", replicaName, r.Status.CurrentState)
-			}
-			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeRW {
-				return nil
-			}
-			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeERR {
-				return fmt.Errorf("replica %v is in ERR mode, which is invalid for rebuilding", replicaName)
-			}
-			if e.Status.ReplicaModeMap[replicaName] == "" {
-				continue
-			}
-			// For a rebuilding replica (with mode WO), there should be a corresponding rebuilding status
-			rebuildingStatus := e.Status.RebuildStatus[engineapi.GetBackendReplicaURL(e.Status.CurrentReplicaAddressMap[replicaName])]
-			if rebuildingStatus == nil {
-				continue
-			}
-			if rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "" {
-				return fmt.Errorf("failed to wait for v2 replica %s rebuild, rebuilding state %s, error: %v", replicaName, rebuildingStatus.State, rebuildingStatus.Error)
-			}
-			if rebuildingStatus.State == engineapi.ProcessStateComplete {
-				return nil
-			}
-		case <-timer.C:
-			return fmt.Errorf("timeout waiting for replica %v to be rebuilt", replicaName)
-		}
-	}
+	return waitForV2EngineRebuild(ec.ds, engine, replicaName, timeout)
 }
 
 func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
