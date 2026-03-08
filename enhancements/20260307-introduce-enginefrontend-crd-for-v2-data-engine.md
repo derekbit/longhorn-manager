@@ -253,6 +253,52 @@ sequenceDiagram
     Volume->>OldEngine: Mark inactive and delete old engine
 ```
 
+#### V2 Data Engine Live Migration
+
+The v2 data engine live migration flow is built on top of the same initiator/target split, but the goal is different from ordinary target switchover.
+
+- **Engine switchover** moves the current v2 target from one node to another while the attached workload keeps using the same initiator on the same attachment node.
+- **V2 live migration** moves the attached workload from one node to another, so the destination side must get both a migration target and a destination-side initiator.
+
+In other words, `EngineFrontend` is required not only for target switchover but also for live migration, because the destination attachment node needs its own initiator-side object and endpoint rather than reusing the old node's frontend state.
+
+At a high level, the live migration sequence is:
+
+1. A second CSI attachment ticket requests the same migratable v2 volume on another node.
+2. The volume attachment controller sets `MigrationNodeID` to that destination node.
+3. The volume controller prepares a migration `Engine` and matching `Replica` set on the destination side.
+4. Longhorn creates and starts a destination `EngineFrontend` that connects to the migration engine and exposes the local endpoint on the destination node.
+5. After the destination `Engine` and `EngineFrontend` are both ready, migration is confirmed and the destination node becomes the new current attachment node.
+6. The old `Engine`, old `EngineFrontend`, and temporary migration bindings are cleaned up.
+
+The critical point is that live migration needs a second initiator-side object on the destination node. Unlike target switchover, where one existing `EngineFrontend` reconnects to a new target, live migration temporarily requires both source-side and destination-side frontend state during the transition window.
+
+```mermaid
+sequenceDiagram
+    participant SourceWorkload as Workload on source node
+    participant Volume
+    participant SourceEF as Source EngineFrontend
+    participant DestEF as Destination EngineFrontend
+    participant OldEngine as Source Engine
+    participant NewEngine as Migration Engine
+    participant Replica
+
+    SourceWorkload->>Volume: Request same migratable volume on another node
+    Volume->>Volume: Set MigrationNodeID
+    Volume->>NewEngine: Create/start migration engine on destination side
+    Volume->>Replica: Prepare migration replicas
+    Replica-->>NewEngine: Replica addresses become ready
+    Volume->>DestEF: Create/start destination EngineFrontend
+    DestEF->>NewEngine: Connect destination initiator to migration engine
+    DestEF-->>Volume: Report running state and local endpoint
+    Volume->>Volume: Confirm migration and switch current attachment node
+    Volume->>OldEngine: Delete old source engine
+    Volume->>SourceEF: Delete old source EngineFrontend
+    Note over SourceEF,DestEF: During transition, source and destination frontend states coexist temporarily
+```
+
+This proposal does not introduce a separate `EngineFrontend` live-migration-specific CRD or workflow object. The key requirement is that live migration can create and manage destination initiator state explicitly, instead of treating the v2 frontend as an implicit field inside `Engine`.
+
 ### Frontend Modes
 
 `EngineFrontend` supports the v2 frontend modes already present in the runtime stack. The CRD uses the `VolumeFrontend` names from the volume spec, which are mapped to SPDK-level frontend strings by `GetEngineInstanceFrontend()`:
@@ -292,6 +338,7 @@ The proposal requires coordinated changes across the v2 stack.
 - **EngineFrontendMonitor**: A per-frontend monitoring goroutine started when `CurrentState` becomes `running`. It polls via `EngineFrontendGet` at the engine poll interval, updates `Status.Endpoint`, and checks `Volume.Status.ExpansionRequired` to trigger expansion through the frontend proxy.
 - **Datastore** (`datastore/longhorn.go`): CRUD operations (`CreateEngineFrontend`, `GetEngineFrontend`, `UpdateEngineFrontend`, `UpdateEngineFrontendStatus`, `DeleteEngineFrontend`, `RemoveFinalizerForEngineFrontend`), list operations (`ListEngineFrontends`, `ListVolumeEngineFrontendsRO`), and current-frontend selection logic (`GetVolumeCurrentEngineFrontend`, `GetCurrentEngineFrontendAndExtras`).
 - **Volume controller** (`controller/volume_controller.go`): Create one `EngineFrontend` per v2 volume. Update volume reconciliation to start the target before the initiator and stop the initiator before the target (`closeVolumeDependentResources`). Check frontend readiness in `areVolumeDependentResourcesOpened`. Drive switchover via `processEngineSwitchover`. During `openVolumeDependentResources`, populate the frontend spec directly from the running engine status, skipping the target update when `isV2EngineSwitchoverInProgress`.
+- **Live migration integration**: The same split also enables v2 migratable-volume live migration. During live migration, manager logic can create a destination `EngineFrontend` on the migration node, verify destination frontend readiness, and then switch the volume's current attachment node without reusing the source node's frontend state.
 - **Proxy and engineapi**: Route v2 endpoint reporting through `EngineFrontend`. Add `EngineFrontendProxy` (`engineapi/engine_frontend_proxy.go`) wrapping `InstanceManagerClient` methods. Extend the `Proxy` type to accept `*EngineFrontend` objects for `VolumeExpand`, `VolumeSnapshot`, `SnapshotRevert`, `SnapshotPurge`, `SnapshotRemove`, `SnapshotBackup`, and `SnapshotBackupStatus`. Add `EngineFrontendInstanceCreate`, `EngineFrontendSwitchOverTarget`, `EngineFrontendSuspend`, and `EngineFrontendResume` to `InstanceManagerClient`, all gated on instance-manager API version ≥ 4.
 - **Admission webhooks** (`webhook/resources/enginefrontend/`): A mutator that adds Longhorn labels, a `longhorn.io` finalizer, and defaults `DataEngine` to v2 if empty. A validator that ensures the referenced volume exists on create, only allows v2 data engine, and prevents `DataEngine` changes on update.
 - **API and CSI**: Expose `EngineFrontends` (node ID and endpoint) in the volume API response (`api/model.go`). CSI node server uses the `EngineFrontend` endpoint for v2 volume stage and publish operations.
@@ -395,6 +442,7 @@ As CSI, I want a stable endpoint source for v2 volumes so that stage and publish
   - recovery after restart
   - snapshot, expansion, and replica-add entry through `EngineFrontend`
 - Add upgrade tests from a build without `EngineFrontend` to a build with `EngineFrontend`.
+- Add live-migration tests that create a destination `EngineFrontend`, verify both migration engine and destination frontend readiness, confirm migration, and clean up the old frontend after node handoff.
 
 ## Risks and Mitigations
 
@@ -426,3 +474,13 @@ Mitigation:
 
 - Persist frontend metadata in the SPDK engine.
 - Recover initiator state from host-visible devices and reconnect status after restart.
+
+### Risk 4: Live Migration Depends on Correct Destination Frontend Handling
+
+If destination `EngineFrontend` creation, readiness detection, or cleanup is incorrect, v2 live migration could confirm too early, use the wrong node-local endpoint, or leave stale initiator objects behind after migration.
+
+Mitigation:
+
+- Treat live migration as a workflow that must explicitly manage destination `EngineFrontend` lifecycle, not just destination `Engine` lifecycle.
+- Require migration confirmation to depend on both destination `Engine` and destination `EngineFrontend` readiness.
+- Add dedicated live-migration tests that validate destination endpoint creation, confirmation gating, and old frontend cleanup.
