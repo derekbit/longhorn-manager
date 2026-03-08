@@ -747,6 +747,19 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
+			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, currentEngine, efc.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge before rebuilding")
+				reportStartResult(errV2ReplicaRebuildDeferred)
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debugf("Cannot start SnapshotPurge for engine %v before rebuilding because the concurrent limit is reached", currentEngine.Name)
+				reportStartResult(errV2ReplicaRebuildDeferred)
+				return
+			}
+
 			log.Info("Starting snapshot purge before rebuilding")
 			dataEngineObj, err := efc.ds.GetDataEngineObject(currentEngine)
 			if err != nil {
@@ -882,6 +895,17 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
+			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, currentEngine, efc.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debug("Cannot start SnapshotPurge for engine after rebuilding because the concurrent limit is reached")
+				return
+			}
+
 			log.Info("Starting snapshot purge after rebuilding")
 			dataEngineObj, err := efc.ds.GetDataEngineObject(currentEngine)
 			if err != nil {
@@ -901,7 +925,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 	startErr := <-startResultCh
 	if errors.Is(startErr, errV2ReplicaRebuildDeferred) {
-		return nil
+		return fmt.Errorf("v2 replica rebuild deferred, will retry")
 	}
 	if startErr != nil {
 		return startErr
