@@ -1512,6 +1512,173 @@ func (s *TestSuite) TestEngineFrontendHelpers(c *C) {
 	c.Assert(isEngineFrontendReadyForNode(efs, "node-3"), Equals, false)
 }
 
+func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+
+	node := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nodeIndexer.Add(createdNode)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Migratable = true
+	v.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+	v.Spec.NodeID = TestNode1
+	v.Spec.MigrationNodeID = TestNode2
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentImage = TestEngineImage
+	v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	currentEngine := newEngineForVolume(v)
+	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	currentEngine.Spec.Active = true
+	currentEngine.Spec.NodeID = TestNode1
+	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
+	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+
+	currentReplica := newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+	currentReplica.Spec.DesireState = longhorn.InstanceStateRunning
+	currentReplica.Status.CurrentState = longhorn.InstanceStateRunning
+	currentReplica.Status.IP = randomIP()
+	currentReplica.Status.StorageIP = currentReplica.Status.IP
+	currentReplica.Status.Port = randomPort()
+	currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		currentReplica.Name: longhorn.ReplicaModeRW,
+	}
+
+	migrationEngine := newEngineForVolume(v)
+	migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	migrationEngine.Spec.Active = false
+	migrationEngine.Spec.NodeID = TestNode2
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
+	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
+	migrationEngine.Status.IP = randomIP()
+	migrationEngine.Status.Port = randomPort()
+
+	migrationReplica := currentReplica.DeepCopy()
+	migrationReplica.Name = currentReplica.Name + "-migration"
+	migrationReplica.Spec.EngineName = ""
+	migrationReplica.Spec.MigrationEngineName = migrationEngine.Name
+	migrationReplica.Status.IP = randomIP()
+	migrationReplica.Status.StorageIP = migrationReplica.Status.IP
+	migrationReplica.Status.Port = randomPort()
+	migrationEngine.Spec.ReplicaAddressMap = map[string]string{
+		migrationReplica.Name: imutil.GetURL(migrationReplica.Status.StorageIP, migrationReplica.Status.Port),
+	}
+
+	currentEngineFrontend := newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
+	currentEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
+	currentEngineFrontend.Status.CurrentState = longhorn.InstanceStateRunning
+	currentEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name
+
+	createdCurrentEngineFrontend, err := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), currentEngineFrontend, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineFrontendIndexer.Add(createdCurrentEngineFrontend)
+	c.Assert(err, IsNil)
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{
+		currentReplica.Name:   currentReplica,
+		migrationReplica.Name: migrationReplica,
+	}
+	efs := map[string]*longhorn.EngineFrontend{
+		currentEngineFrontend.Name: currentEngineFrontend,
+	}
+
+	err = vc.processMigration(v, es, rs, efs)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.CurrentMigrationNodeID, Equals, TestNode2)
+
+	migrationEngineFrontend, err := getEngineFrontendForNode(efs, TestNode2)
+	c.Assert(err, IsNil)
+	c.Assert(migrationEngineFrontend, NotNil)
+	c.Assert(migrationEngineFrontend.Name, Equals, types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontend.Name))
+	c.Assert(migrationEngineFrontend.Spec.NodeID, Equals, TestNode2)
+	c.Assert(migrationEngineFrontend.Spec.EngineName, Equals, migrationEngine.Name)
+	c.Assert(migrationEngineFrontend.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+	c.Assert(migrationEngineFrontend.Spec.TargetIP, Equals, migrationEngine.Status.IP)
+	c.Assert(migrationEngineFrontend.Spec.TargetPort, Equals, migrationEngine.Status.Port)
+}
+
+func (s *TestSuite) TestProcessMigrationV2RollbackCleanupRemovesExtraEngineFrontend(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Migratable = true
+	v.Spec.AccessMode = longhorn.AccessModeReadWriteMany
+	v.Spec.NodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentImage = TestEngineImage
+	v.Status.CurrentMigrationNodeID = TestNode2
+
+	currentEngine := newEngineForVolume(v)
+	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	currentEngine.Spec.Active = true
+	currentEngine.Spec.NodeID = TestNode1
+
+	currentEngineFrontend := newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
+	currentEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
+	currentEngineFrontend.Status.CurrentState = longhorn.InstanceStateRunning
+	currentEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name
+
+	extraEngineFrontend := newEngineFrontendForVolume(v, currentEngine.Name, TestNode2, currentEngineFrontend.Name)
+	extraEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
+	extraEngineFrontend.Status.CurrentState = longhorn.InstanceStateRunning
+	extraEngineFrontend.Status.Endpoint = "/dev/longhorn/" + v.Name + "-migrating"
+
+	for _, ef := range []*longhorn.EngineFrontend{currentEngineFrontend, extraEngineFrontend} {
+		created, createErr := lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Create(context.TODO(), ef, metav1.CreateOptions{})
+		c.Assert(createErr, IsNil)
+		createErr = engineFrontendIndexer.Add(created)
+		c.Assert(createErr, IsNil)
+	}
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name: currentEngine,
+	}
+	rs := map[string]*longhorn.Replica{}
+	efs := map[string]*longhorn.EngineFrontend{
+		currentEngineFrontend.Name: currentEngineFrontend,
+		extraEngineFrontend.Name:   extraEngineFrontend,
+	}
+
+	err = vc.processMigration(v, es, rs, efs)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.CurrentMigrationNodeID, Equals, "")
+	c.Assert(efs[currentEngineFrontend.Name], NotNil)
+	c.Assert(efs[extraEngineFrontend.Name], IsNil)
+
+	_, err = lhClient.LonghornV1beta2().EngineFrontends(TestNamespace).Get(context.TODO(), extraEngineFrontend.Name, metav1.GetOptions{})
+	c.Assert(err, NotNil)
+}
+
 func (s *TestSuite) TestShouldRejectEngineNodeMismatch(c *C) {
 	testCases := []struct {
 		name                 string
@@ -1681,6 +1848,31 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			UpgradedReplicaAddressMap:  map[string]string{},
 			Active:                     true,
 			RebuildConcurrentSyncLimit: 1,
+		},
+	}
+}
+
+func newEngineFrontendForVolume(v *longhorn.Volume, engineName, nodeID, currentEngineFrontendName string) *longhorn.EngineFrontend {
+	return &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName),
+			Namespace: TestNamespace,
+			Labels:    types.GetVolumeLabels(v.Name),
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
+				NodeID:      nodeID,
+				Image:       v.Status.CurrentImage,
+				DataEngine:  v.Spec.DataEngine,
+				DesireState: longhorn.InstanceStateStopped,
+			},
+			Frontend:          v.Spec.Frontend,
+			UblkQueueDepth:    v.Spec.UblkQueueDepth,
+			UblkNumberOfQueue: v.Spec.UblkNumberOfQueue,
+			EngineName:        engineName,
+			DisableFrontend:   v.Status.FrontendDisabled,
 		},
 	}
 }
