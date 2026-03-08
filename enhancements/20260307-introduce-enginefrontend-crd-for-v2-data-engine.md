@@ -1,5 +1,17 @@
 # LEP: Support Separating Initiator and Target onto Different Nodes for V2 Data Engine
 
+## Status
+
+Draft
+
+## Authors
+
+TBD
+
+## Last Updated
+
+2026-03-08
+
 ## Summary
 
 This proposal enables the Longhorn v2 data engine to run its initiator and target on different nodes.
@@ -73,7 +85,7 @@ The new steady-state model for a v2 volume is:
 - One active `EngineFrontend` object for the initiator.
 - Multiple `Replica` objects for the backend data copies.
 
-The initial scope keeps one `EngineFrontend` per volume in steady state, named with `GenerateEngineFrontendNameForVolume(volumeName)`, which produces the pattern `{volumeName}-ef`. The datastore may tolerate extra objects during transition or cleanup, but the intended steady state is a single active frontend per volume.
+The initial scope keeps one active `EngineFrontend` per volume in steady state. `GenerateEngineFrontendNameForVolume(volumeName, currentEngineFrontendName)` produces numbered names in the pattern `{volumeName}-ef-{number}`. During live migration or cleanup, the datastore may temporarily contain extra `EngineFrontend` objects, but the intended steady state is a single active frontend per volume.
 
 The control-plane object relationship can be visualized as follows:
 
@@ -337,7 +349,7 @@ The proposal requires coordinated changes across the v2 stack.
 - **EngineFrontendController** (`controller/engine_frontend_controller.go`): Reconcile `EngineFrontend` objects, delegate instance lifecycle to the shared `InstanceHandler`, and manage the two-phase switchover (suspend in Phase 1, switchover+resume in Phase 2). Specific switchover failure types (`switchoverFailureSuspend`, `switchoverFailureSwitch`, `switchoverFailureSwitchAndResume`, `switchoverFailureResume`) are used for event recording.
 - **EngineFrontendMonitor**: A per-frontend monitoring goroutine started when `CurrentState` becomes `running`. It polls via `EngineFrontendGet` at the engine poll interval, updates `Status.Endpoint`, and checks `Volume.Status.ExpansionRequired` to trigger expansion through the frontend proxy.
 - **Datastore** (`datastore/longhorn.go`): CRUD operations (`CreateEngineFrontend`, `GetEngineFrontend`, `UpdateEngineFrontend`, `UpdateEngineFrontendStatus`, `DeleteEngineFrontend`, `RemoveFinalizerForEngineFrontend`), list operations (`ListEngineFrontends`, `ListVolumeEngineFrontendsRO`), and current-frontend selection logic (`GetVolumeCurrentEngineFrontend`, `GetCurrentEngineFrontendAndExtras`).
-- **Volume controller** (`controller/volume_controller.go`): Create one `EngineFrontend` per v2 volume. Update volume reconciliation to start the target before the initiator and stop the initiator before the target (`closeVolumeDependentResources`). Check frontend readiness in `areVolumeDependentResourcesOpened`. Drive switchover via `processEngineSwitchover`. During `openVolumeDependentResources`, populate the frontend spec directly from the running engine status, skipping the target update when `isV2EngineSwitchoverInProgress`.
+- **Volume controller** (`controller/volume_controller.go`): Create one active `EngineFrontend` per v2 volume in steady state, with temporary extra `EngineFrontend` objects possible during live migration or cleanup. Update volume reconciliation to start the target before the initiator and stop the initiator before the target (`closeVolumeDependentResources`). Check frontend readiness in `areVolumeDependentResourcesOpened`. Drive switchover via `processEngineSwitchover`. During `openVolumeDependentResources`, populate the frontend spec directly from the running engine status, skipping the target update when `isV2EngineSwitchoverInProgress`.
 - **Live migration integration**: The same split also enables v2 migratable-volume live migration. During live migration, manager logic can create a destination `EngineFrontend` on the migration node, verify destination frontend readiness, and then switch the volume's current attachment node without reusing the source node's frontend state.
 - **Proxy and engineapi**: Route v2 endpoint reporting through `EngineFrontend`. Add `EngineFrontendProxy` (`engineapi/engine_frontend_proxy.go`) wrapping `InstanceManagerClient` methods. Extend the `Proxy` type to accept `*EngineFrontend` objects for `VolumeExpand`, `VolumeSnapshot`, `SnapshotRevert`, `SnapshotPurge`, `SnapshotRemove`, `SnapshotBackup`, and `SnapshotBackupStatus`. Add `EngineFrontendInstanceCreate`, `EngineFrontendSwitchOverTarget`, `EngineFrontendSuspend`, and `EngineFrontendResume` to `InstanceManagerClient`, all gated on instance-manager API version ≥ 4.
 - **Admission webhooks** (`webhook/resources/enginefrontend/`): A mutator that adds Longhorn labels, a `longhorn.io` finalizer, and defaults `DataEngine` to v2 if empty. A validator that ensures the referenced volume exists on create, only allows v2 data engine, and prevents `DataEngine` changes on update.
@@ -401,7 +413,7 @@ The `EngineFrontend` CRD must be installed before the upgraded longhorn-manager 
 The `reconcileVolumeCreation` function in the volume controller handles both new volume creation and upgrade-time backfill with the same code path:
 
 1. The volume controller lists `EngineFrontend` objects for each v2 volume.
-2. If a v2 volume has no `EngineFrontend` (`len(efs) == 0`), the controller calls `createEngineFrontend(v, e.Name)`, which creates a stopped `EngineFrontend` CR named `{volumeName}-ef` with the volume's current spec (frontend mode, ublk settings, engine name, disable-frontend flag).
+2. If a v2 volume has no `EngineFrontend` (`len(efs) == 0`), the controller calls `createEngineFrontend(v, "", e.Name, v.Status.CurrentNodeID)`, which creates a stopped `EngineFrontend` CR named `{volumeName}-ef-0` with the volume's current spec (frontend mode, ublk settings, engine name, disable-frontend flag).
 3. For **attached volumes**: in the same reconcile cycle, `openVolumeDependentResources` detects that the `Engine` is already running with a reachable IP. It populates the `EngineFrontend` spec with `TargetIP`, `TargetPort`, `EngineName`, attachment `NodeID`, and sets `DesireState = running`. The `EngineFrontendController` then creates the runtime initiator instance via instance-manager.
 4. For **detached volumes**: the `EngineFrontend` stays in `DesireState = stopped` until the next attach, at which point the normal attach flow starts it.
 
