@@ -556,7 +556,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := c.processMigration(volume, engines, replicas); err != nil {
+	if err := c.processMigration(volume, engines, replicas, engineFrontends); err != nil {
 		return err
 	}
 
@@ -1976,7 +1976,7 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 
 	// For v2 data engine, create EngineFrontend CR if not exists
 	if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) == 0 {
-		ef, err := c.createEngineFrontend(v, e.Name)
+		ef, err := c.createEngineFrontend(v, "", e.Name, v.Status.CurrentNodeID)
 		if err != nil {
 			return false, e, err
 		}
@@ -2263,8 +2263,11 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	// Skip the target update when an engine switchover is in progress, because
 	// processEngineSwitchover manages the EF target during switchover.
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		if ef, ok := efs[efName]; ok && ef != nil {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
 			ef.Spec.VolumeSize = v.Spec.Size
 			// Only set EngineFrontend to running when Engine is actually running
 			// so we have the TargetIP available
@@ -2347,8 +2350,7 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume,
 
 	// For v2 data engine, also check EngineFrontend is running
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		ef, err := c.ds.GetEngineFrontend(efName)
+		ef, err := c.ds.GetVolumeCurrentEngineFrontend(v.Name)
 		if err != nil || ef == nil {
 			return false
 		}
@@ -2376,8 +2378,8 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	// For v2 data engine, stop EngineFrontend first before stopping Engine
 	// Detach order: EngineFrontend -> Engine -> Replicas
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		if ef, ok := efs[efName]; ok && ef != nil {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err == nil && ef != nil {
 			if ef.Spec.DesireState != longhorn.InstanceStateStopped {
 				ef.Spec.DesireState = longhorn.InstanceStateStopped
 				ef.Spec.NodeID = ""
@@ -2447,8 +2449,7 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volu
 
 	// For v2 data engine, also check EngineFrontend is stopped
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		ef, err := c.ds.GetEngineFrontend(efName)
+		ef, err := c.ds.GetVolumeCurrentEngineFrontend(v.Name)
 		if err != nil && !datastore.ErrorIsNotFound(err) {
 			return false // If we can't get EF, assume not closed
 		}
@@ -2509,8 +2510,11 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		if ef, ok := efs[efName]; ok && ef != nil {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
 			ef.Spec.VolumeSize = v.Spec.Size
 		}
 	}
@@ -4187,22 +4191,61 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	return c.ds.CreateEngine(engine)
 }
 
+func pickCurrentEngineFrontend(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	if len(efs) == 0 {
+		return nil, nil
+	}
+
+	ef, _, err := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+	return ef, err
+}
+
+func getEngineFrontendForNode(efs map[string]*longhorn.EngineFrontend, nodeID string) (*longhorn.EngineFrontend, error) {
+	if len(efs) == 0 || nodeID == "" {
+		return nil, nil
+	}
+
+	var efForNode *longhorn.EngineFrontend
+	for _, ef := range efs {
+		if ef.DeletionTimestamp != nil || ef.Spec.NodeID != nodeID {
+			continue
+		}
+		if efForNode != nil {
+			return nil, fmt.Errorf("BUG: found the second engine frontend %v besides %v for node %v", ef.Name, efForNode.Name, nodeID)
+		}
+		efForNode = ef
+	}
+
+	return efForNode, nil
+}
+
+func isEngineFrontendReadyForNode(efs map[string]*longhorn.EngineFrontend, nodeID string) bool {
+	ef, err := getEngineFrontendForNode(efs, nodeID)
+	if err != nil || ef == nil {
+		return false
+	}
+
+	return ef.Spec.DesireState == longhorn.InstanceStateRunning &&
+		ef.Status.CurrentState == longhorn.InstanceStateRunning &&
+		ef.Status.Endpoint != ""
+}
+
 // createEngineFrontend creates an EngineFrontend CR for v2 data engine
 // The EngineFrontend is created in stopped state and will be started when
 // the Engine is running
-func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, engineName string) (*longhorn.EngineFrontend, error) {
+func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, currentEngineFrontendName, engineName, nodeID string) (*longhorn.EngineFrontend, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	ef := &longhorn.EngineFrontend{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineFrontendNameForVolume(v.Name),
+			Name:            types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineFrontendSpec{
 			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				NodeID:      v.Status.CurrentNodeID, // Set to current node for controller ownership
+				NodeID:      nodeID,
 				Image:       v.Status.CurrentImage,
 				DataEngine:  v.Spec.DataEngine,
 				DesireState: longhorn.InstanceStateStopped,
@@ -4738,7 +4781,7 @@ func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
 	}
 }
 
-func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to process migration for %v", v.Name)
 	}()
@@ -4761,7 +4804,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 		// The only time there should be more then one engines is when we are migrating. If there are more then one and
 		// we no longer have a MigrationNodeID set we can cleanup the extra engine.
-		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
+		if len(es) < 2 && len(efs) < 2 && v.Status.CurrentMigrationNodeID == "" {
 			return nil // There is nothing to do.
 		}
 
@@ -4800,6 +4843,23 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		}
 
 		currentEngine.Spec.Active = true
+
+		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
+			currentEngineFrontend, extraEngineFrontends, err := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+			if err != nil {
+				log.WithError(err).Warn("Failed to finalize the migration engine frontend state")
+			} else {
+				for i := range extraEngineFrontends {
+					ef := extraEngineFrontends[i]
+					if ef.DeletionTimestamp == nil {
+						if err := c.deleteEngineFrontend(ef, efs); err != nil {
+							return err
+						}
+						log.Infof("Removing extra engine frontend %v after switching the current engine frontend to %v", ef.Name, currentEngineFrontend.Name)
+					}
+				}
+			}
+		}
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		if types.IsDataEngineV1(v.Spec.DataEngine) {
@@ -4863,6 +4923,23 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 				r.Spec.MigrationEngineName = ""
 			}
 		}
+
+		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
+			_, extraEngineFrontends, err2 := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+			if err2 != nil {
+				err = errors.Wrapf(err, "failed to get current engine frontend during the migration revert: %v", err2)
+				return
+			}
+			for _, ef := range extraEngineFrontends {
+				if ef.DeletionTimestamp != nil {
+					continue
+				}
+				if err2 := c.deleteEngineFrontend(ef, efs); err2 != nil {
+					err = errors.Wrapf(err, "failed to delete the migration engine frontend %v during the migration revert: %v", ef.Name, err2)
+					return
+				}
+			}
+		}
 	}()
 
 	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
@@ -4919,6 +4996,51 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 	if !ready || revertRequired {
 		return nil
+	}
+
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		migrationEngineFrontend, err := getEngineFrontendForNode(efs, v.Spec.MigrationNodeID)
+		if err != nil {
+			return err
+		}
+		if migrationEngineFrontend == nil {
+			currentEngineFrontend, err := pickCurrentEngineFrontend(v, efs)
+			if err != nil {
+				return err
+			}
+			currentEngineFrontendName := ""
+			if currentEngineFrontend != nil {
+				currentEngineFrontendName = currentEngineFrontend.Name
+			}
+			migrationEngineFrontend, err = c.createEngineFrontend(v, currentEngineFrontendName, migrationEngine.Name, v.Spec.MigrationNodeID)
+			if err != nil {
+				return err
+			}
+			efs[migrationEngineFrontend.Name] = migrationEngineFrontend
+		}
+
+		migrationEngineFrontend.Spec.VolumeSize = v.Spec.Size
+		migrationEngineFrontend.Spec.NodeID = v.Spec.MigrationNodeID
+		migrationEngineFrontend.Spec.Frontend = v.Spec.Frontend
+		migrationEngineFrontend.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+		migrationEngineFrontend.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+		migrationEngineFrontend.Spec.DisableFrontend = v.Status.FrontendDisabled
+		migrationEngineFrontend.Spec.EngineName = migrationEngine.Name
+		if migrationEngine.Status.CurrentState == longhorn.InstanceStateRunning &&
+			migrationEngine.Status.IP != "" && migrationEngine.Status.Port != 0 {
+			migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.IP
+			migrationEngineFrontend.Spec.TargetPort = migrationEngine.Status.Port
+			migrationEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
+		}
+		if migrationEngineFrontend.Spec.DesireState != longhorn.InstanceStateRunning ||
+			migrationEngineFrontend.Status.CurrentState != longhorn.InstanceStateRunning ||
+			migrationEngineFrontend.Status.Endpoint == "" ||
+			migrationEngineFrontend.Status.TargetIP != migrationEngineFrontend.Spec.TargetIP ||
+			migrationEngineFrontend.Status.TargetPort != migrationEngineFrontend.Spec.TargetPort {
+			log.WithField("migrationEngineFrontend", migrationEngineFrontend.Name).
+				Info("Volume migration engine frontend is not ready yet")
+			return nil
+		}
 	}
 
 	log.Info("Volume migration engine is ready")
@@ -5003,8 +5125,8 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		// Restore the EngineFrontend to point back to the current (old) engine
 		// so the EF controller can switch the data path back.
 		// Also clear any in-progress switchover state.
-		efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-		if ef, ok := efs[efName]; ok && ef != nil {
+		ef, err3 := pickCurrentEngineFrontend(v, efs)
+		if err3 == nil && ef != nil {
 			if currentEngine.Status.IP != "" {
 				ef.Spec.TargetIP = currentEngine.Status.IP
 				ef.Spec.TargetPort = currentEngine.Status.Port
@@ -5085,9 +5207,11 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	efName := types.GenerateEngineFrontendNameForVolume(v.Name)
-	ef, ok := efs[efName]
-	if !ok || ef == nil {
+	ef, err := pickCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return err
+	}
+	if ef == nil {
 		log.Warn("EngineFrontend not found for volume, cannot perform switchover")
 		return nil
 	}

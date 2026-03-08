@@ -7163,7 +7163,7 @@ func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {
 
 func (s *DataStore) GetDataEngineObject(engine *longhorn.Engine) (interface{}, error) {
 	if types.IsDataEngineV2(engine.Spec.DataEngine) {
-		return s.GetEngineFrontendRO(types.GenerateEngineFrontendNameForVolume(engine.Spec.VolumeName))
+		return s.GetVolumeCurrentEngineFrontend(engine.Spec.VolumeName)
 	}
 	return engine, nil
 }

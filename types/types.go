@@ -376,8 +376,16 @@ func GenerateEngineNameForVolume(vName, currentEngineName string) string {
 	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
 }
 
-func GenerateEngineFrontendNameForVolume(vName string) string {
-	return vName + "-ef"
+func GenerateEngineFrontendNameForVolume(vName, currentEngineFrontendName string) string {
+	if currentEngineFrontendName == "" {
+		return vName + "-ef-0"
+	}
+	parts := strings.Split(currentEngineFrontendName, "-")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return vName + "-ef-1"
+	}
+	return vName + "-ef-" + strconv.Itoa(suffix+1)
 }
 
 func GenerateReplicaNameForVolume(vName string) string {

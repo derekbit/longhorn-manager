@@ -1171,7 +1171,7 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
 	r.Spec.VolumeSize = TestVolumeSize
 
-	efName := types.GenerateEngineFrontendNameForVolume(v.Name)
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
 	ef := &longhorn.EngineFrontend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: efName,
@@ -1224,7 +1224,7 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgre
 	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
 	r.Spec.VolumeSize = TestVolumeSize
 
-	efName := types.GenerateEngineFrontendNameForVolume(v.Name)
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
 	ef := &longhorn.EngineFrontend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: efName,
@@ -1471,6 +1471,45 @@ func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
 	for _, tc := range testCases {
 		c.Assert(isV2EngineSwitchoverInProgress(tc.volume, tc.engine, tc.target), Equals, tc.expected, Commentf("case=%s", tc.name))
 	}
+}
+
+func (s *TestSuite) TestEngineFrontendHelpers(c *C) {
+	efs := map[string]*longhorn.EngineFrontend{
+		"vol-ef-0": {
+			ObjectMeta: metav1.ObjectMeta{Name: "vol-ef-0"},
+			Spec: longhorn.EngineFrontendSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					NodeID:      TestNode1,
+					DesireState: longhorn.InstanceStateRunning,
+				},
+			},
+			Status: longhorn.EngineFrontendStatus{
+				InstanceStatus: longhorn.InstanceStatus{CurrentState: longhorn.InstanceStateRunning},
+				Endpoint:       "/dev/longhorn/vol",
+			},
+		},
+		"vol-ef-1": {
+			ObjectMeta: metav1.ObjectMeta{Name: "vol-ef-1"},
+			Spec: longhorn.EngineFrontendSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					NodeID:      TestNode2,
+					DesireState: longhorn.InstanceStateRunning,
+				},
+			},
+			Status: longhorn.EngineFrontendStatus{
+				InstanceStatus: longhorn.InstanceStatus{CurrentState: longhorn.InstanceStateStopped},
+			},
+		},
+	}
+
+	ef, err := getEngineFrontendForNode(efs, TestNode2)
+	c.Assert(err, IsNil)
+	c.Assert(ef, NotNil)
+	c.Assert(ef.Name, Equals, "vol-ef-1")
+
+	c.Assert(isEngineFrontendReadyForNode(efs, TestNode1), Equals, true)
+	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, false)
+	c.Assert(isEngineFrontendReadyForNode(efs, "node-3"), Equals, false)
 }
 
 func (s *TestSuite) TestShouldRejectEngineNodeMismatch(c *C) {

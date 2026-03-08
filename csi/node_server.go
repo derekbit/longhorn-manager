@@ -102,6 +102,32 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) (*Nod
 	}, nil
 }
 
+func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (string, error) {
+	if volume == nil {
+		return "", fmt.Errorf("volume is required")
+	}
+
+	if len(volume.EngineFrontends) == 0 {
+		return "", fmt.Errorf("volume %s has no engine frontend", volume.Name)
+	}
+
+	for _, ef := range volume.EngineFrontends {
+		if ef.HostId == nodeID && ef.Endpoint != "" {
+			return ef.Endpoint, nil
+		}
+	}
+
+	if !volume.Migratable {
+		for _, ef := range volume.EngineFrontends {
+			if ef.Endpoint != "" {
+				return ef.Endpoint, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("volume %s has no ready engine frontend on node %s", volume.Name, nodeID)
+}
+
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
@@ -462,9 +488,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Check volume attachment status
+	v2DevicePath := ""
+	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
+		v2DevicePath, err = getV2VolumeEndpointForNode(volume, ns.nodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Volume %v does not have a ready v2 engine frontend on node %v", volumeID, ns.nodeID)
+		}
+	}
 	if volume.State != string(longhorn.VolumeStateAttached) ||
 		(types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) && volume.Controllers[0].Endpoint == "") ||
-		(types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) && volume.EngineFrontends[0].Endpoint == "") {
+		(types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) && v2DevicePath == "") {
 		log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, stagingTargetPath)
 		if err := unmount(stagingTargetPath, mounter); err != nil {
 			log.WithError(err).Warnf("Failed to unmount stagingTargetPath %v", stagingTargetPath)
@@ -502,7 +535,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	devicePath := volume.Controllers[0].Endpoint
 	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
-		devicePath = volume.EngineFrontends[0].Endpoint
+		devicePath = v2DevicePath
 	}
 
 	diskFormat, err := getDiskFormat(devicePath)
@@ -839,7 +872,10 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	isBlockVolume := volumeCapability.GetBlock() != nil
 	devicePath := volume.Controllers[0].Endpoint
 	if types.IsDataEngineV2(longhorn.DataEngineType(volume.DataEngine)) {
-		devicePath = volume.EngineFrontends[0].Endpoint
+		devicePath, err = getV2VolumeEndpointForNode(volume, ns.nodeID)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 
 	diskFormat, err := getDiskFormat(devicePath)
