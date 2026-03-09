@@ -127,7 +127,7 @@ func (e *EngineSimulator) ReplicaList(*longhorn.Engine) (map[string]*Replica, er
 	return ret, nil
 }
 
-func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64) error {
+func (e *EngineSimulator) ReplicaAdd(obj interface{}, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout int64, grpcTimeoutSeconds int64) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 

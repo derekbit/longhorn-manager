@@ -89,7 +89,7 @@ type EngineClient interface {
 	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
+	ReplicaAdd(obj interface{}, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
 	ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error

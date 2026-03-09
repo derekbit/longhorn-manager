@@ -644,19 +644,18 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 	if err != nil {
 		return err
 	}
-	if _, ok := rebuildClientProxy.(engineapi.EngineFrontendReplicaAdder); !ok {
-		rebuildClientProxy.Close()
-		return fmt.Errorf("engine frontend client proxy does not support frontend replica add")
-	}
 	rebuildClientProxy.Close()
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(engine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
+	// In v2, replica membership is still owned by the engine. We use the
+	// engine client for membership checks here even though the add entry point
+	// itself is frontend-aware.
+	engineMembershipClientProxy, err := engineapi.GetCompatibleClient(engine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
 	if err != nil {
 		return err
 	}
-	defer engineClientProxy.Close()
+	defer engineMembershipClientProxy.Close()
 
-	alreadyExists, err := doesAddressExistInEngine(engine, replicaAddress, engineClientProxy)
+	alreadyExists, err := doesAddressExistInEngine(engine, replicaAddress, engineMembershipClientProxy)
 	if err != nil {
 		return err
 	}
@@ -723,24 +722,19 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 		}
 		defer rebuildClientProxy.Close()
 
-		frontendReplicaAdder, ok := rebuildClientProxy.(engineapi.EngineFrontendReplicaAdder)
-		if !ok {
-			reportStartResult(fmt.Errorf("engine frontend client proxy does not support frontend replica add"))
-			log.Error("Engine frontend client proxy does not support frontend replica add")
-			return
-		}
-
-		engineClientProxy, err := engineapi.GetCompatibleClient(currentEngine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
-		if err != nil {
-			reportStartResult(err)
-			log.WithError(err).Error("Failed to get engine client proxy for rebuilding cleanup")
-			return
-		}
-		defer engineClientProxy.Close()
+			// Replica cleanup and membership updates are engine operations in v2,
+			// so they continue to use the engine client rather than the frontend.
+			engineCleanupClientProxy, err := engineapi.GetCompatibleClient(currentEngine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
+			if err != nil {
+				reportStartResult(err)
+				log.WithError(err).Error("Failed to get engine client proxy for rebuilding cleanup")
+				return
+			}
+			defer engineCleanupClientProxy.Close()
 
 		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
-			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, currentEngine, efc.ds)
+				allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
 			if err != nil {
 				log.WithError(err).Error("Failed to check whether can start snapshot purge before rebuilding")
 				reportStartResult(errV2ReplicaRebuildDeferred)
@@ -768,7 +762,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
 				return
 			}
-			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+				if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				reportStartResult(err)
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
@@ -827,11 +821,14 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 			return
 		}
 
-		efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
-			"Start rebuilding replica %v with Address %v through engine frontend %v for engine %v and volume %v",
-			replicaName, replicaAddress, engineFrontend.Name, currentEngine.Name, currentEngine.Spec.VolumeName)
-		err = frontendReplicaAdder.EngineFrontendReplicaAdd(engineFrontend, replicaName, replicaURL, fastReplicaRebuild, grpcTimeoutSeconds)
-		switch {
+			efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
+				"Start rebuilding replica %v with Address %v through engine frontend %v for engine %v and volume %v",
+				replicaName, replicaAddress, engineFrontend.Name, currentEngine.Name, currentEngine.Spec.VolumeName)
+			// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
+			// latest size/currentSize from currentEngine and pass them through once
+			// the proxy API consumes those fields for EngineFrontend-based rebuild.
+			err = rebuildClientProxy.ReplicaAdd(engineFrontend, replicaName, replicaURL, false, fastReplicaRebuild, nil, 0, grpcTimeoutSeconds)
+			switch {
 		case err == nil:
 			reportStartResult(nil)
 		case isV2ReplicaAddAlreadyInProgressError(err):
@@ -856,7 +853,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 			efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 				"Failed rebuilding replica with Address %v through engine frontend %v: %v", replicaAddress, engineFrontend.Name, err)
 
-			if err := engineClientProxy.ReplicaRemove(currentEngine, replicaURL, replicaName); err != nil {
+				if err := engineCleanupClientProxy.ReplicaRemove(currentEngine, replicaURL, replicaName); err != nil {
 				log.WithError(err).Warnf("Failed to remove rebuilding replica %v", replicaAddress)
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
@@ -894,7 +891,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
-			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, currentEngine, efc.ds)
+				allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
 			if err != nil {
 				log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
 				return
@@ -913,7 +910,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
 				return
 			}
-			if err := engineClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+				if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
@@ -932,7 +929,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 	// Wait until engine confirmed that rebuild started.
 	if err := wait.PollUntilContextTimeout(context.Background(), EnginePollInterval, EnginePollTimeout, true, func(context.Context) (bool, error) {
-		return doesAddressExistInEngine(engine, replicaAddress, engineClientProxy)
+		return doesAddressExistInEngine(engine, replicaAddress, engineMembershipClientProxy)
 	}); err != nil {
 		return err
 	}
