@@ -732,6 +732,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 		}
 		if currentEngine.Spec.RequestedBackupRestore != "" && currentEngine.Spec.RequestedBackupRestore != currentEngine.Status.LastRestoredBackup {
 			reportStartResult(errV2ReplicaRebuildDeferred)
+			// See TODO in rebuildNewReplica: v2 backend does not yet support rebuild during restore.
 			log.WithField("restore", currentEngine.Spec.RequestedBackupRestore).Debug("Skipping v2 replica rebuild while restore is in progress")
 			return
 		}
