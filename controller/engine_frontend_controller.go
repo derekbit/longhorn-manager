@@ -624,21 +624,6 @@ func (efc *EngineFrontendController) rebuildNewReplica(ef *longhorn.EngineFronte
 	if !types.IsDataEngineV2(engine.Spec.DataEngine) || engine.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
-	// TODO: v1 has a dedicated restore rebuild branch (engine_controller.go ReplicaAdd with restore=true)
-	// that rebuilds replicas while backup restore is active. v2 (SPDK) backend does not support this yet
-	// (EngineFrontendReplicaAdd rejects when restore is in progress), so we skip rebuild during restore.
-	// When the SPDK backend adds restore-time rebuild support, this should be replaced with a restore
-	// rebuild path similar to v1.
-	if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-		efc.logger.WithFields(logrus.Fields{
-			"volume":         ef.Spec.VolumeName,
-			"engineFrontend": ef.Name,
-			"engine":         engine.Name,
-			"restore":        engine.Spec.RequestedBackupRestore,
-		}).Debug("Skipping v2 replica rebuild while restore is in progress")
-		return nil
-	}
-
 	replicaName, replicaAddress, needRebuild := getReplicaRebuildCandidate(engine, efc.logger)
 	if !needRebuild {
 		return nil
@@ -730,13 +715,6 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 			reportStartResult(errV2ReplicaRebuildDeferred)
 			return
 		}
-		if currentEngine.Spec.RequestedBackupRestore != "" && currentEngine.Spec.RequestedBackupRestore != currentEngine.Status.LastRestoredBackup {
-			reportStartResult(errV2ReplicaRebuildDeferred)
-			// See TODO in rebuildNewReplica: v2 backend does not yet support rebuild during restore.
-			log.WithField("restore", currentEngine.Spec.RequestedBackupRestore).Debug("Skipping v2 replica rebuild while restore is in progress")
-			return
-		}
-
 		rebuildClientProxy, err := engineapi.GetCompatibleClient(engineFrontend, nil, efc.ds, efc.logger, efc.proxyConnCounter)
 		if err != nil {
 			reportStartResult(err)
@@ -774,6 +752,12 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 				reportStartResult(errV2ReplicaRebuildDeferred)
 				return
 			}
+
+			// Unblock the reconcile worker before the potentially long purge
+			// wait (up to purgeWaitIntervalInSecond). The outer code will poll
+			// for the rebuild address with EnginePollTimeout and requeue on
+			// timeout, matching v1 behavior.
+			reportStartResult(nil)
 
 			log.Info("Starting snapshot purge before rebuilding")
 			dataEngineObj, err := efc.ds.GetDataEngineObject(currentEngine)
