@@ -142,36 +142,46 @@ func ReplicaToProtoReplica(r *Replica) *spdkrpc.Replica {
 }
 
 type Engine struct {
-	Name              string                `json:"name"`
-	VolumeName        string                `json:"volumeName"`
-	SpecSize          uint64                `json:"spec_size"`
-	ActualSize        uint64                `json:"actual_size"`
-	IP                string                `json:"ip"`
-	Port              int32                 `json:"port"`
-	ReplicaAddressMap map[string]string     `json:"replica_address_map"`
-	ReplicaModeMap    map[string]types.Mode `json:"replica_mode_map"`
-	Head              *Lvol                 `json:"head"`
-	Snapshots         map[string]*Lvol      `json:"snapshots"`
-	UUID              string                `json:"uuid"`
-	State             string                `json:"state"`
-	ErrorMsg          string                `json:"error_msg"`
+	Name                  string                `json:"name"`
+	VolumeName            string                `json:"volumeName"`
+	SpecSize              uint64                `json:"spec_size"`
+	ActualSize            uint64                `json:"actual_size"`
+	IP                    string                `json:"ip"`
+	Port                  int32                 `json:"port"`
+	ReplicaAddressMap     map[string]string     `json:"replica_address_map"`
+	ReplicaModeMap        map[string]types.Mode `json:"replica_mode_map"`
+	Head                  *Lvol                 `json:"head"`
+	Snapshots             map[string]*Lvol      `json:"snapshots"`
+	Frontend              string                `json:"frontend"`
+	Endpoint              string                `json:"endpoint"`
+	UUID                  string                `json:"uuid"`
+	State                 string                `json:"state"`
+	ErrorMsg              string                `json:"error_msg"`
+	IsExpanding           bool                  `json:"is_expanding"`
+	LastExpansionError    string                `json:"last_expansion_error"`
+	LastExpansionFailedAt string                `json:"last_expansion_failed_at"`
 }
 
 func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 	res := &Engine{
-		Name:              e.Name,
-		VolumeName:        e.VolumeName,
-		SpecSize:          e.SpecSize,
-		ActualSize:        e.ActualSize,
-		IP:                e.Ip,
-		Port:              e.Port,
-		ReplicaAddressMap: e.ReplicaAddressMap,
-		ReplicaModeMap:    map[string]types.Mode{},
-		Head:              ProtoLvolToLvol(e.Head),
-		Snapshots:         map[string]*Lvol{},
-		UUID:              e.Uuid,
-		State:             e.State,
-		ErrorMsg:          e.ErrorMsg,
+		Name:                  e.Name,
+		VolumeName:            e.VolumeName,
+		SpecSize:              e.SpecSize,
+		ActualSize:            e.ActualSize,
+		IP:                    e.Ip,
+		Port:                  e.Port,
+		ReplicaAddressMap:     e.ReplicaAddressMap,
+		ReplicaModeMap:        map[string]types.Mode{},
+		Head:                  ProtoLvolToLvol(e.Head),
+		Snapshots:             map[string]*Lvol{},
+		Frontend:              e.Frontend,
+		Endpoint:              e.Endpoint,
+		UUID:                  e.Uuid,
+		State:                 e.State,
+		ErrorMsg:              e.ErrorMsg,
+		IsExpanding:           e.IsExpanding,
+		LastExpansionError:    e.LastExpansionError,
+		LastExpansionFailedAt: e.LastExpansionFailedAt,
 	}
 	for rName, mode := range e.ReplicaModeMap {
 		res.ReplicaModeMap[rName] = types.GRPCReplicaModeToReplicaMode(mode)

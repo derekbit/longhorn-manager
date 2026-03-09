@@ -95,6 +95,8 @@ type EngineFrontendMonitor struct {
 
 	controllerID     string
 	proxyConnCounter util.Counter
+
+	expansionBackoff *flowcontrol.Backoff
 }
 
 // NewEngineFrontendController creates a new EngineFrontendController
@@ -1150,6 +1152,7 @@ func (efc *EngineFrontendController) startMonitoring(ef *longhorn.EngineFrontend
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		controllerID:           efc.controllerID,
 		proxyConnCounter:       efc.proxyConnCounter,
+		expansionBackoff:       flowcontrol.NewBackOff(time.Second*10, time.Minute*5),
 	}
 
 	efc.engineFrontendMonitorMutex.Lock()
@@ -1292,17 +1295,26 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) error {
 		m.logger.WithField("volume", ef.Spec.VolumeName).Trace("Skip engine frontend expansion because volume no longer exists")
 	} else if shouldExpandEngineFrontend(ef, volume) {
 		// Expand only when the volume is actually in expansion flow.
-		engineClientProxy, err := engineapi.GetCompatibleClient(ef, nil, m.ds, m.logger, m.proxyConnCounter)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
-		}
-		defer engineClientProxy.Close()
-		if err := engineClientProxy.VolumeExpand(ef); err != nil {
-			m.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
-				"Engine frontend failed to expand to size %v: %v", ef.Spec.VolumeSize, err)
-			return errors.Wrapf(err, "failed to expand volume frontend %v", ef.Name)
+		if m.expansionBackoff.IsInBackOffSinceUpdate(ef.Name, time.Now()) {
+			m.logger.Debug("Skipping engine frontend expansion since it is in the back-off window")
+		} else {
+			engineClientProxy, err := engineapi.GetCompatibleClient(ef, nil, m.ds, m.logger, m.proxyConnCounter)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
+			}
+			defer engineClientProxy.Close()
+			if err := engineClientProxy.VolumeExpand(ef); err != nil {
+				m.expansionBackoff.Next(ef.Name, time.Now())
+				m.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
+					"Engine frontend failed to expand to size %v: %v", ef.Spec.VolumeSize, err)
+				return errors.Wrapf(err, "failed to expand volume frontend %v", ef.Name)
+			}
+			// Expansion succeeded; clear backoff.
+			m.expansionBackoff.DeleteEntry(ef.Name)
 		}
 	} else {
+		// Expansion not required or already completed; clear any stale backoff.
+		m.expansionBackoff.DeleteEntry(ef.Name)
 		m.logger.WithFields(logrus.Fields{
 			"volume":            ef.Spec.VolumeName,
 			"requestedSize":     ef.Spec.VolumeSize,

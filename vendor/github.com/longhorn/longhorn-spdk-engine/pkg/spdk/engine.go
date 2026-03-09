@@ -515,17 +515,20 @@ func (e *Engine) Get() (res *spdkrpc.Engine) {
 
 func (e *Engine) getWithoutLock() (res *spdkrpc.Engine) {
 	res = &spdkrpc.Engine{
-		Name:              e.Name,
-		VolumeName:        e.VolumeName,
-		SpecSize:          e.SpecSize,
-		ActualSize:        e.ActualSize,
-		ReplicaAddressMap: map[string]string{},
-		ReplicaModeMap:    map[string]spdkrpc.ReplicaMode{},
-		Snapshots:         map[string]*spdkrpc.Lvol{},
-		Frontend:          e.Frontend,
-		Endpoint:          e.Endpoint,
-		State:             string(e.State),
-		ErrorMsg:          e.ErrorMsg,
+		Name:                  e.Name,
+		VolumeName:            e.VolumeName,
+		SpecSize:              e.SpecSize,
+		ActualSize:            e.ActualSize,
+		ReplicaAddressMap:     map[string]string{},
+		ReplicaModeMap:        map[string]spdkrpc.ReplicaMode{},
+		Snapshots:             map[string]*spdkrpc.Lvol{},
+		Frontend:              e.Frontend,
+		Endpoint:              e.Endpoint,
+		State:                 string(e.State),
+		ErrorMsg:              e.ErrorMsg,
+		IsExpanding:           e.isExpanding,
+		LastExpansionError:    e.lastExpansionError,
+		LastExpansionFailedAt: e.lastExpansionFailedAt,
 	}
 
 	if e.NvmeTcpTarget != nil {

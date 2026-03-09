@@ -1067,19 +1067,20 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 	if requireExpansion {
 		// Cannot continue to start restoration if expansion is not complete
-		if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
-			m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
-		} else {
-			m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
-			// The error info and the backoff interval will be updated later.
-			m.expansionUpdateTime = time.Now()
-			if types.IsDataEngineV1(engine.Spec.DataEngine) {
+		if types.IsDataEngineV1(engine.Spec.DataEngine) {
+			if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
+				m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
+			} else {
+				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
+				m.expansionUpdateTime = time.Now()
 				if err := engineClientProxy.VolumeExpand(engine); err != nil {
 					return err
 				}
 			}
+			return nil
 		}
-		return nil
+		// V2 expansion is driven by EngineFrontendMonitor, not EngineMonitor.
+		// Do not return early here so that restore status polling can continue.
 	}
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
 	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
