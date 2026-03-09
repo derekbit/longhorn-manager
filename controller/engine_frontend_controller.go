@@ -208,6 +208,15 @@ func (efc *EngineFrontendController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	// Deferred conditions are transient — re-enqueue after a delay without
+	// consuming retry budget so that the key is not dropped after maxRetries.
+	if errors.Is(err, errV2ReplicaRebuildDeferred) {
+		efc.logger.WithField("engineFrontend", key).Debug("Rebuild deferred, re-enqueueing after delay")
+		efc.queue.Forget(key)
+		efc.queue.AddAfter(key, EnginePollInterval)
+		return
+	}
+
 	log := efc.logger.WithField("engineFrontend", key)
 	if efc.queue.NumRequeues(key) < maxRetries {
 		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn engine frontend")
@@ -615,6 +624,11 @@ func (efc *EngineFrontendController) rebuildNewReplica(ef *longhorn.EngineFronte
 	if !types.IsDataEngineV2(engine.Spec.DataEngine) || engine.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
+	// TODO: v1 has a dedicated restore rebuild branch (engine_controller.go ReplicaAdd with restore=true)
+	// that rebuilds replicas while backup restore is active. v2 (SPDK) backend does not support this yet
+	// (EngineFrontendReplicaAdd rejects when restore is in progress), so we skip rebuild during restore.
+	// When the SPDK backend adds restore-time rebuild support, this should be replaced with a restore
+	// rebuild path similar to v1.
 	if engine.Spec.RequestedBackupRestore != "" && engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
 		efc.logger.WithFields(logrus.Fields{
 			"volume":         ef.Spec.VolumeName,
@@ -925,7 +939,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 	startErr := <-startResultCh
 	if errors.Is(startErr, errV2ReplicaRebuildDeferred) {
-		return fmt.Errorf("v2 replica rebuild deferred, will retry")
+		return fmt.Errorf("v2 replica rebuild deferred, will retry: %w", errV2ReplicaRebuildDeferred)
 	}
 	if startErr != nil {
 		return startErr
