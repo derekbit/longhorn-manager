@@ -20,16 +20,13 @@ func (c *ProxyClient) CleanupBackupMountPoints() (err error) {
 	return nil
 }
 
-func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress, backupName,
+func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, volumeName, serviceAddress, backupName,
 	snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
 	storageClassName string, labels map[string]string, envs []string, parameters map[string]string) (backupID, replicaAddress string, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
-	}
-	if dataEngine == dataEngineV2 {
-		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return "", "", errors.Wrap(err, "failed to backup snapshot")
@@ -46,9 +43,8 @@ func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, engineFrontendName,
 
 	req := &rpc.EngineSnapshotBackupRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:            serviceAddress,
-			EngineName:         engineName,
-			EngineFrontendName: engineFrontendName,
+			Address:    serviceAddress,
+			EngineName: engineName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
@@ -75,16 +71,13 @@ func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, engineFrontendName,
 	return recv.BackupId, recv.Replica, nil
 }
 
-func (c *ProxyClient) SnapshotBackupStatus(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress, backupName,
+func (c *ProxyClient) SnapshotBackupStatus(dataEngine, engineName, volumeName, serviceAddress, backupName,
 	replicaAddress, replicaName string) (status *SnapshotBackupStatus, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
 		"serviceAddress": serviceAddress,
 		"backupName":     backupName,
-	}
-	if dataEngine == dataEngineV2 {
-		input["engineFrontendName"] = engineFrontendName
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
 		return nil, errors.Wrap(err, "failed to get backup status")
@@ -101,9 +94,8 @@ func (c *ProxyClient) SnapshotBackupStatus(dataEngine, engineName, engineFronten
 
 	req := &rpc.EngineSnapshotBackupStatusRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:            serviceAddress,
-			EngineName:         engineName,
-			EngineFrontendName: engineFrontendName,
+			Address:    serviceAddress,
+			EngineName: engineName,
 			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),

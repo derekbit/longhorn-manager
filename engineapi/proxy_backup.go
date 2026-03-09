@@ -15,7 +15,7 @@ import (
 func (p *Proxy) SnapshotBackup(obj interface{}, snapshotName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels, credential, parameters map[string]string) (string, string, error) {
-	dataEngine, engineName, engineFrontendName, volumeName, err := p.GetObjInfo(obj)
+	dataEngine, engineName, _, volumeName, err := p.GetObjInfo(obj)
 	if err != nil {
 		return "", "", err
 	}
@@ -43,7 +43,7 @@ func (p *Proxy) SnapshotBackup(obj interface{}, snapshotName, backupName, backup
 		return "", "", err
 	}
 
-	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(string(dataEngine), engineName, engineFrontendName, volumeName, p.DirectToURL(obj),
+	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(string(dataEngine), engineName, volumeName, p.DirectToURL(obj),
 		backupName, snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod, concurrentLimit, storageClassName, labels, credentialEnv, parameters,
 	)
 	if err != nil {
@@ -54,12 +54,12 @@ func (p *Proxy) SnapshotBackup(obj interface{}, snapshotName, backupName, backup
 }
 
 func (p *Proxy) SnapshotBackupStatus(obj interface{}, backupName, replicaAddress, replicaName string) (status *longhorn.EngineBackupStatus, err error) {
-	dataEngine, engineName, engineFrontendName, volumeName, err := p.GetObjInfo(obj)
+	dataEngine, engineName, _, volumeName, err := p.GetObjInfo(obj)
 	if err != nil {
 		return nil, err
 	}
 
-	recv, err := p.grpcClient.SnapshotBackupStatus(string(dataEngine), engineName, engineFrontendName, volumeName,
+	recv, err := p.grpcClient.SnapshotBackupStatus(string(dataEngine), engineName, volumeName,
 		p.DirectToURL(obj), backupName, replicaAddress, replicaName)
 	if err != nil {
 		return nil, err
