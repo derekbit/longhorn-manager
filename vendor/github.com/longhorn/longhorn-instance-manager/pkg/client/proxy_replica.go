@@ -9,7 +9,7 @@ import (
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
-func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddress, engineFrontendName, replicaName,
+func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress, replicaName,
 	replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int,
 	fastSync bool, localSync *etypes.FileLocalSync, grpcTimeoutSeconds int64) (err error) {
 	input := map[string]string{
