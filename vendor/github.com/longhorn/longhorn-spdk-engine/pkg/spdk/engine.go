@@ -2338,12 +2338,17 @@ func (e *Engine) finishExpansion(fromSize, toSize uint64, err error) {
 
 	e.State = types.InstanceStateRunning
 	e.ErrorMsg = ""
-	e.SpecSize = toSize
 	if e.lastExpansionError != "" {
-		e.log.Infof("Succeeded to expand from size %v to %v but there are some replica expansion failures: %v", fromSize, toSize, e.lastExpansionError)
-	} else {
-		e.log.Infof("Succeeded to expand from size %v to %v", fromSize, toSize)
+		if e.lastExpansionFailedAt == "" {
+			e.lastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
+		e.log.Warnf("Partially failed to expand from size %v to %v; keeping engine size at %v: %v",
+			fromSize, toSize, fromSize, e.lastExpansionError)
+		return
 	}
+
+	e.SpecSize = toSize
+	e.log.Infof("Succeeded to expand from size %v to %v", fromSize, toSize)
 }
 
 func (e *Engine) tearDownRaidBdev(spdkClient *spdkclient.Client) (bdevUUID string, err error) {

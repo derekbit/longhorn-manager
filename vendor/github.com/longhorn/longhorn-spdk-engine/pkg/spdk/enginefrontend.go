@@ -644,6 +644,8 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 	// engineErr will be set when the engine failed to do any non-recoverable operations.
 	expanded := false
+	backendExpansionError := ""
+	backendExpansionFailedAt := ""
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -655,7 +657,7 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 		// Phase 3: Re-acquire lock to update state.
 		ef.Lock()
-		ef.finishExpansion(originalSize, expanded, size, retErr)
+		ef.finishExpansion(originalSize, expanded, size, retErr, backendExpansionError, backendExpansionFailedAt)
 		ef.Unlock()
 
 		ef.UpdateCh <- nil
@@ -684,6 +686,18 @@ func (ef *EngineFrontend) Expand(ctx context.Context, spdkClient *spdkclient.Cli
 
 	if err := engineSpdkClient.EngineExpand(ctx, engineName, size); err != nil {
 		return errors.Wrapf(err, "failed to expand engine %v", engineName)
+	}
+
+	engine, err := engineSpdkClient.EngineGet(engineName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get engine %v after expansion", engineName)
+	}
+	if engine.LastExpansionError != "" {
+		backendExpansionError = engine.LastExpansionError
+		backendExpansionFailedAt = engine.LastExpansionFailedAt
+		ef.log.Warnf("Engine %s partially failed to expand to %v; keeping engine frontend size at %v: %v",
+			engineName, size, originalSize, backendExpansionError)
+		return nil
 	}
 
 	if targetAddress != "" {
@@ -755,7 +769,7 @@ func (ef *EngineFrontend) requireExpansion(ctx context.Context, engineSpdkClient
 	return true, nil
 }
 
-func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size uint64, err error) {
+func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size uint64, err error, backendExpansionError, backendExpansionFailedAt string) {
 	if err != nil {
 		ef.State = types.InstanceStateError
 		ef.ErrorMsg = err.Error()
@@ -776,6 +790,18 @@ func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size u
 
 	ef.State = types.InstanceStateRunning
 	ef.ErrorMsg = ""
+	if backendExpansionError != "" {
+		ef.lastExpansionError = backendExpansionError
+		if backendExpansionFailedAt != "" {
+			ef.lastExpansionFailedAt = backendExpansionFailedAt
+		} else {
+			ef.lastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		}
+		ef.log.Warnf("Partially failed to expand from size %v to %v; keeping engine frontend size at %v: %v",
+			fromSize, size, fromSize, backendExpansionError)
+		ef.isExpanding = false
+		return
+	}
 	if expanded {
 		ef.log.Infof("Succeeded to expand from size %v to %v", fromSize, size)
 		ef.SpecSize = size
