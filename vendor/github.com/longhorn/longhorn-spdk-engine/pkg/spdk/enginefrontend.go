@@ -720,8 +720,20 @@ func (ef *EngineFrontend) requireExpansion(ctx context.Context, engineSpdkClient
 	}
 
 	if ef.SpecSize == size {
-		ef.log.Infof("Engine already at requested size %v, skipping expansion", size)
-		return false, nil // no need to expand
+		// EngineFrontend is already at the requested size. However, for offline
+		// expansion the Engine's SpecSize may have been adjusted downward by
+		// ValidateAndUpdate to match the actual RAID bdev size (built from
+		// unexpanded replicas). Check whether the downstream Engine still needs
+		// expansion before skipping.
+		engine, err := engineSpdkClient.EngineGet(ef.EngineName)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to get engine %v during expansion check", ef.EngineName)
+		}
+		if engine.SpecSize >= size {
+			ef.log.Infof("Engine already at requested size %v, skipping expansion", size)
+			return false, nil
+		}
+		ef.log.Infof("Engine frontend at requested size %v but engine SpecSize is %v, proceeding with expansion", size, engine.SpecSize)
 	}
 
 	roundedNewSize := util.RoundUp(size, helpertypes.MiB)
