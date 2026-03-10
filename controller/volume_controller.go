@@ -2357,6 +2357,11 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume,
 		if ef.Status.CurrentState != longhorn.InstanceStateRunning {
 			return false
 		}
+		if !ef.Spec.DisableFrontend &&
+			ef.Spec.Frontend != longhorn.VolumeFrontendEmpty &&
+			ef.Status.Endpoint == "" {
+			return false
+		}
 	}
 
 	return true
