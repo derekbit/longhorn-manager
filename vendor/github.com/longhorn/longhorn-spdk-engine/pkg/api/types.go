@@ -194,34 +194,40 @@ func ProtoEngineToEngine(e *spdkrpc.Engine) *Engine {
 }
 
 type EngineFrontend struct {
-	Name       string `json:"name"`
-	VolumeName string `json:"volumeName"`
-	SpecSize   uint64 `json:"spec_size"`
-	ActualSize uint64 `json:"actual_size"`
-	TargetIP   string `json:"target_ip"`
-	TargetPort int32  `json:"target_port"`
-	Frontend   string `json:"frontend"`
-	Endpoint   string `json:"endpoint"`
-	UUID       string `json:"uuid"`
-	UblkID     int32  `json:"ublk_id"`
-	State      string `json:"state"`
-	ErrorMsg   string `json:"error_msg"`
+	Name                  string `json:"name"`
+	VolumeName            string `json:"volumeName"`
+	SpecSize              uint64 `json:"spec_size"`
+	ActualSize            uint64 `json:"actual_size"`
+	TargetIP              string `json:"target_ip"`
+	TargetPort            int32  `json:"target_port"`
+	Frontend              string `json:"frontend"`
+	Endpoint              string `json:"endpoint"`
+	UUID                  string `json:"uuid"`
+	UblkID                int32  `json:"ublk_id"`
+	State                 string `json:"state"`
+	ErrorMsg              string `json:"error_msg"`
+	IsExpanding           bool   `json:"is_expanding"`
+	LastExpansionError    string `json:"last_expansion_error"`
+	LastExpansionFailedAt string `json:"last_expansion_failed_at"`
 }
 
 func ProtoEngineFrontendToEngineFrontend(ef *spdkrpc.EngineFrontend) *EngineFrontend {
 	res := &EngineFrontend{
-		Name:       ef.Name,
-		VolumeName: ef.VolumeName,
-		SpecSize:   ef.SpecSize,
-		ActualSize: ef.ActualSize,
-		TargetIP:   ef.TargetIp,
-		TargetPort: ef.TargetPort,
-		Frontend:   ef.Frontend,
-		Endpoint:   ef.Endpoint,
-		UUID:       ef.Uuid,
-		UblkID:     ef.UblkId,
-		State:      ef.State,
-		ErrorMsg:   ef.ErrorMsg,
+		Name:                  ef.Name,
+		VolumeName:            ef.VolumeName,
+		SpecSize:              ef.SpecSize,
+		ActualSize:            ef.ActualSize,
+		TargetIP:              ef.TargetIp,
+		TargetPort:            ef.TargetPort,
+		Frontend:              ef.Frontend,
+		Endpoint:              ef.Endpoint,
+		UUID:                  ef.Uuid,
+		UblkID:                ef.UblkId,
+		State:                 ef.State,
+		ErrorMsg:              ef.ErrorMsg,
+		IsExpanding:           ef.IsExpanding,
+		LastExpansionError:    ef.LastExpansionError,
+		LastExpansionFailedAt: ef.LastExpansionFailedAt,
 	}
 
 	return res
