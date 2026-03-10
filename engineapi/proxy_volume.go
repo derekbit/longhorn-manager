@@ -4,10 +4,18 @@ import (
 	"fmt"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 func (p *Proxy) VolumeGet(e *longhorn.Engine) (volume *Volume, err error) {
-	recv, err := p.grpcClient.VolumeGet(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e))
+	engineFrontendName := ""
+	if types.IsDataEngineV2(e.Spec.DataEngine) && p.ds != nil {
+		if ef, err := p.ds.GetVolumeCurrentEngineFrontend(e.Spec.VolumeName); err == nil && ef != nil {
+			engineFrontendName = ef.Name
+		}
+	}
+
+	recv, err := p.grpcClient.VolumeGet(string(e.Spec.DataEngine), e.Name, engineFrontendName, e.Spec.VolumeName, p.DirectToURL(e))
 	if err != nil {
 		return nil, err
 	}

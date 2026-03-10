@@ -477,8 +477,11 @@ func (ef *EngineFrontend) getWithoutLock() (res *spdkrpc.EngineFrontend) {
 		Frontend:   ef.Frontend,
 		Endpoint:   ef.Endpoint,
 
-		State:    string(ef.State),
-		ErrorMsg: ef.ErrorMsg,
+		State:                 string(ef.State),
+		ErrorMsg:              ef.ErrorMsg,
+		IsExpanding:           ef.isExpanding,
+		LastExpansionError:    ef.lastExpansionError,
+		LastExpansionFailedAt: ef.lastExpansionFailedAt,
 	}
 
 	if ef.NvmeTcpFrontend != nil {
@@ -808,6 +811,11 @@ func (ef *EngineFrontend) finishExpansion(fromSize uint64, expanded bool, size u
 	} else {
 		ef.log.Infof("Failed to expand from size %v to %v", fromSize, size)
 	}
+
+	// Clear stale expansion error on success (err == nil && backendExpansionError == "").
+	// A previous partial failure may have left lastExpansionError set.
+	ef.lastExpansionError = ""
+	ef.lastExpansionFailedAt = ""
 
 	ef.isExpanding = false
 }

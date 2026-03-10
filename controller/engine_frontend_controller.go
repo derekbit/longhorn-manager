@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -724,19 +725,19 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 		}
 		defer rebuildClientProxy.Close()
 
-			// Replica cleanup and membership updates are engine operations in v2,
-			// so they continue to use the engine client rather than the frontend.
-			engineCleanupClientProxy, err := engineapi.GetCompatibleClient(currentEngine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
-			if err != nil {
-				reportStartResult(err)
-				log.WithError(err).Error("Failed to get engine client proxy for rebuilding cleanup")
-				return
-			}
-			defer engineCleanupClientProxy.Close()
+		// Replica cleanup and membership updates are engine operations in v2,
+		// so they continue to use the engine client rather than the frontend.
+		engineCleanupClientProxy, err := engineapi.GetCompatibleClient(currentEngine, nil, efc.ds, efc.logger, efc.proxyConnCounter)
+		if err != nil {
+			reportStartResult(err)
+			log.WithError(err).Error("Failed to get engine client proxy for rebuilding cleanup")
+			return
+		}
+		defer engineCleanupClientProxy.Close()
 
 		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
-				allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
+			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
 			if err != nil {
 				log.WithError(err).Error("Failed to check whether can start snapshot purge before rebuilding")
 				reportStartResult(errV2ReplicaRebuildDeferred)
@@ -764,7 +765,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
 				return
 			}
-				if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+			if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				reportStartResult(err)
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
@@ -823,14 +824,14 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 			return
 		}
 
-			efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
-				"Start rebuilding replica %v with Address %v through engine frontend %v for engine %v and volume %v",
-				replicaName, replicaAddress, engineFrontend.Name, currentEngine.Name, currentEngine.Spec.VolumeName)
-			// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
-			// latest size/currentSize from currentEngine and pass them through once
-			// the proxy API consumes those fields for EngineFrontend-based rebuild.
-			err = rebuildClientProxy.ReplicaAdd(engineFrontend, replicaName, replicaURL, false, fastReplicaRebuild, nil, 0, grpcTimeoutSeconds)
-			switch {
+		efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeNormal, constant.EventReasonRebuilding,
+			"Start rebuilding replica %v with Address %v through engine frontend %v for engine %v and volume %v",
+			replicaName, replicaAddress, engineFrontend.Name, currentEngine.Name, currentEngine.Spec.VolumeName)
+		// TODO: Before calling ReplicaAdd for the v2 frontend path, fetch the
+		// latest size/currentSize from currentEngine and pass them through once
+		// the proxy API consumes those fields for EngineFrontend-based rebuild.
+		err = rebuildClientProxy.ReplicaAdd(engineFrontend, replicaName, replicaURL, false, fastReplicaRebuild, nil, 0, grpcTimeoutSeconds)
+		switch {
 		case err == nil:
 			reportStartResult(nil)
 		case isV2ReplicaAddAlreadyInProgressError(err):
@@ -855,7 +856,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 			efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedRebuilding,
 				"Failed rebuilding replica with Address %v through engine frontend %v: %v", replicaAddress, engineFrontend.Name, err)
 
-				if err := engineCleanupClientProxy.ReplicaRemove(currentEngine, replicaURL, replicaName); err != nil {
+			if err := engineCleanupClientProxy.ReplicaRemove(currentEngine, replicaURL, replicaName); err != nil {
 				log.WithError(err).Warnf("Failed to remove rebuilding replica %v", replicaAddress)
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
@@ -893,7 +894,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
-				allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
+			allowSnapshotPurge, err := efc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineCleanupClientProxy, currentEngine, efc.ds)
 			if err != nil {
 				log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
 				return
@@ -912,7 +913,7 @@ func (efc *EngineFrontendController) startRebuilding(ef *longhorn.EngineFrontend
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
 				return
 			}
-				if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
+			if err := engineCleanupClientProxy.SnapshotPurge(dataEngineObj); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
 				efc.eventRecorder.Eventf(currentEngine, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", currentEngine.Name, currentEngine.Spec.VolumeName, err)
@@ -1293,33 +1294,44 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) error {
 			return errors.Wrapf(err, "failed to get volume %v for engine frontend monitoring", ef.Spec.VolumeName)
 		}
 		m.logger.WithField("volume", ef.Spec.VolumeName).Trace("Skip engine frontend expansion because volume no longer exists")
-	} else if shouldExpandEngineFrontend(ef, volume) {
-		// Expand only when the volume is actually in expansion flow.
-		if m.expansionBackoff.IsInBackOffSinceUpdate(ef.Name, time.Now()) {
-			m.logger.Debug("Skipping engine frontend expansion since it is in the back-off window")
-		} else {
-			engineClientProxy, err := engineapi.GetCompatibleClient(ef, nil, m.ds, m.logger, m.proxyConnCounter)
-			if err != nil {
-				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
-			}
-			defer engineClientProxy.Close()
-			if err := engineClientProxy.VolumeExpand(ef); err != nil {
-				m.expansionBackoff.Next(ef.Name, time.Now())
-				m.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
-					"Engine frontend failed to expand to size %v: %v", ef.Spec.VolumeSize, err)
-				return errors.Wrapf(err, "failed to expand volume frontend %v", ef.Name)
-			}
-			// Expansion succeeded; clear backoff.
-			m.expansionBackoff.DeleteEntry(ef.Name)
-		}
 	} else {
-		// Expansion not required or already completed; clear any stale backoff.
-		m.expansionBackoff.DeleteEntry(ef.Name)
-		m.logger.WithFields(logrus.Fields{
-			"volume":            ef.Spec.VolumeName,
-			"requestedSize":     ef.Spec.VolumeSize,
-			"expansionRequired": volume.Status.ExpansionRequired,
-		}).Trace("Skip engine frontend expansion because volume expansion is not required")
+		currentEngine, err := m.ds.GetVolumeCurrentEngine(ef.Spec.VolumeName)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get current engine for volume %v during engine frontend monitoring", ef.Spec.VolumeName)
+		}
+
+		if shouldExpandEngineFrontend(ef, volume, currentEngine) {
+			// Expand only when the volume is actually in expansion flow.
+			if m.expansionBackoff.IsInBackOffSinceUpdate(ef.Name, time.Now()) {
+				m.logger.Debug("Skipping engine frontend expansion since it is in the back-off window")
+			} else {
+				engineClientProxy, err := engineapi.GetCompatibleClient(ef, nil, m.ds, m.logger, m.proxyConnCounter)
+				if err != nil {
+					return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
+				}
+				defer engineClientProxy.Close()
+				if err := engineClientProxy.VolumeExpand(ef); err != nil {
+					if isV2ExpansionInProgressError(err) {
+						m.logger.WithError(err).Debug("Skipping engine frontend expansion because expansion is already in progress")
+						return nil
+					}
+					m.expansionBackoff.Next(ef.Name, time.Now())
+					m.eventRecorder.Eventf(ef, corev1.EventTypeWarning, constant.EventReasonFailedExpansion,
+						"Engine frontend failed to expand to size %v: %v", ef.Spec.VolumeSize, err)
+					return errors.Wrapf(err, "failed to expand volume frontend %v", ef.Name)
+				}
+				// Expansion succeeded; clear backoff.
+				m.expansionBackoff.DeleteEntry(ef.Name)
+			}
+		} else {
+			// Expansion not required or already completed; clear any stale backoff.
+			m.expansionBackoff.DeleteEntry(ef.Name)
+			m.logger.WithFields(logrus.Fields{
+				"volume":            ef.Spec.VolumeName,
+				"requestedSize":     ef.Spec.VolumeSize,
+				"expansionRequired": volume.Status.ExpansionRequired,
+			}).Trace("Skip engine frontend expansion because volume expansion is not required")
+		}
 	}
 
 	// Only update status if something changed
@@ -1332,12 +1344,26 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) error {
 	return nil
 }
 
-func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume) bool {
-	if ef == nil || v == nil {
+func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume, e *longhorn.Engine) bool {
+	if ef == nil || v == nil || e == nil {
 		return false
 	}
 	if ef.Spec.VolumeSize <= 0 {
 		return false
 	}
-	return v.Status.ExpansionRequired
+	if !v.Status.ExpansionRequired {
+		return false
+	}
+	if e.Status.IsExpanding {
+		return false
+	}
+	return e.Status.CurrentSize < ef.Spec.VolumeSize
+}
+
+// v2ExpansionInProgressMsg matches the SPDK engine's ErrExpansionInProgress
+// error message after it crosses gRPC boundaries (where errors.Is is unavailable).
+const v2ExpansionInProgressMsg = "expansion is in progress"
+
+func isV2ExpansionInProgressError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), v2ExpansionInProgressMsg)
 }

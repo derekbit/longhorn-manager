@@ -1250,6 +1250,55 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgre
 	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
 }
 
+func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansionErrorExists(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.Size = TestVolumeSize * 2
+	v.Status.ExpansionRequired = true
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Spec.VolumeSize = TestVolumeSize
+	e.Status.CurrentSize = v.Spec.Size
+	e.Status.LastExpansionError = "frontend resize failed"
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.VolumeSize = TestVolumeSize
+
+	efName := types.GenerateEngineFrontendNameForVolume(v.Name, "")
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: efName,
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName: v.Name,
+				VolumeSize: TestVolumeSize,
+				DataEngine: longhorn.DataEngineTypeV2,
+			},
+		},
+	}
+
+	rs := map[string]*longhorn.Replica{r.Name: r}
+	efs := map[string]*longhorn.EngineFrontend{efName: ef}
+
+	err = vc.reconcileVolumeSize(v, e, rs, efs)
+	c.Assert(err, IsNil)
+
+	c.Assert(v.Status.ExpansionRequired, Equals, true)
+	c.Assert(e.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(r.Spec.VolumeSize, Equals, v.Spec.Size)
+	c.Assert(ef.Spec.VolumeSize, Equals, v.Spec.Size)
+}
+
 func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2UsesTargetNodeID(c *C) {
 	datastore.SkipListerCheck = true
 

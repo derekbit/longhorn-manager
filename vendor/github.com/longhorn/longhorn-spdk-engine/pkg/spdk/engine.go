@@ -2245,6 +2245,12 @@ func (e *Engine) Expand(spdkClient *spdkclient.Client, size uint64) (err error) 
 		return err
 	}
 	if !requireExpansion {
+		// Clear stale expansion error from a previous partial failure,
+		// since there is nothing left to expand.
+		e.Lock()
+		e.lastExpansionError = ""
+		e.lastExpansionFailedAt = ""
+		e.Unlock()
 		return nil
 	}
 

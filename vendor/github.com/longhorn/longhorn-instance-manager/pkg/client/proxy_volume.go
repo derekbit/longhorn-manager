@@ -11,7 +11,7 @@ import (
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
-func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddress string) (info *etypes.VolumeInfo, err error) {
+func (c *ProxyClient) VolumeGet(dataEngine, engineName, engineFrontendName, volumeName, serviceAddress string) (info *etypes.VolumeInfo, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -31,8 +31,9 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address:    serviceAddress,
-		EngineName: engineName,
+		Address:            serviceAddress,
+		EngineName:         engineName,
+		EngineFrontendName: engineFrontendName,
 		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),

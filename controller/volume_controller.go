@@ -1774,7 +1774,17 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 
 		// TODO: reconcileVolumeSize
 		// The engine expansion is complete
-		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
+		expansionComplete := v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			// For V2, also require no active expansion.
+			// Do NOT require LastExpansionError == "": partial replica
+			// failures set stale errors even though the RAID already
+			// operates at the new size, causing a deadlock where
+			// expansion can never complete.
+			expansionComplete = expansionComplete &&
+				!e.Status.IsExpanding
+		}
+		if expansionComplete {
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
 		}
@@ -2490,7 +2500,12 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 
 	// The expansion is canceled or hasn't been started
-	if e.Status.CurrentSize == v.Spec.Size {
+	expansionCanceledOrNotStarted := e.Status.CurrentSize == v.Spec.Size
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		expansionCanceledOrNotStarted = expansionCanceledOrNotStarted &&
+			!e.Status.IsExpanding && e.Status.LastExpansionError == ""
+	}
+	if expansionCanceledOrNotStarted {
 		v.Status.ExpansionRequired = false
 		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonCanceledExpansion,
 			"Canceled expanding the volume %v, will automatically detach it", v.Name)

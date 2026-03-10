@@ -18,20 +18,30 @@ import (
 func (s *TestSuite) TestShouldExpandEngineFrontend(c *C) {
 	ef := &longhorn.EngineFrontend{}
 	v := &longhorn.Volume{}
+	e := &longhorn.Engine{}
 
-	c.Assert(shouldExpandEngineFrontend(nil, v), Equals, false)
-	c.Assert(shouldExpandEngineFrontend(ef, nil), Equals, false)
+	c.Assert(shouldExpandEngineFrontend(nil, v, e), Equals, false)
+	c.Assert(shouldExpandEngineFrontend(ef, nil, e), Equals, false)
+	c.Assert(shouldExpandEngineFrontend(ef, v, nil), Equals, false)
 
 	ef.Spec.VolumeSize = 0
 	v.Status.ExpansionRequired = true
-	c.Assert(shouldExpandEngineFrontend(ef, v), Equals, false)
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
 
 	ef.Spec.VolumeSize = TestVolumeSize
 	v.Status.ExpansionRequired = false
-	c.Assert(shouldExpandEngineFrontend(ef, v), Equals, false)
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
 
 	v.Status.ExpansionRequired = true
-	c.Assert(shouldExpandEngineFrontend(ef, v), Equals, true)
+	e.Status.IsExpanding = true
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
+
+	e.Status.IsExpanding = false
+	e.Status.CurrentSize = TestVolumeSize
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, false)
+
+	e.Status.CurrentSize = TestVolumeSize - 1
+	c.Assert(shouldExpandEngineFrontend(ef, v, e), Equals, true)
 }
 
 func (s *TestSuite) TestGetReplicaRebuildCandidate(c *C) {

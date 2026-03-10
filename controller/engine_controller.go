@@ -948,7 +948,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				m.expansionBackoff.Next(engine.Name, time.Now())
 			}
 		}
-		if engine.Status.CurrentSize != 0 && engine.Status.CurrentSize != volumeInfo.Size {
+		expansionSucceeded := engine.Status.CurrentSize != 0 && engine.Status.CurrentSize != volumeInfo.Size
+		if types.IsDataEngineV2(engine.Spec.DataEngine) {
+			expansionSucceeded = expansionSucceeded &&
+				volumeInfo.LastExpansionError == "" && !volumeInfo.IsExpanding
+		}
+		if expansionSucceeded {
 			m.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonSucceededExpansion,
 				"Engine successfully expand size from %v to %v", engine.Status.CurrentSize, volumeInfo.Size)
 			m.expansionUpdateTime = time.Now()
@@ -1083,7 +1088,17 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		// Do not return early here so that restore status polling can continue.
 	}
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
-	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
+	expansionComplete := engine.Spec.VolumeSize == engine.Status.CurrentSize
+	if types.IsDataEngineV2(engine.Spec.DataEngine) {
+		// For V2, also require that no expansion is actively running.
+		// We intentionally do NOT require LastExpansionError == "" here:
+		// partial replica failures leave a stale error even though the RAID
+		// is already operating at the new size. The error is cleared below
+		// once expansion is complete.
+		expansionComplete = expansionComplete &&
+			!engine.Status.IsExpanding
+	}
+	if expansionComplete {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 		m.expansionUpdateTime = time.Now()
 		engine.Status.LastExpansionError = ""
