@@ -1182,6 +1182,7 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecs(c *C) {
 				VolumeSize: TestVolumeSize,
 				DataEngine: longhorn.DataEngineTypeV2,
 			},
+			Active: true,
 		},
 	}
 
@@ -1235,6 +1236,7 @@ func (s *TestSuite) TestReconcileVolumeSizeV2UpdatesCRSpecsWhenExpansionInProgre
 				VolumeSize: TestVolumeSize,
 				DataEngine: longhorn.DataEngineTypeV2,
 			},
+			Active: true,
 		},
 	}
 
@@ -1284,6 +1286,7 @@ func (s *TestSuite) TestReconcileVolumeSizeV2KeepsExpansionRequiredWhenExpansion
 				VolumeSize: TestVolumeSize,
 				DataEngine: longhorn.DataEngineTypeV2,
 			},
+			Active: true,
 		},
 	}
 
@@ -1990,7 +1993,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 }
 
 func newEngineFrontendForVolume(v *longhorn.Volume, engineName, nodeID, currentEngineFrontendName string) *longhorn.EngineFrontend {
-	return &longhorn.EngineFrontend{
+	ef := &longhorn.EngineFrontend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName),
 			Namespace: TestNamespace,
@@ -2012,6 +2015,10 @@ func newEngineFrontendForVolume(v *longhorn.Volume, engineName, nodeID, currentE
 			DisableFrontend:   v.Status.FrontendDisabled,
 		},
 	}
+	if currentEngineFrontendName == "" {
+		ef.Spec.Active = true
+	}
+	return ef
 }
 
 func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID string) *longhorn.Replica {

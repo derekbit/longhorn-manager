@@ -1146,6 +1146,8 @@ spec:
             description: EngineFrontendSpec defines the desired state of the Longhorn
               engine frontend (v2 initiator)
             properties:
+              active:
+                type: boolean
               dataEngine:
                 enum:
                 - v1

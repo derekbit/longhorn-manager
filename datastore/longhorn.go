@@ -1688,11 +1688,34 @@ func (s *DataStore) PickVolumeCurrentEngine(v *longhorn.Volume, es map[string]*l
 }
 
 // GetCurrentEngineFrontendAndExtras detects the current EngineFrontend and extra EngineFrontends from the EngineFrontend list of a volume with the given namespace.
+// GetCurrentEngineFrontendAndExtras uses Spec.Active as the primary match
+// (consistent with GetCurrentEngineAndExtras for Engine). Falls back to
+// GetNewCurrentEngineFrontendAndExtras when no Active EF is found.
 func GetCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (currentEngineFrontend *longhorn.EngineFrontend, extras []*longhorn.EngineFrontend, err error) {
+	for _, ef := range efs {
+		if ef.Spec.Active {
+			if currentEngineFrontend != nil {
+				return nil, nil, fmt.Errorf("BUG: found the second active engine frontend %v besides %v", ef.Name, currentEngineFrontend.Name)
+			}
+			currentEngineFrontend = ef
+		} else {
+			extras = append(extras, ef)
+		}
+	}
+	if currentEngineFrontend == nil {
+		logrus.Warnf("Failed to directly pick up the current one from engine frontends for volume %v by Active flag, falling back to node-based detection", v.Name)
+		return GetNewCurrentEngineFrontendAndExtras(v, efs)
+	}
+	return
+}
+
+// GetNewCurrentEngineFrontendAndExtras detects the new current EngineFrontend
+// by NodeID matching (similar to GetNewCurrentEngineAndExtras for Engine).
+func GetNewCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (currentEngineFrontend *longhorn.EngineFrontend, extras []*longhorn.EngineFrontend, err error) {
 	for name := range efs {
 		ef := efs[name]
 		if ef.DeletionTimestamp != nil {
-			continue // We cannot use a deleted engine frontend.
+			continue
 		}
 
 		targetNodeID := v.Spec.NodeID
@@ -1709,16 +1732,19 @@ func GetCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longh
 		}
 	}
 
-	// If volume only has 1 active engine frontend left and it does not have spec nodeID, it cannot pass the above rules.
-	// However, we want to use it as the current engine frontend
+	// If volume only has 1 non-deleted engine frontend left and it could not
+	// be matched by NodeID (e.g., both v.Spec.NodeID and v.Status.CurrentNodeID
+	// are empty during detach-while-attaching), use it as the current EF.
 	if currentEngineFrontend == nil {
-		if len(efs) == 1 {
-			for _, ef := range efs {
-				if ef.Spec.NodeID == "" && ef.DeletionTimestamp == nil {
-					currentEngineFrontend = ef
-					extras = []*longhorn.EngineFrontend{}
-				}
+		var activeEFs []*longhorn.EngineFrontend
+		for _, ef := range efs {
+			if ef.DeletionTimestamp == nil {
+				activeEFs = append(activeEFs, ef)
 			}
+		}
+		if len(activeEFs) == 1 {
+			currentEngineFrontend = activeEFs[0]
+			extras = []*longhorn.EngineFrontend{}
 		}
 	}
 
@@ -1726,6 +1752,7 @@ func GetCurrentEngineFrontendAndExtras(v *longhorn.Volume, efs map[string]*longh
 		return nil, nil, fmt.Errorf("cannot find the current engine frontend for the volume %v", v.Name)
 	}
 
+	currentEngineFrontend.Spec.Active = true
 	return
 }
 

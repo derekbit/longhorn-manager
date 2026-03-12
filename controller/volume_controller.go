@@ -2392,9 +2392,16 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 
 	// For v2 data engine, stop EngineFrontend first before stopping Engine
 	// Detach order: EngineFrontend -> Engine -> Replicas
+	//
+	// We iterate ALL EFs rather than using pickCurrentEngineFrontend
+	// because the volume's NodeID/CurrentNodeID may both be empty during
+	// detach-while-attaching scenarios, which makes the "current EF"
+	// lookup fail. During detach, every EF should be stopped.
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		ef, err := pickCurrentEngineFrontend(v, efs)
-		if err == nil && ef != nil {
+		for _, ef := range efs {
+			if ef.DeletionTimestamp != nil {
+				continue
+			}
 			if ef.Spec.DesireState != longhorn.InstanceStateStopped {
 				ef.Spec.DesireState = longhorn.InstanceStateStopped
 				ef.Spec.NodeID = ""
@@ -4278,6 +4285,10 @@ func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, currentEngin
 		},
 	}
 
+	if currentEngineFrontendName == "" {
+		ef.Spec.Active = true
+	}
+
 	log.WithField("engineFrontend", ef.Name).Info("Creating EngineFrontend CR for v2 data engine")
 
 	return c.ds.CreateEngineFrontend(ef)
@@ -4872,12 +4883,14 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 				for i := range extraEngineFrontends {
 					ef := extraEngineFrontends[i]
 					if ef.DeletionTimestamp == nil {
+						ef.Spec.Active = false
 						if err := c.deleteEngineFrontend(ef, efs); err != nil {
 							return err
 						}
 						log.Infof("Removing extra engine frontend %v after switching the current engine frontend to %v", ef.Name, currentEngineFrontend.Name)
 					}
 				}
+				currentEngineFrontend.Spec.Active = true
 			}
 		}
 
@@ -4945,15 +4958,17 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		}
 
 		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
-			_, extraEngineFrontends, err2 := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+			currentEF, extraEngineFrontends, err2 := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
 			if err2 != nil {
 				err = errors.Wrapf(err, "failed to get current engine frontend during the migration revert: %v", err2)
 				return
 			}
+			currentEF.Spec.Active = true
 			for _, ef := range extraEngineFrontends {
 				if ef.DeletionTimestamp != nil {
 					continue
 				}
+				ef.Spec.Active = false
 				if err2 := c.deleteEngineFrontend(ef, efs); err2 != nil {
 					err = errors.Wrapf(err, "failed to delete the migration engine frontend %v during the migration revert: %v", ef.Name, err2)
 					return

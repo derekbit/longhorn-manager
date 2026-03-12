@@ -39,6 +39,7 @@ type EngineFrontendSpecApplyConfiguration struct {
 	// EngineName is the name of the v2 engine target (required for EngineFrontend instance creation)
 	EngineName      *string `json:"engineName,omitempty"`
 	DisableFrontend *bool   `json:"disableFrontend,omitempty"`
+	Active          *bool   `json:"active,omitempty"`
 }
 
 // EngineFrontendSpecApplyConfiguration constructs a declarative configuration of the EngineFrontendSpec type for use with
@@ -100,5 +101,13 @@ func (b *EngineFrontendSpecApplyConfiguration) WithEngineName(value string) *Eng
 // If called multiple times, the DisableFrontend field is set to the value of the last call.
 func (b *EngineFrontendSpecApplyConfiguration) WithDisableFrontend(value bool) *EngineFrontendSpecApplyConfiguration {
 	b.DisableFrontend = &value
+	return b
+}
+
+// WithActive sets the Active field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Active field is set to the value of the last call.
+func (b *EngineFrontendSpecApplyConfiguration) WithActive(value bool) *EngineFrontendSpecApplyConfiguration {
+	b.Active = &value
 	return b
 }

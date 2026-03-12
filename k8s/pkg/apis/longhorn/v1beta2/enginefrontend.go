@@ -24,6 +24,8 @@ type EngineFrontendSpec struct {
 	EngineName string `json:"engineName"`
 	// +optional
 	DisableFrontend bool `json:"disableFrontend"`
+	// +optional
+	Active bool `json:"active"`
 }
 
 // EngineFrontendStatus defines the observed state of the Longhorn engine frontend
