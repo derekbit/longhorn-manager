@@ -127,14 +127,21 @@ func isV2NonMigratableEngineSwitchover(volume *longhorn.Volume, newEngine *longh
 	if volume.Status.CurrentNodeID == "" {
 		return false
 	}
-	if volume.Spec.EngineNodeID == "" || volume.Status.CurrentEngineNodeID == "" {
+
+	// Use the same fallback as processEngineSwitchover: when EngineNodeID is
+	// empty (non-split V2 volume), fall back to NodeID.
+	targetEngineNodeID := volume.Spec.EngineNodeID
+	if targetEngineNodeID == "" {
+		targetEngineNodeID = volume.Spec.NodeID
+	}
+	if targetEngineNodeID == "" || volume.Status.CurrentEngineNodeID == "" {
 		return false
 	}
-	if volume.Spec.EngineNodeID == volume.Status.CurrentEngineNodeID {
+	if targetEngineNodeID == volume.Status.CurrentEngineNodeID {
 		return false
 	}
 	if newEngine == nil {
 		return false
 	}
-	return newEngine.Spec.NodeID == "" || newEngine.Spec.NodeID == volume.Spec.EngineNodeID
+	return newEngine.Spec.NodeID == "" || newEngine.Spec.NodeID == targetEngineNodeID
 }

@@ -1872,6 +1872,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				c.closeVolumeDependentResources(v, e, rs, efs)
 				if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
 					v.Status.CurrentNodeID = ""
+					v.Status.CurrentEngineNodeID = ""
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
@@ -1920,6 +1921,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					c.closeVolumeDependentResources(v, e, rs, efs)
 					if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
 						v.Status.CurrentNodeID = ""
+						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
@@ -1944,6 +1946,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					c.closeVolumeDependentResources(v, e, rs, efs)
 					if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
 						v.Status.CurrentNodeID = ""
+						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
