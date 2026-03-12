@@ -2934,8 +2934,16 @@ func (s *Server) recoverEngineFrontends() {
 
 		ef := NewEngineFrontend(record.Name, record.EngineName, record.VolumeName,
 			record.Frontend, record.SpecSize, 0, 0, s.updateChs[types.InstanceTypeEngineFrontend])
-		ef.EngineIP = record.EngineIP
 		ef.metadataDir = s.metadataDir
+		if ef.NvmeTcpFrontend != nil {
+			if record.TargetIP != "" {
+				ef.NvmeTcpFrontend.TargetIP = record.TargetIP
+				ef.EngineIP = record.TargetIP
+			}
+			if record.TargetPort != 0 {
+				ef.NvmeTcpFrontend.TargetPort = record.TargetPort
+			}
+		}
 
 		s.engineFrontendMap[record.Name] = ef
 
@@ -2956,6 +2964,13 @@ func (s *Server) recoverEngineFrontends() {
 		}
 
 		if err := ef.RecoverFromHost(spdkClient); err != nil {
+			if errors.Is(err, ErrRecoverDeviceNotFound) {
+				s.Lock()
+				delete(s.engineFrontendMap, record.Name)
+				s.Unlock()
+				logrus.Warnf("Removed engine frontend %s from map: device not found on host", record.Name)
+				continue
+			}
 			logrus.WithError(err).Warnf("Failed to recover engine frontend %s from host, setting error state", record.Name)
 		}
 	}

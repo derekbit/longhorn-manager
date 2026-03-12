@@ -1727,11 +1727,16 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 	ef.Unlock()
 
 	var recoverErr error
+	var deviceNotFound bool
 
 	defer func() {
 		ef.Lock()
 		defer ef.Unlock()
 
+		if deviceNotFound {
+			// Device not found on host — record already removed, nothing to reconcile.
+			return
+		}
 		if recoverErr != nil {
 			ef.log.WithError(recoverErr).Errorf("Failed to recover engine frontend %s from host", ef.Name)
 			ef.State = types.InstanceStateError
@@ -1751,16 +1756,19 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 
 	case types.FrontendSPDKTCPNvmf:
 		// For NVMe-oF (non-blockdev) frontend, there is no local initiator.
-		// Just reconstruct the endpoint.
+		// Just reconstruct the endpoint from persisted TargetPort and EngineIP.
 		nqn := helpertypes.GetNQN(ef.EngineName)
 		nguid := generateNGUID(ef.EngineName)
 
 		ef.Lock()
 		ef.NvmeTcpFrontend.Nqn = nqn
 		ef.NvmeTcpFrontend.Nguid = nguid
-		// TargetIP and TargetPort are not recoverable without the Engine's subsystem info.
-		// Set them from the persisted EngineIP and leave port as 0 to be updated by ValidateAndUpdate.
-		ef.NvmeTcpFrontend.TargetIP = ef.EngineIP
+		if ef.NvmeTcpFrontend.TargetIP == "" {
+			ef.NvmeTcpFrontend.TargetIP = ef.EngineIP
+		}
+		if ef.NvmeTcpFrontend.TargetPort != 0 {
+			ef.Endpoint = GetNvmfEndpoint(nqn, ef.NvmeTcpFrontend.TargetIP, ef.NvmeTcpFrontend.TargetPort)
+		}
 		ef.Unlock()
 
 		return nil
@@ -1782,6 +1790,14 @@ func (ef *EngineFrontend) RecoverFromHost(spdkClient *spdkclient.Client) error {
 		// Try to load the existing NVMe device info from sysfs.
 		// Use empty transport address/port since we want to discover by NQN.
 		if err := i.LoadNVMeDeviceInfo("", "", nqn); err != nil {
+			if strings.Contains(err.Error(), helpertypes.ErrorMessageCannotFindValidNvmeDevice) {
+				ef.log.WithError(err).Warnf("NVMe device not found on host during recovery of engine frontend %s, removing persisted record", ef.Name)
+				if removeErr := removeEngineFrontendRecord(ef.metadataDir, ef.VolumeName); removeErr != nil {
+					ef.log.WithError(removeErr).Warn("Failed to remove engine frontend record")
+				}
+				deviceNotFound = true
+				return ErrRecoverDeviceNotFound
+			}
 			recoverErr = errors.Wrapf(err, "failed to load NVMe device info during recovery of engine frontend %s", ef.Name)
 			return recoverErr
 		}

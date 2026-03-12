@@ -23,7 +23,8 @@ type EngineFrontendRecord struct {
 	VolumeName string `json:"volumeName"`
 	Frontend   string `json:"frontend"`
 	SpecSize   uint64 `json:"specSize"`
-	EngineIP   string `json:"engineIP"`
+	TargetIP   string `json:"targetIP"`
+	TargetPort int32  `json:"targetPort"`
 }
 
 // engineFrontendRecordDir returns the directory path for a volume's record.
@@ -43,13 +44,21 @@ func saveEngineFrontendRecord(metadataDir string, ef *EngineFrontend) error {
 		return nil
 	}
 
+	var targetIP string
+	var targetPort int32
+	if ef.NvmeTcpFrontend != nil {
+		targetIP = ef.NvmeTcpFrontend.TargetIP
+		targetPort = ef.NvmeTcpFrontend.TargetPort
+	}
+
 	record := &EngineFrontendRecord{
 		Name:       ef.Name,
 		EngineName: ef.EngineName,
 		VolumeName: ef.VolumeName,
 		Frontend:   ef.Frontend,
 		SpecSize:   ef.SpecSize,
-		EngineIP:   ef.EngineIP,
+		TargetIP:   targetIP,
+		TargetPort: targetPort,
 	}
 
 	dir := engineFrontendRecordDir(metadataDir, ef.VolumeName)
