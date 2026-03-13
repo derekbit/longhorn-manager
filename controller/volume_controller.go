@@ -1755,6 +1755,34 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				}
 			}
 		}
+
+		// For v2 data engine, the EngineFrontend (NVMe-TCP initiator + block device)
+		// is a separate instance from the Engine (SPDK RAID target). The EF can enter
+		// Error independently when the block device disappears (e.g., during a replica
+		// instance manager restart), even while the engine and replicas remain running.
+		// The control plane treats this the same as a v1 engine error: mark the volume
+		// as faulted so the detach/reattach/remount cycle restores access.
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			ef, err := pickCurrentEngineFrontend(v, efs)
+			if err == nil && ef != nil && ef.Status.CurrentState == longhorn.InstanceStateError {
+				if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
+					log.Warn("EngineFrontend of volume dead unexpectedly, setting v.Status.Robustness to faulted")
+					msg := fmt.Sprintf("EngineFrontend of volume %v dead unexpectedly, setting v.Status.Robustness to faulted", v.Name)
+					c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+					e.Spec.LogRequested = true
+					for _, r := range rs {
+						if r.Status.CurrentState == longhorn.InstanceStateRunning {
+							r.Spec.LogRequested = true
+							rs[r.Name] = r
+						}
+					}
+					v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+					if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
 
 	// check volume mount status
