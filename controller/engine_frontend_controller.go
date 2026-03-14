@@ -416,7 +416,7 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 					}
 				}()
 
-				targetAddress := fmt.Sprintf("%s:%d", ef.Spec.TargetIP, ef.Spec.TargetPort)
+				targetAddress := util.BuildTargetAddress(ef.Spec.TargetIP, ef.Spec.TargetPort)
 
 				if ef.Status.CurrentState == longhorn.InstanceStateRunning && targetChanged {
 					// Phase 1: Suspend the frontend. The instance monitor will

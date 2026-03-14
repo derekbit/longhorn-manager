@@ -17,6 +17,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -574,11 +575,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 		return nil, fmt.Errorf("engine frontend (initiator) requires instance manager API version >= 4")
 	}
 
-	// Build target address from TargetIP and TargetPort
-	targetAddress := ""
-	if req.TargetIP != "" && req.TargetPort > 0 {
-		targetAddress = fmt.Sprintf("%s:%d", req.TargetIP, req.TargetPort)
-	}
+	targetAddress := util.BuildTargetAddress(req.TargetIP, req.TargetPort)
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.EngineFrontend.Spec.DataEngine),
