@@ -1416,27 +1416,12 @@ func (s *TestSuite) TestPrepareReplicasAndEngineForMigrationV2SupportsSplitFront
 }
 
 func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2RequiresEngineFrontendEndpoint(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
-	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-
-	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
-	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	vc := &VolumeController{}
 
 	v := newVolume(TestVolumeName, 1)
-	v.Namespace = TestNamespace
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.NodeID = TestNode1
 	v.Status.CurrentImage = TestEngineImage
-
-	err = volumeIndexer.Add(v)
-	c.Assert(err, IsNil)
 
 	e := newEngineForVolume(v)
 	e.Spec.DataEngine = longhorn.DataEngineTypeV2
@@ -1448,17 +1433,16 @@ func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2RequiresEngineFronten
 	ef := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
 
-	err = engineFrontendIndexer.Add(ef)
-	c.Assert(err, IsNil)
+	rs := map[string]*longhorn.Replica{r.Name: r}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
 
-	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, map[string]*longhorn.Replica{r.Name: r}), Equals, false)
+	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, rs, efs), Equals, false)
 
 	efWithEndpoint := ef.DeepCopy()
 	efWithEndpoint.Status.Endpoint = "/dev/longhorn/" + v.Name
-	err = engineFrontendIndexer.Update(efWithEndpoint)
-	c.Assert(err, IsNil)
+	efs[efWithEndpoint.Name] = efWithEndpoint
 
-	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, map[string]*longhorn.Replica{r.Name: r}), Equals, true)
+	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, rs, efs), Equals, true)
 }
 
 func (s *TestSuite) TestVerifyVolumeDependentResourcesClosedV2RequiresAllEngineFrontendsStopped(c *C) {
@@ -1521,29 +1505,14 @@ func (s *TestSuite) TestVerifyVolumeDependentResourcesClosedV2IgnoresDeletingEng
 }
 
 func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2AllowsEmptyEndpointWhenFrontendDisabled(c *C) {
-	datastore.SkipListerCheck = true
-
-	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
-	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
-	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
-	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
-
-	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
-	c.Assert(err, IsNil)
-
-	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
-	engineFrontendIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineFrontends().Informer().GetIndexer()
+	vc := &VolumeController{}
 
 	v := newVolume(TestVolumeName, 1)
-	v.Namespace = TestNamespace
 	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.NodeID = TestNode1
 	v.Spec.DisableFrontend = true
 	v.Status.CurrentImage = TestEngineImage
 	v.Status.FrontendDisabled = true
-
-	err = volumeIndexer.Add(v)
-	c.Assert(err, IsNil)
 
 	e := newEngineForVolume(v)
 	e.Spec.DataEngine = longhorn.DataEngineTypeV2
@@ -1556,10 +1525,10 @@ func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2AllowsEmptyEndpointWh
 	ef.Spec.DisableFrontend = true
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
 
-	err = engineFrontendIndexer.Add(ef)
-	c.Assert(err, IsNil)
+	rs := map[string]*longhorn.Replica{r.Name: r}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
 
-	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, map[string]*longhorn.Replica{r.Name: r}), Equals, true)
+	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, rs, efs), Equals, true)
 }
 
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {

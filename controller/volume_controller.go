@@ -1930,7 +1930,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 					return err
 				}
-				if c.areVolumeDependentResourcesOpened(v, e, rs) {
+				if c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
@@ -1959,7 +1959,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 						return err
 					}
-					if !c.areVolumeDependentResourcesOpened(v, e, rs) {
+					if !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 						log.Warnf("Volume is attached but dependent resources are not opened")
 					}
 				}
@@ -1983,7 +1983,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 						if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 							return err
 						}
-						if !c.areVolumeDependentResourcesOpened(v, e, rs) {
+						if !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 							log.Warnf("Volume is attached but dependent resources are not opened")
 						}
 					} else {
@@ -2375,7 +2375,7 @@ func shouldRejectEngineNodeMismatch(v *longhorn.Volume, e *longhorn.Engine, swit
 	return !switchoverInProgress
 }
 
-func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {
@@ -2391,7 +2391,7 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume,
 
 	// For v2 data engine, also check EngineFrontend is running
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		ef, err := c.ds.GetVolumeCurrentEngineFrontend(v.Name)
+		ef, err := pickCurrentEngineFrontend(v, efs)
 		if err != nil || ef == nil {
 			return false
 		}
