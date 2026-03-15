@@ -5144,6 +5144,13 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
+	// Skip engine switchover when a migration is in progress.
+	// processMigration manages the extra (migration) engine in that case;
+	// processEngineSwitchover's cleanup branch would incorrectly delete it.
+	if util.IsMigratableVolume(v) && (v.Spec.MigrationNodeID != "" || v.Status.CurrentMigrationNodeID != "") {
+		return nil
+	}
+
 	targetNodeID := v.Spec.EngineNodeID
 	if targetNodeID == "" {
 		targetNodeID = v.Spec.NodeID
