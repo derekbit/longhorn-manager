@@ -4924,7 +4924,12 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		currentEngine.Spec.Active = true
 
 		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
-			currentEngineFrontend, extraEngineFrontends, err := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+			// Use node-based detection (not Active-flag based) because the
+			// Active flag of the migration EF is still false at this point.
+			// v.Status.CurrentNodeID was already switched to the migration
+			// node above, so GetNewCurrentEngineFrontendAndExtras correctly
+			// picks the migration EF on the new node as the current one.
+			currentEngineFrontend, extraEngineFrontends, err := datastore.GetNewCurrentEngineFrontendAndExtras(v, efs)
 			if err != nil {
 				log.WithError(err).Warn("Failed to finalize the migration engine frontend state")
 			} else {
