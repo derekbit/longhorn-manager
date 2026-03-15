@@ -4899,6 +4899,12 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		if v.Spec.NodeID != "" && v.Status.CurrentNodeID != v.Spec.NodeID {
 			log.Infof("Volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
+			// For v2, also update CurrentEngineNodeID so that
+			// GetNewCurrentEngineAndExtras does not match both old and new
+			// engines (old matches CurrentEngineNodeID, new matches NodeID).
+			if types.IsDataEngineV2(v.Spec.DataEngine) {
+				v.Status.CurrentEngineNodeID = v.Spec.NodeID
+			}
 		}
 
 		// The latest current engine is based on the multiple node related fields of the volume and the NodeID of all
