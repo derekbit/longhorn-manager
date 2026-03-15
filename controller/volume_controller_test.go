@@ -1531,6 +1531,155 @@ func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2AllowsEmptyEndpointWh
 	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, rs, efs), Equals, true)
 }
 
+// setupSwitchoverTestInfra creates a VolumeController and the required
+// datastore objects (nodes) for processEngineSwitchover tests.
+// It returns the controller and a pre-built set of volume/engine/replica/EF
+// objects that place the switchover at the post-prepareReplicas stage:
+// migration engine is Running, replicas are ready, and EF.Spec already
+// points to the migration target.
+func setupSwitchoverTestInfra(c *C) (
+	vc *VolumeController,
+	v *longhorn.Volume,
+	currentEngine, migrationEngine *longhorn.Engine,
+	replica *longhorn.Replica,
+	ef *longhorn.EngineFrontend,
+) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	// Register nodes so IsReplicaUnavailable / IsNodeDownOrDeleted work.
+	nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	for _, nodeID := range []string{TestNode1, TestNode2} {
+		node := newNode(nodeID, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+		created, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = nodeIndexer.Add(created)
+		c.Assert(err, IsNil)
+	}
+
+	v = newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+	v.Spec.NodeID = TestNode1
+	v.Spec.EngineNodeID = TestNode2
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentEngineNodeID = TestNode1
+	v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	// Current (old) engine — running on node1
+	currentEngine = newEngineForVolume(v)
+	currentEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	currentEngine.Spec.Active = true
+	currentEngine.Spec.NodeID = TestNode1
+	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
+	currentEngine.Status.CurrentState = longhorn.InstanceStateRunning
+	currentEngine.Status.IP = "10.0.0.1"
+	currentEngine.Status.Port = 8501
+
+	// Migration engine — running on node2
+	migrationEngine = newEngineForVolume(v)
+	migrationEngine.Spec.DataEngine = longhorn.DataEngineTypeV2
+	migrationEngine.Spec.Active = false
+	migrationEngine.Spec.NodeID = TestNode2
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
+	migrationEngine.Status.CurrentState = longhorn.InstanceStateRunning
+	migrationEngine.Status.IP = "10.0.0.2"
+	migrationEngine.Status.Port = 8502
+
+	// Replica — assigned to the current engine, and also used for migration.
+	replica = newReplicaForVolume(v, currentEngine, TestNode1, TestDiskID1)
+	replica.Spec.DesireState = longhorn.InstanceStateRunning
+	replica.Status.CurrentState = longhorn.InstanceStateRunning
+	replica.Status.IP = "10.0.0.10"
+	replica.Status.StorageIP = replica.Status.IP
+	replica.Status.Port = randomPort()
+	replica.Spec.MigrationEngineName = migrationEngine.Name
+
+	currentEngine.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		replica.Name: longhorn.ReplicaModeRW,
+	}
+	migrationEngine.Spec.ReplicaAddressMap = map[string]string{
+		replica.Name: imutil.GetURL(replica.Status.StorageIP, replica.Status.Port),
+	}
+
+	// EF — Spec already points to migration engine target (from a prior cycle).
+	ef = newEngineFrontendForVolume(v, currentEngine.Name, TestNode1, "")
+	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetPort = migrationEngine.Status.Port
+	ef.Spec.EngineName = migrationEngine.Name
+
+	return
+}
+
+// TestProcessEngineSwitchoverKeepsOldEngineRunningDuringSuspend verifies that
+// when the EF is suspended mid-switchover, the old engine is NOT stopped.
+// This allows a failed Phase 2 (SwitchOverTarget) to resume back to the old
+// target without hitting a dead engine.
+func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningDuringSuspend(c *C) {
+	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	// EF is Suspended (Phase 1 complete). Status still shows old target
+	// because Phase 2 hasn't completed yet.
+	ef.Status.CurrentState = longhorn.InstanceStateSuspended
+	ef.Status.TargetIP = currentEngine.Status.IP
+	ef.Status.TargetPort = currentEngine.Status.Port
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+	err := vc.processEngineSwitchover(v, es, rs, efs)
+	c.Assert(err, IsNil)
+
+	// The old engine must still be running — not stopped.
+	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateRunning)
+}
+
+// TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete verifies
+// that the old engine is stopped only after the EF controller confirms the
+// switchover (ef.Status.TargetIP matches the new target).
+func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete(c *C) {
+	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	// EF switchover is complete: both Spec and Status show the new target.
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+	err := vc.processEngineSwitchover(v, es, rs, efs)
+	c.Assert(err, IsNil)
+
+	// The old engine must be stopped after switchover is confirmed.
+	c.Assert(currentEngine.Spec.DesireState, Equals, longhorn.InstanceStateStopped)
+	c.Assert(currentEngine.Spec.Active, Equals, false)
+
+	// The migration engine is now the active engine.
+	c.Assert(migrationEngine.Spec.Active, Equals, true)
+
+	// Volume's CurrentEngineNodeID should be updated.
+	c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode2)
+
+	// Replica should be reassigned to the migration engine.
+	c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+}
+
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
 	testCases := []struct {
 		name     string

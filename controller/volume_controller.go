@@ -5278,7 +5278,11 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	// The EngineFrontend controller will:
 	//   Phase 1: suspend (CurrentState becomes "suspended" via instance monitor)
 	//   Phase 2: switchover → resume (CurrentState becomes "running")
-	// Between phases, the volume controller can stop the old engine.
+	//
+	// The old engine is kept running until Phase 2 succeeds so that a
+	// failed SwitchOverTarget can resume back to the old target without
+	// causing I/O errors. The old engine is stopped in Step 5 after the
+	// switchover is confirmed.
 	if migrationEngine.Status.IP == "" {
 		log.Info("Migration engine is running but IP is not yet available, waiting")
 		return nil
@@ -5309,20 +5313,10 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	// Step 3: When the EF controller has suspended the frontend (instance
-	// monitor reports CurrentState=suspended), stop the old engine. I/O is
-	// paused at the dm layer so there are no reconnect retries to the dead target.
-	if ef.Status.CurrentState == longhorn.InstanceStateSuspended {
-		if currentEngine.Spec.DesireState != longhorn.InstanceStateStopped {
-			log.Infof("EngineFrontend is suspended, stopping old engine %v", currentEngine.Name)
-			currentEngine.Spec.DesireState = longhorn.InstanceStateStopped
-		}
-		// Fall through — if Phase 2 already completed (TargetIP matches),
-		// we can proceed to Step 5 in the same cycle instead of returning.
-	}
-
-	// Wait for the EngineFrontend controller to complete the switchover
-	// (Status.TargetIP reflects the new target after switchover + resume).
+	// Step 3: Wait for the EF controller to complete the full switchover.
+	// The old engine is intentionally kept running so that if Phase 2
+	// (SwitchOverTarget) fails, the EF controller can resume I/O back to
+	// the old target without hitting a dead engine.
 	if ef.Status.TargetIP != newTargetIP || ef.Status.TargetPort != newTargetPort {
 		log.Info("Waiting for EngineFrontend controller to complete the switchover to migration engine")
 		return nil
@@ -5332,8 +5326,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	// old engine immediately to avoid extra reconcile cycles.
 	log.Info("Volume engine switchover completed. EngineFrontend has switched to migration engine.")
 
-	// Ensure the old engine is stopped (safety net if Step 3 was skipped
-	// because the EF controller completed Phase 2 before we saw Suspended).
+	// Now that the EF has confirmed the new target, stop the old engine.
 	if currentEngine.Spec.DesireState != longhorn.InstanceStateStopped {
 		currentEngine.Spec.DesireState = longhorn.InstanceStateStopped
 	}
