@@ -1461,6 +1461,65 @@ func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2RequiresEngineFronten
 	c.Assert(vc.areVolumeDependentResourcesOpened(v, e, map[string]*longhorn.Replica{r.Name: r}), Equals, true)
 }
 
+func (s *TestSuite) TestVerifyVolumeDependentResourcesClosedV2RequiresAllEngineFrontendsStopped(c *C) {
+	vc := &VolumeController{}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Status.CurrentState = longhorn.InstanceStateStopped
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Status.CurrentState = longhorn.InstanceStateStopped
+
+	currentEF := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	currentEF.Status.CurrentState = longhorn.InstanceStateStopped
+
+	extraEF := newEngineFrontendForVolume(v, e.Name, TestNode2, currentEF.Name)
+	extraEF.Status.CurrentState = longhorn.InstanceStateRunning
+
+	c.Assert(vc.verifyVolumeDependentResourcesClosed(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{
+		currentEF.Name: currentEF,
+		extraEF.Name:   extraEF,
+	}), Equals, false)
+
+	extraEF.Status.CurrentState = longhorn.InstanceStateStopped
+
+	c.Assert(vc.verifyVolumeDependentResourcesClosed(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{
+		currentEF.Name: currentEF,
+		extraEF.Name:   extraEF,
+	}), Equals, true)
+}
+
+func (s *TestSuite) TestVerifyVolumeDependentResourcesClosedV2IgnoresDeletingEngineFrontends(c *C) {
+	vc := &VolumeController{}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV2
+	e.Status.CurrentState = longhorn.InstanceStateStopped
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Status.CurrentState = longhorn.InstanceStateStopped
+
+	currentEF := newEngineFrontendForVolume(v, e.Name, TestNode1, "")
+	currentEF.Status.CurrentState = longhorn.InstanceStateStopped
+
+	deletingEF := newEngineFrontendForVolume(v, e.Name, TestNode2, currentEF.Name)
+	deletingEF.Status.CurrentState = longhorn.InstanceStateRunning
+	now := metav1.Now()
+	deletingEF.DeletionTimestamp = &now
+
+	c.Assert(vc.verifyVolumeDependentResourcesClosed(v, e, map[string]*longhorn.Replica{r.Name: r}, map[string]*longhorn.EngineFrontend{
+		currentEF.Name:  currentEF,
+		deletingEF.Name: deletingEF,
+	}), Equals, true)
+}
+
 func (s *TestSuite) TestAreVolumeDependentResourcesOpenedV2AllowsEmptyEndpointWhenFrontendDisabled(c *C) {
 	datastore.SkipListerCheck = true
 

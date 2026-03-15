@@ -1880,7 +1880,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
 				c.closeVolumeDependentResources(v, e, rs, efs)
-				if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
@@ -1898,7 +1898,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
 				c.closeVolumeDependentResources(v, e, rs, efs)
-				if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.CurrentNodeID = ""
 					v.Status.CurrentEngineNodeID = ""
 					v.Status.State = longhorn.VolumeStateDetached
@@ -1917,7 +1917,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
 				c.closeVolumeDependentResources(v, e, rs, efs)
-				if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
@@ -1947,7 +1947,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
 					c.closeVolumeDependentResources(v, e, rs, efs)
-					if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
+					if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
@@ -1972,7 +1972,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
 					c.closeVolumeDependentResources(v, e, rs, efs)
-					if c.verifyVolumeDependentResourcesClosed(v, e, rs) {
+					if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
@@ -2490,7 +2490,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	}
 }
 
-func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
 	allReplicasStopped := func() bool {
 		for _, r := range rs {
 			if r.Status.CurrentState != longhorn.InstanceStateStopped {
@@ -2500,13 +2500,24 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volu
 		return true
 	}
 
-	// For v2 data engine, also check EngineFrontend is stopped
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		ef, err := c.ds.GetVolumeCurrentEngineFrontend(v.Name)
-		if err != nil && !datastore.ErrorIsNotFound(err) {
-			return false // If we can't get EF, assume not closed
+	allEngineFrontendsStopped := func() bool {
+		for _, ef := range efs {
+			if ef.DeletionTimestamp != nil {
+				continue
+			}
+			if ef.Status.CurrentState != longhorn.InstanceStateStopped {
+				return false
+			}
 		}
-		if ef != nil && ef.Status.CurrentState != longhorn.InstanceStateStopped {
+		return true
+	}
+
+	// For v2 data engine, every non-deleting EngineFrontend must be stopped.
+	// Detach drives all EFs to Stopped, so checking only the current EF can
+	// incorrectly mark the volume detached while an extra EF still has an
+	// initiator/device open during migration or switchover cleanup.
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		if !allEngineFrontendsStopped() {
 			return false
 		}
 	}
