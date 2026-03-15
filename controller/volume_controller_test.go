@@ -1827,6 +1827,15 @@ func (s *TestSuite) TestEngineFrontendHelpers(c *C) {
 	c.Assert(isEngineFrontendReadyForNode(efs, TestNode1), Equals, true)
 	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, false)
 	c.Assert(isEngineFrontendReadyForNode(efs, "node-3"), Equals, false)
+
+	efs["vol-ef-1"].Spec.DesireState = longhorn.InstanceStateRunning
+	efs["vol-ef-1"].Status.CurrentState = longhorn.InstanceStateRunning
+	efs["vol-ef-1"].Spec.DisableFrontend = true
+	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, true)
+
+	efs["vol-ef-1"].Spec.DisableFrontend = false
+	efs["vol-ef-1"].Spec.Frontend = longhorn.VolumeFrontendEmpty
+	c.Assert(isEngineFrontendReadyForNode(efs, TestNode2), Equals, true)
 }
 
 func (s *TestSuite) TestProcessMigrationV2CreatesMigrationEngineFrontend(c *C) {

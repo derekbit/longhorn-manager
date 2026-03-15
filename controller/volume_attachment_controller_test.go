@@ -482,6 +482,20 @@ func (s *TestSuite) TestIsVolumeAvailableOnNodeV2RequiresReadyEngineFrontend(c *
 	c.Assert(err, IsNil)
 
 	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+
+	createdEngineFrontend.Status.Endpoint = ""
+	createdEngineFrontend.Spec.DisableFrontend = true
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
+
+	createdEngineFrontend.Spec.DisableFrontend = false
+	createdEngineFrontend.Spec.Frontend = longhorn.VolumeFrontendEmpty
+	err = engineFrontendIndexer.Update(createdEngineFrontend)
+	c.Assert(err, IsNil)
+
+	c.Assert(vac.isVolumeAvailableOnNode(v.Name, TestNode2), Equals, true)
 }
 
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {

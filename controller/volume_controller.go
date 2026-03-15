@@ -4294,9 +4294,15 @@ func isEngineFrontendReadyForNode(efs map[string]*longhorn.EngineFrontend, nodeI
 		return false
 	}
 
-	return ef.Spec.DesireState == longhorn.InstanceStateRunning &&
-		ef.Status.CurrentState == longhorn.InstanceStateRunning &&
-		ef.Status.Endpoint != ""
+	if ef.Spec.DesireState != longhorn.InstanceStateRunning || ef.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false
+	}
+
+	if ef.Spec.DisableFrontend || ef.Spec.Frontend == longhorn.VolumeFrontendEmpty {
+		return true
+	}
+
+	return ef.Status.Endpoint != ""
 }
 
 // createEngineFrontend creates an EngineFrontend CR for v2 data engine
