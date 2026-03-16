@@ -63,6 +63,18 @@ const (
 
 	initialCloneRetryInterval = 30 * time.Second
 	maxCloneRetry             = 10
+
+	// v2DataLocalityCleanupGracePeriod is the minimum time a local replica
+	// must have been healthy before data-locality cleanup is allowed to
+	// remove the old non-local replica.  For v2 (SPDK) the rebuild can
+	// complete in well under a second, and the EngineFrontend informer
+	// triggers frequent volume-controller syncs.  Without a grace period
+	// the controller can delete the original replica in the same sync
+	// cycle that marks the local rebuild healthy.  If the engine then
+	// crashes, the deleted original is irrecoverable.  The grace period
+	// ensures at least several engine-monitor poll cycles confirm the
+	// rebuild is stable before the old replica is removed.
+	v2DataLocalityCleanupGracePeriod = 30 * time.Second
 )
 
 type VolumeController struct {
@@ -1430,6 +1442,25 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+
+		// For v2 data engine, skip cleanup if the local replica became
+		// healthy too recently.  v2 SPDK rebuild can complete very quickly,
+		// and the EngineFrontend informer triggers frequent volume controller
+		// syncs.  Without this grace period the controller may delete the
+		// original (non-local) replica in the same sync cycle that marks the
+		// local replica healthy.  If the engine crashes right after, the
+		// deleted original cannot be recovered.  The grace period gives time
+		// for any engine crash to surface before we remove the old replica.
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			for _, r := range rs {
+				if r.Spec.NodeID == e.Spec.NodeID && r.Spec.HealthyAt != "" {
+					if !util.TimestampAfterTimeout(r.Spec.HealthyAt, v2DataLocalityCleanupGracePeriod) {
+						return false, nil
+					}
+				}
+			}
+		}
+
 		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
 		if err != nil {
 			return false, err
@@ -2480,6 +2511,39 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 				r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 			}
 		}
+	}
+
+	// For v2 data engine, a fast SPDK rebuild may have completed just
+	// before the engine crashed, leaving more healthy replicas than
+	// numberOfReplicas.  Keep the replicas with the oldest HealthyAt
+	// (they are the proven originals) and mark the rest as failed.
+	// HealthyAt is set exactly once when a replica first becomes RW,
+	// so comparing timestamps reliably identifies originals vs rebuilds
+	// regardless of how much wall-clock time has elapsed.
+	if types.IsDataEngineV2(v.Spec.DataEngine) && dataExists {
+		var healthyReplicas []*longhorn.Replica
+		for _, r := range rs {
+			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+				healthyReplicas = append(healthyReplicas, r)
+			}
+		}
+		if len(healthyReplicas) > v.Spec.NumberOfReplicas {
+			// Sort by HealthyAt ascending — oldest (most trusted) first.
+			sort.Slice(healthyReplicas, func(i, j int) bool {
+				ti, _ := time.Parse(time.RFC3339, healthyReplicas[i].Spec.HealthyAt)
+				tj, _ := time.Parse(time.RFC3339, healthyReplicas[j].Spec.HealthyAt)
+				return ti.Before(tj)
+			})
+			for i := v.Spec.NumberOfReplicas; i < len(healthyReplicas); i++ {
+				setReplicaFailedAt(healthyReplicas[i], c.nowHandler())
+				// Ensure the replica is cleaned up by shouldCleanUpFailedReplica
+				// even when staleReplicaTimeout is 0.
+				healthyReplicas[i].Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+			}
+		}
+	}
+
+	for _, r := range rs {
 		if r.Spec.DesireState != longhorn.InstanceStateStopped {
 			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				r.Spec.LogRequested = true
