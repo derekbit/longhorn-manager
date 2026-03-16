@@ -90,10 +90,9 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted"`
 
-	Replicas         []Replica        `json:"replicas"`
-	Controllers      []Controller     `json:"controllers"`
-	EngineFrontends  []EngineFrontend `json:"engineFrontends"`
-	BackupStatus     []BackupStatus   `json:"backupStatus"`
+	Replicas     []Replica    `json:"replicas"`
+	Controllers  []Controller `json:"controllers"`
+	BackupStatus []BackupStatus `json:"backupStatus"`
 	RestoreStatus    []RestoreStatus  `json:"restoreStatus"`
 	PurgeStatus      []PurgeStatus    `json:"purgeStatus"`
 	RebuildStatus    []RebuildStatus  `json:"rebuildStatus"`
@@ -220,11 +219,6 @@ type Instance struct {
 	Image               string `json:"image"`
 	CurrentImage        string `json:"currentImage"`
 	InstanceManagerName string `json:"instanceManagerName"`
-}
-
-type EngineFrontend struct {
-	NodeID   string `json:"hostId"`
-	Endpoint string `json:"endpoint"`
 }
 
 type Controller struct {
@@ -1491,7 +1485,6 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 
 func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
-	engineFrontends := []EngineFrontend{}
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
@@ -1501,11 +1494,13 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		Attachments: make(map[string]Attachment),
 		Volume:      v.Name,
 	}
+	// Build engine-name → EF map so we can merge EF endpoint into Controller.
+	// For v2, the engine itself has no endpoint; the EF provides it.
+	efByEngine := map[string]*longhorn.EngineFrontend{}
 	for _, ef := range vefs {
-		engineFrontends = append(engineFrontends, EngineFrontend{
-			NodeID:   ef.Spec.NodeID,
-			Endpoint: ef.Status.Endpoint,
-		})
+		if ef.Spec.EngineName != "" {
+			efByEngine[ef.Spec.EngineName] = ef
+		}
 	}
 	for _, e := range ves {
 		actualSize := int64(0)
@@ -1517,6 +1512,11 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 				continue
 			}
 			actualSize += snapshotSize
+		}
+		endpoint := e.Status.Endpoint
+		// For v2, the engine has no endpoint; use the matching EF's endpoint.
+		if ef, ok := efByEngine[e.Name]; ok && ef.Status.Endpoint != "" {
+			endpoint = ef.Status.Endpoint
 		}
 		controllers = append(controllers, Controller{
 			Instance: Instance{
@@ -1530,7 +1530,7 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 			},
 			Size:                             strconv.FormatInt(e.Status.CurrentSize, 10),
 			ActualSize:                       strconv.FormatInt(actualSize, 10),
-			Endpoint:                         e.Status.Endpoint,
+			Endpoint:                         endpoint,
 			LastRestoredBackup:               e.Status.LastRestoredBackup,
 			RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
 			IsExpanding:                      e.Status.IsExpanding,
@@ -1735,9 +1735,8 @@ func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves [
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
-		EngineFrontends:  engineFrontends,
-		Controllers:      controllers,
-		Replicas:         replicas,
+		Controllers:  controllers,
+		Replicas:     replicas,
 		BackupStatus:     backupStatus,
 		RestoreStatus:    restoreStatus,
 		PurgeStatus:      purgeStatuses,

@@ -20,7 +20,7 @@ func TestGetV2VolumeEndpointForNode(t *testing.T) {
 			volume: &longhornclient.Volume{
 				Name:       "vol-a",
 				Migratable: false,
-				EngineFrontends: []longhornclient.EngineFrontend{
+				Controllers: []longhornclient.Controller{
 					{HostId: "node-a", Endpoint: "/dev/longhorn/vol-a"},
 				},
 			},
@@ -32,7 +32,7 @@ func TestGetV2VolumeEndpointForNode(t *testing.T) {
 			volume: &longhornclient.Volume{
 				Name:       "vol-b",
 				Migratable: true,
-				EngineFrontends: []longhornclient.EngineFrontend{
+				Controllers: []longhornclient.Controller{
 					{HostId: "node-a", Endpoint: "/dev/longhorn/vol-b"},
 					{HostId: "node-b", Endpoint: "/dev/longhorn/vol-b"},
 				},
@@ -45,7 +45,7 @@ func TestGetV2VolumeEndpointForNode(t *testing.T) {
 			volume: &longhornclient.Volume{
 				Name:       "vol-c",
 				Migratable: true,
-				EngineFrontends: []longhornclient.EngineFrontend{
+				Controllers: []longhornclient.Controller{
 					{HostId: "node-a", Endpoint: "/dev/longhorn/vol-c"},
 				},
 			},

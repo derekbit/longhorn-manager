@@ -107,25 +107,25 @@ func getV2VolumeEndpointForNode(volume *longhornclient.Volume, nodeID string) (s
 		return "", fmt.Errorf("volume is required")
 	}
 
-	if len(volume.EngineFrontends) == 0 {
-		return "", fmt.Errorf("volume %s has no engine frontend", volume.Name)
+	if len(volume.Controllers) == 0 {
+		return "", fmt.Errorf("volume %s has no controller", volume.Name)
 	}
 
-	for _, ef := range volume.EngineFrontends {
-		if ef.HostId == nodeID && ef.Endpoint != "" {
-			return ef.Endpoint, nil
+	for _, c := range volume.Controllers {
+		if c.HostId == nodeID && c.Endpoint != "" {
+			return c.Endpoint, nil
 		}
 	}
 
 	if !volume.Migratable {
-		for _, ef := range volume.EngineFrontends {
-			if ef.Endpoint != "" {
-				return ef.Endpoint, nil
+		for _, c := range volume.Controllers {
+			if c.Endpoint != "" {
+				return c.Endpoint, nil
 			}
 		}
 	}
 
-	return "", fmt.Errorf("volume %s has no ready engine frontend on node %s", volume.Name, nodeID)
+	return "", fmt.Errorf("volume %s has no ready controller on node %s", volume.Name, nodeID)
 }
 
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
