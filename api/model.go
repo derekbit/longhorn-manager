@@ -90,9 +90,9 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted"`
 
-	Replicas         []Replica        `json:"replicas"`
-	Controllers      []Controller     `json:"controllers"`
-	BackupStatus     []BackupStatus   `json:"backupStatus"`
+	Replicas     []Replica    `json:"replicas"`
+	Controllers  []Controller `json:"controllers"`
+	BackupStatus []BackupStatus `json:"backupStatus"`
 	RestoreStatus    []RestoreStatus  `json:"restoreStatus"`
 	PurgeStatus      []PurgeStatus    `json:"purgeStatus"`
 	RebuildStatus    []RebuildStatus  `json:"rebuildStatus"`
@@ -619,8 +619,9 @@ type InstanceManager struct {
 	ManagerType  string                        `json:"managerType"`
 	DataEngine   string                        `json:"dataEngine"`
 
-	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
-	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
+	InstanceEngines         map[string]longhorn.InstanceProcess `json:"instanceEngines"`
+	InstanceEngineFrontends map[string]longhorn.InstanceProcess `json:"instanceEngineFrontends"`
+	InstanceReplicas        map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
 
 	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
@@ -1482,7 +1483,7 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, vefs []*longhorn.EngineFrontend, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
@@ -1492,6 +1493,14 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	volumeAttachment := VolumeAttachment{
 		Attachments: make(map[string]Attachment),
 		Volume:      v.Name,
+	}
+	// Build engine-name → EF map so we can merge EF endpoint into Controller.
+	// For v2, the engine itself has no endpoint; the EF provides it.
+	efByEngine := map[string]*longhorn.EngineFrontend{}
+	for _, ef := range vefs {
+		if ef.Spec.EngineName != "" {
+			efByEngine[ef.Spec.EngineName] = ef
+		}
 	}
 	for _, e := range ves {
 		actualSize := int64(0)
@@ -1503,6 +1512,11 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				continue
 			}
 			actualSize += snapshotSize
+		}
+		endpoint := e.Status.Endpoint
+		// For v2, the engine has no endpoint; use the matching EF's endpoint.
+		if ef, ok := efByEngine[e.Name]; ok && ef.Status.Endpoint != "" {
+			endpoint = ef.Status.Endpoint
 		}
 		controllers = append(controllers, Controller{
 			Instance: Instance{
@@ -1516,7 +1530,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			},
 			Size:                             strconv.FormatInt(e.Status.CurrentSize, 10),
 			ActualSize:                       strconv.FormatInt(actualSize, 10),
-			Endpoint:                         e.Status.Endpoint,
+			Endpoint:                         endpoint,
 			LastRestoredBackup:               e.Status.LastRestoredBackup,
 			RequestedBackupRestore:           e.Spec.RequestedBackupRestore,
 			IsExpanding:                      e.Status.IsExpanding,
@@ -1524,6 +1538,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			LastExpansionFailedAt:            e.Status.LastExpansionFailedAt,
 			UnmapMarkSnapChainRemovedEnabled: e.Status.UnmapMarkSnapChainRemovedEnabled,
 		})
+
 		if e.Spec.NodeID == v.Status.CurrentNodeID {
 			ve = e
 		}
@@ -1720,8 +1735,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
-		Controllers:      controllers,
-		Replicas:         replicas,
+		Controllers:  controllers,
+		Replicas:     replicas,
 		BackupStatus:     backupStatus,
 		RestoreStatus:    restoreStatus,
 		PurgeStatus:      purgeStatuses,
@@ -2415,14 +2430,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:     im.Status.CurrentState,
-		Image:            im.Spec.Image,
-		Name:             im.Name,
-		NodeID:           im.Spec.NodeID,
-		ManagerType:      string(im.Spec.Type),
-		DataEngine:       string(im.Spec.DataEngine),
-		InstanceEngines:  im.Status.InstanceEngines,
-		InstanceReplicas: im.Status.InstanceReplicas,
+		CurrentState:            im.Status.CurrentState,
+		Image:                   im.Spec.Image,
+		Name:                    im.Name,
+		NodeID:                  im.Spec.NodeID,
+		ManagerType:             string(im.Spec.Type),
+		DataEngine:              string(im.Spec.DataEngine),
+		InstanceEngines:         im.Status.InstanceEngines,
+		InstanceEngineFrontends: im.Status.InstanceEngineFrontends,
+		InstanceReplicas:        im.Status.InstanceReplicas,
 	}
 }
 
