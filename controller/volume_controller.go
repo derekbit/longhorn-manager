@@ -63,18 +63,6 @@ const (
 
 	initialCloneRetryInterval = 30 * time.Second
 	maxCloneRetry             = 10
-
-	// v2DataLocalityCleanupGracePeriod is the minimum time a local replica
-	// must have been healthy before data-locality cleanup is allowed to
-	// remove the old non-local replica.  For v2 (SPDK) the rebuild can
-	// complete in well under a second, and the EngineFrontend informer
-	// triggers frequent volume-controller syncs.  Without a grace period
-	// the controller can delete the original replica in the same sync
-	// cycle that marks the local rebuild healthy.  If the engine then
-	// crashes, the deleted original is irrecoverable.  The grace period
-	// ensures at least several engine-monitor poll cycles confirm the
-	// rebuild is stable before the old replica is removed.
-	v2DataLocalityCleanupGracePeriod = 30 * time.Second
 )
 
 type VolumeController struct {
@@ -168,8 +156,20 @@ func NewVolumeController(
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
 	if _, err = ds.EngineFrontendInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.enqueueControlleeChange,
-		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
+		AddFunc: c.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) {
+			oldEF, ok1 := old.(*longhorn.EngineFrontend)
+			curEF, ok2 := cur.(*longhorn.EngineFrontend)
+			if ok1 && ok2 &&
+				oldEF.Status.CurrentState == curEF.Status.CurrentState &&
+				oldEF.Status.Endpoint == curEF.Status.Endpoint &&
+				oldEF.Status.TargetIP == curEF.Status.TargetIP &&
+				oldEF.Status.TargetPort == curEF.Status.TargetPort &&
+				reflect.DeepEqual(oldEF.Spec, curEF.Spec) {
+				return
+			}
+			c.enqueueControlleeChange(cur)
+		},
 		DeleteFunc: c.enqueueControlleeChange,
 	}, 0); err != nil {
 		return nil, err
@@ -1442,24 +1442,6 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
-
-		// For v2 data engine, skip cleanup if the local replica became
-		// healthy too recently.  v2 SPDK rebuild can complete very quickly,
-		// and the EngineFrontend informer triggers frequent volume controller
-		// syncs.  Without this grace period the controller may delete the
-		// original (non-local) replica in the same sync cycle that marks the
-		// local replica healthy.  If the engine crashes right after, the
-		// deleted original cannot be recovered.  The grace period gives time
-		// for any engine crash to surface before we remove the old replica.
-		if types.IsDataEngineV2(v.Spec.DataEngine) {
-			for _, r := range rs {
-				if r.Spec.NodeID == e.Spec.NodeID && r.Spec.HealthyAt != "" {
-					if !util.TimestampAfterTimeout(r.Spec.HealthyAt, v2DataLocalityCleanupGracePeriod) {
-						return false, nil
-					}
-				}
-			}
-		}
 
 		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
 		if err != nil {
