@@ -95,16 +95,17 @@ func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientNotFound(c *C
 func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientNotRunning(c *C) {
 	// Build an IM that is in Error state and has no IP assigned.
 	// NewInstanceManagerClient will reject it because IP is empty.
-	errorIM := newInstanceManager(
-		"error-state-im",
-		longhorn.InstanceManagerStateError,
-		TestOwnerID1, TestNode1, "", // empty IP
-		map[string]longhorn.InstanceProcess{},
-		map[string]longhorn.InstanceProcess{},
-		longhorn.DataEngineTypeV1,
-		TestInstanceManagerImage,
-		false,
-	)
+		errorIM := newInstanceManager(
+			"error-state-im",
+			longhorn.InstanceManagerStateError,
+			TestOwnerID1, TestNode1, "", // empty IP
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
 
 	im, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 		context.TODO(), errorIM, metav1.CreateOptions{})
@@ -139,32 +140,34 @@ func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientNotRunning(c 
 // (nil, nil).
 func (s *OrphanControllerSuite) TestGetRunningInstanceManagerClientByName(c *C) {
 	// "running-im" is the healthy IM currently active on the node.
-	runningIM := newInstanceManager(
-		"running-im",
-		longhorn.InstanceManagerStateRunning,
-		TestOwnerID1, TestNode1, TestIP1,
-		map[string]longhorn.InstanceProcess{},
-		map[string]longhorn.InstanceProcess{},
-		longhorn.DataEngineTypeV1,
-		TestInstanceManagerImage,
-		false,
-	)
+		runningIM := newInstanceManager(
+			"running-im",
+			longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1,
+			TestInstanceManagerImage,
+			false,
+		)
 	im1, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 		context.TODO(), runningIM, metav1.CreateOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(s.lhInstanceManagerIndexer.Add(im1), IsNil)
 
 	// "specific-im" is the IM recorded in the orphan; it is in error state.
-	specificIM := newInstanceManager(
-		"specific-im",
-		longhorn.InstanceManagerStateError,
-		TestOwnerID1, TestNode1, "", // empty IP -> NewInstanceManagerClient will fail
-		map[string]longhorn.InstanceProcess{},
-		map[string]longhorn.InstanceProcess{},
-		longhorn.DataEngineTypeV1,
-		TestExtraInstanceManagerImage,
-		false,
-	)
+		specificIM := newInstanceManager(
+			"specific-im",
+			longhorn.InstanceManagerStateError,
+			TestOwnerID1, TestNode1, "", // empty IP -> NewInstanceManagerClient will fail
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			longhorn.DataEngineTypeV1,
+			TestExtraInstanceManagerImage,
+			false,
+		)
 	im2, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 		context.TODO(), specificIM, metav1.CreateOptions{})
 	c.Assert(err, IsNil)
