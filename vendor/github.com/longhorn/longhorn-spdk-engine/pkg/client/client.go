@@ -1051,25 +1051,13 @@ func (c *SPDKClient) EngineSnapshotClone(name, snapshotName, srcEngineName, srcE
 		name, snapshotName, srcEngineName, srcEngineAddress)
 }
 
+// Deprecated: EngineReplicaAdd is kept for backward compatibility.
+// The server now requires phase metadata, so this method delegates to
+// EngineReplicaAddStart. New callers should use the phase-specific
+// helpers (EngineReplicaAddStart, EngineReplicaAddShallowCopy,
+// EngineReplicaAddFinish) directly.
 func (c *SPDKClient) EngineReplicaAdd(engineName, replicaName, replicaAddress string, fastSync bool) error {
-	if engineName == "" {
-		return fmt.Errorf("failed to add replica for engine: missing required parameter engineName")
-	}
-	if replicaName == "" || replicaAddress == "" {
-		return fmt.Errorf("failed to add replica for engine: missing required parameter replicaName or replicaAddress")
-	}
-
-	client := c.getSPDKServiceClient()
-	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
-	defer cancel()
-
-	_, err := client.EngineReplicaAdd(ctx, &spdkrpc.EngineReplicaAddRequest{
-		EngineName:     engineName,
-		ReplicaName:    replicaName,
-		ReplicaAddress: replicaAddress,
-		FastSync:       fastSync,
-	})
-	return errors.Wrapf(err, "failed to add replica %s with address %s to engine %s", replicaName, replicaAddress, engineName)
+	return c.EngineReplicaAddStart(engineName, replicaName, replicaAddress, fastSync)
 }
 
 // EngineReplicaAddStart is a scaffold for the future dedicated RPC.

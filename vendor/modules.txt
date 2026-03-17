@@ -284,7 +284,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20260307044012-ae36fc92e72e
+# github.com/longhorn/go-common-libs v0.0.0-20260316031529-b1112faa59bd
 ## explicit; go 1.25.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -308,7 +308,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.5.0 => ../go-spdk-helper
+# github.com/longhorn/go-spdk-helper v0.5.1-0.20260316031502-fc65c71d099a
 ## explicit; go 1.25.3
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -584,15 +584,15 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
+# golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
 ## explicit; go 1.25.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
 golang.org/x/exp/slog
 golang.org/x/exp/slog/internal
 golang.org/x/exp/slog/internal/buffer
-# golang.org/x/mod v0.33.0
-## explicit; go 1.24.0
+# golang.org/x/mod v0.34.0
+## explicit; go 1.25.0
 golang.org/x/mod/semver
 # golang.org/x/net v0.49.0
 ## explicit; go 1.24.0
@@ -1411,4 +1411,3 @@ sigs.k8s.io/yaml/kyaml
 # github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
 # github.com/longhorn/types => ../longhorn-types
 # github.com/longhorn/longhorn-spdk-engine => ../longhorn-spdk-engine
-# github.com/longhorn/go-spdk-helper => ../go-spdk-helper

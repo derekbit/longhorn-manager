@@ -2612,6 +2612,18 @@ func setNvmeHotPlug(spdkClient *spdkclient.Client, enable bool) (success bool) {
 	return true
 }
 
+// engineFrontendByVolumeName returns the first engine frontend that matches
+// the given volume name, or nil if none exists. Caller must hold s.RLock or
+// s.Lock.
+func (s *Server) engineFrontendByVolumeName(volumeName string) *EngineFrontend {
+	for _, ef := range s.engineFrontendMap {
+		if ef.VolumeName == volumeName {
+			return ef
+		}
+	}
+	return nil
+}
+
 // EngineFrontendCreate creates a new engine frontend.
 func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFrontendCreateRequest) (ret *spdkrpc.EngineFrontend, err error) {
 	if req.Name == "" {
@@ -2637,6 +2649,10 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 		s.Unlock()
 		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists", req.Name)
 	}
+	if existing := s.engineFrontendByVolumeName(req.VolumeName); existing != nil {
+		s.Unlock()
+		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists for volume %v", existing.Name, req.VolumeName)
+	}
 
 	ef := NewEngineFrontend(req.Name, req.EngineName, req.VolumeName, req.Frontend, req.SpecSize,
 		req.UblkQueueDepth, req.UblkNumberOfQueue, s.updateChs[types.InstanceTypeEngineFrontend])
@@ -2645,26 +2661,69 @@ func (s *Server) EngineFrontendCreate(ctx context.Context, req *spdkrpc.EngineFr
 	spdkClient := s.spdkClient
 	s.Unlock()
 
-	ret, err = ef.Create(spdkClient, req.TargetAddress)
-	if err != nil {
-		return nil, toEngineFrontendCreateGRPCError(err, "failed to create engine frontend %v", req.Name)
+	ret, createErr := ef.Create(spdkClient, req.TargetAddress)
+
+	// Distinguish hard errors (validation / precondition) from runtime
+	// failures (e.g. NVMe initiator can't connect).  Hard errors are
+	// returned before Create mutates state, so the frontend must NOT be
+	// registered.  Runtime failures leave the frontend in Error state;
+	// we register it so callers can inspect and clean it up via Delete.
+	if createErr != nil &&
+		(errors.Is(createErr, ErrEngineFrontendCreateInvalidArgument) ||
+			errors.Is(createErr, ErrEngineFrontendCreatePrecondition)) {
+		return nil, toEngineFrontendCreateGRPCError(createErr, "failed to create engine frontend %v", req.Name)
 	}
 
 	s.Lock()
 	// Re-check after Create() to guard against a concurrent create that
 	// raced through the same window.
-	if _, exists := s.engineFrontendMap[req.Name]; exists {
+	duplicateName := false
+	duplicateVolume := false
+	var winner *EngineFrontend
+	if existing, exists := s.engineFrontendMap[req.Name]; exists {
+		duplicateName = true
+		winner = existing
+	} else if existing := s.engineFrontendByVolumeName(req.VolumeName); existing != nil {
+		duplicateVolume = true
+		winner = existing
+	}
+	if duplicateName || duplicateVolume {
 		s.Unlock()
 		// The race loser holds a fully-created frontend with real SPDK
 		// resources (bdevs, NVMe controllers, etc.). Clean them up so
 		// they don't leak.
+		// Only clear metadataDir when the loser shares the same
+		// volumeName as the winner — they use the same persistence
+		// directory, so the loser's Delete() must not remove it.
+		// When volumeNames differ, each has its own directory and the
+		// loser should clean up its own record.
+		if winner != nil && ef.VolumeName == winner.VolumeName {
+			ef.metadataDir = ""
+		}
 		if deleteErr := ef.Delete(spdkClient); deleteErr != nil {
 			logrus.WithError(deleteErr).Warnf("Failed to clean up race-loser engine frontend %v", req.Name)
+		}
+		// The loser's Create() may have overwritten the winner's
+		// persistence record (both share the same volumeName key).
+		// Re-persist the winner to restore correct on-disk state.
+		if winner != nil && winner.metadataDir != "" && ef.VolumeName == winner.VolumeName {
+			if err := saveEngineFrontendRecord(winner.metadataDir, winner); err != nil {
+				logrus.WithError(err).Warnf("Failed to re-persist winner engine frontend %v record after race", winner.Name)
+			}
+		}
+		if duplicateVolume {
+			return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend already exists for volume %v", req.VolumeName)
 		}
 		return nil, grpcstatus.Errorf(grpccodes.AlreadyExists, "engine frontend %v already exists", req.Name)
 	}
 	s.engineFrontendMap[req.Name] = ef
 	s.Unlock()
+
+	// Runtime failure: the frontend is registered in Error state so it
+	// can be inspected and cleaned up via Delete.
+	if createErr != nil {
+		return ef.Get(), nil
+	}
 
 	return ret, nil
 }
