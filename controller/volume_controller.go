@@ -156,6 +156,27 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
+	if _, err = ds.EngineFrontendInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc: c.enqueueControlleeChange,
+		UpdateFunc: func(old, cur interface{}) {
+			oldEF, ok1 := old.(*longhorn.EngineFrontend)
+			curEF, ok2 := cur.(*longhorn.EngineFrontend)
+			if ok1 && ok2 &&
+				oldEF.Status.CurrentState == curEF.Status.CurrentState &&
+				oldEF.Status.Endpoint == curEF.Status.Endpoint &&
+				oldEF.Status.TargetIP == curEF.Status.TargetIP &&
+				oldEF.Status.TargetPort == curEF.Status.TargetPort &&
+				reflect.DeepEqual(oldEF.Spec, curEF.Spec) {
+				return
+			}
+			c.enqueueControlleeChange(cur)
+		},
+		DeleteFunc: c.enqueueControlleeChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.EngineFrontendInformer.HasSynced)
+
 	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
@@ -339,6 +360,14 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	if err != nil {
 		return err
 	}
+	// Only list EngineFrontends for v2 data engine (v1 doesn't use EngineFrontend)
+	var engineFrontends map[string]*longhorn.EngineFrontend
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		engineFrontends, err = c.ds.ListVolumeEngineFrontends(volume.Name)
+		if err != nil {
+			return err
+		}
+	}
 	snapshots, err := c.ds.ListVolumeSnapshotsRO(volume.Name)
 	if err != nil {
 		return err
@@ -453,6 +482,12 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	for k, r := range replicas {
 		existingReplicas[k] = r.DeepCopy()
 	}
+	existingEngineFrontends := map[string]*longhorn.EngineFrontend{}
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		for k, ef := range engineFrontends {
+			existingEngineFrontends[k] = ef.DeepCopy()
+		}
+	}
 	defer func() {
 		var lastErr error
 		// create/delete engine/replica has been handled already
@@ -477,6 +512,17 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 		// stop updating if engines and replicas weren't fully updated
+		if lastErr == nil && types.IsDataEngineV2(volume.Spec.DataEngine) {
+			for k, ef := range engineFrontends {
+				if existingEngineFrontends[k] == nil ||
+					!reflect.DeepEqual(existingEngineFrontends[k].Spec, ef.Spec) {
+					if _, err := c.ds.UpdateEngineFrontend(ef); err != nil {
+						lastErr = err
+					}
+				}
+			}
+		}
+		// stop updating if engines, replicas and engineFrontends weren't fully updated
 		if lastErr == nil {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
@@ -527,7 +573,11 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := c.processMigration(volume, engines, replicas); err != nil {
+	if err := c.processMigration(volume, engines, replicas, engineFrontends); err != nil {
+		return err
+	}
+
+	if err := c.processEngineSwitchover(volume, engines, replicas, engineFrontends); err != nil {
 		return err
 	}
 
@@ -543,11 +593,15 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := c.ReconcileVolumeState(volume, engines, replicas); err != nil {
+	if err := c.ReconcileVolumeState(volume, engines, replicas, engineFrontends); err != nil {
 		return err
 	}
 
 	if err := c.cleanupReplicas(volume, engines, replicas); err != nil {
+		return err
+	}
+
+	if err := c.cleanupEngineFrontends(volume, engineFrontends); err != nil {
 		return err
 	}
 
@@ -1059,6 +1113,30 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	return nil
 }
 
+// cleanupEngineFrontends cleans up EngineFrontends during volume deletion
+func (c *VolumeController) cleanupEngineFrontends(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) error {
+	// Only cleanup if volume is being deleted
+	if v.DeletionTimestamp == nil {
+		return nil
+	}
+
+	for _, ef := range efs {
+		log := getLoggerForVolume(c.logger, v).WithField("engineFrontend", ef.Name)
+
+		// Remove finalizer first if EngineFrontend exists
+		if err := c.ds.RemoveFinalizerForEngineFrontend(ef); err != nil {
+			return err
+		}
+
+		log.Infof("Deleting EngineFrontend %v that belongs to deleted volume", ef.Name)
+		if err := c.deleteEngineFrontend(ef, efs); err != nil && !datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to delete EngineFrontend %v for volume %v deletion", ef.Name, v.Name)
+		}
+	}
+
+	return nil
+}
+
 func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
@@ -1369,6 +1447,7 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
+
 		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
 		if err != nil {
 			return false, err
@@ -1500,7 +1579,7 @@ func (c *VolumeController) reconcileBackingImageCompatibilityCondition(v *longho
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to reconcile volume state for %v", v.Name)
 	}()
@@ -1532,7 +1611,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
-	isNewVolume, e, err := c.reconcileVolumeCreation(v, e, es, rs)
+	isNewVolume, e, err := c.reconcileVolumeCreation(v, e, es, rs, efs)
 	if err != nil {
 		return err
 	}
@@ -1547,7 +1626,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
-	if err := c.reconcileVolumeSize(v, e, rs); err != nil {
+	if err := c.reconcileVolumeSize(v, e, rs, efs); err != nil {
 		return err
 	}
 
@@ -1694,12 +1773,40 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				}
 			}
 		}
+
+		// For v2 data engine, the EngineFrontend (NVMe-TCP initiator + block device)
+		// is a separate instance from the Engine (SPDK RAID target). The EF can enter
+		// Error independently when the block device disappears (e.g., during a replica
+		// instance manager restart), even while the engine and replicas remain running.
+		// The control plane treats this the same as a v1 engine error: mark the volume
+		// as faulted so the detach/reattach/remount cycle restores access.
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			ef, err := pickCurrentEngineFrontend(v, efs)
+			if err == nil && ef != nil && ef.Status.CurrentState == longhorn.InstanceStateError {
+				if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
+					log.Warn("EngineFrontend of volume dead unexpectedly, setting v.Status.Robustness to faulted")
+					msg := fmt.Sprintf("EngineFrontend of volume %v dead unexpectedly, setting v.Status.Robustness to faulted", v.Name)
+					c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+					e.Spec.LogRequested = true
+					for _, r := range rs {
+						if r.Status.CurrentState == longhorn.InstanceStateRunning {
+							r.Spec.LogRequested = true
+							rs[r.Name] = r
+						}
+					}
+					v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+					if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
 
 	// check volume mount status
 	c.requestRemountIfFileSystemReadOnly(v, e)
 
-	if err := c.reconcileAttachDetachStateMachine(v, e, rs, isNewVolume, log); err != nil {
+	if err := c.reconcileAttachDetachStateMachine(v, e, rs, efs, isNewVolume, log); err != nil {
 		return err
 	}
 
@@ -1713,7 +1820,17 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 
 		// TODO: reconcileVolumeSize
 		// The engine expansion is complete
-		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
+		expansionComplete := v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			// For V2, also require no active expansion.
+			// Do NOT require LastExpansionError == "": partial replica
+			// failures set stale errors even though the RAID already
+			// operates at the new size, causing a deadlock where
+			// expansion can never complete.
+			expansionComplete = expansionComplete &&
+				!e.Status.IsExpanding
+		}
+		if expansionComplete {
 			v.Status.ExpansionRequired = false
 			v.Status.FrontendDisabled = false
 		}
@@ -1764,7 +1881,7 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 	}
 }
 
-func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
+func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend, isNewVolume bool, log *logrus.Entry) error {
 	// Here is the AD state machine graph
 	// https://github.com/longhorn/longhorn/blob/master/enhancements/assets/images/longhorn-volumeattachment/volume-controller-ad-logic.png
 
@@ -1777,30 +1894,31 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 		if v.Status.CurrentNodeID == "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching, longhorn.VolumeStateCreating:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, rs, efs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, rs, efs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
 				// This is a stable state.
 				// We attempt to close the resources anyway to make sure that they are closed
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, rs, efs)
 			}
 			return nil
 		}
 		if v.Status.CurrentNodeID != "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttaching, longhorn.VolumeStateAttached, longhorn.VolumeStateDetached:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, rs, efs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, rs, efs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.CurrentNodeID = ""
+					v.Status.CurrentEngineNodeID = ""
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
@@ -1813,24 +1931,24 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 		if v.Status.CurrentNodeID == "" {
 			switch v.Status.State {
 			case longhorn.VolumeStateAttached:
-				c.closeVolumeDependentResources(v, e, rs)
+				c.closeVolumeDependentResources(v, e, rs, efs)
 				v.Status.State = longhorn.VolumeStateDetaching
 			case longhorn.VolumeStateDetaching:
-				c.closeVolumeDependentResources(v, e, rs)
-				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+				c.closeVolumeDependentResources(v, e, rs, efs)
+				if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 					v.Status.State = longhorn.VolumeStateDetached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
-				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+				if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 					return err
 				}
 				v.Status.State = longhorn.VolumeStateAttaching
 			case longhorn.VolumeStateAttaching:
-				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+				if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 					return err
 				}
-				if c.areVolumeDependentResourcesOpened(e, rs) {
+				if c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
@@ -1843,22 +1961,23 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 			if v.Spec.NodeID == v.Status.CurrentNodeID {
 				switch v.Status.State {
 				case longhorn.VolumeStateAttaching, longhorn.VolumeStateDetached:
-					c.closeVolumeDependentResources(v, e, rs)
+					c.closeVolumeDependentResources(v, e, rs, efs)
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
-					c.closeVolumeDependentResources(v, e, rs)
-					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					c.closeVolumeDependentResources(v, e, rs, efs)
+					if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 						v.Status.CurrentNodeID = ""
+						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
 					// This is a stable state
 					// Try to openVolumeDependentResources so that we start the newly added replicas if they exist
-					if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+					if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 						return err
 					}
-					if !c.areVolumeDependentResourcesOpened(e, rs) {
+					if !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 						log.Warnf("Volume is attached but dependent resources are not opened")
 					}
 				}
@@ -1867,25 +1986,26 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				switch v.Status.State {
 				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttaching:
-					c.closeVolumeDependentResources(v, e, rs)
+					c.closeVolumeDependentResources(v, e, rs, efs)
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
-					c.closeVolumeDependentResources(v, e, rs)
-					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					c.closeVolumeDependentResources(v, e, rs, efs)
+					if c.verifyVolumeDependentResourcesClosed(v, e, rs, efs) {
 						v.Status.CurrentNodeID = ""
+						v.Status.CurrentEngineNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
 					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
-						if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+						if err := c.openVolumeDependentResources(v, e, rs, efs, log); err != nil {
 							return err
 						}
-						if !c.areVolumeDependentResourcesOpened(e, rs) {
+						if !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 							log.Warnf("Volume is attached but dependent resources are not opened")
 						}
 					} else {
-						c.closeVolumeDependentResources(v, e, rs)
+						c.closeVolumeDependentResources(v, e, rs, efs)
 						v.Status.State = longhorn.VolumeStateDetaching
 					}
 				}
@@ -1897,7 +2017,7 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 	return nil
 }
 
-func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (bool, *longhorn.Engine, error) {
+func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (bool, *longhorn.Engine, error) {
 	// first time engine creation etc
 
 	var isNewVolume bool
@@ -1911,6 +2031,15 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 		}
 		isNewVolume = true
 		es[e.Name] = e
+	}
+
+	// For v2 data engine, create EngineFrontend CR if not exists
+	if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) == 0 {
+		ef, err := c.createEngineFrontend(v, "", e.Name, v.Status.CurrentNodeID)
+		if err != nil {
+			return false, e, err
+		}
+		efs[ef.Name] = ef
 	}
 
 	if len(rs) == 0 {
@@ -2113,7 +2242,7 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
 }
 
-func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
+func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
 		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
@@ -2209,11 +2338,28 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		return fmt.Errorf("no healthy or scheduled replica for starting")
 	}
 
-	if e.Spec.NodeID != "" && e.Spec.NodeID != v.Spec.NodeID {
+	targetEngineNodeID := v.Spec.NodeID
+	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.EngineNodeID != "" {
+		targetEngineNodeID = v.Spec.EngineNodeID
+	}
+
+	switchoverInProgress := isV2EngineSwitchoverInProgress(v, e, targetEngineNodeID)
+	if shouldRejectEngineNodeMismatch(v, e, switchoverInProgress) {
 		return fmt.Errorf("engine is on node %v vs volume on %v, must detach first",
 			e.Spec.NodeID, v.Status.CurrentNodeID)
 	}
-	e.Spec.NodeID = v.Spec.NodeID
+
+	if e.Spec.NodeID != "" && e.Spec.NodeID != targetEngineNodeID {
+		if switchoverInProgress {
+			log.WithFields(logrus.Fields{
+				"engineNodeID":        e.Spec.NodeID,
+				"targetEngineNodeID":  targetEngineNodeID,
+				"currentEngineNodeID": v.Status.CurrentEngineNodeID,
+			}).Debug("Skip forcing engine node during v2 engine switchover in progress")
+		}
+	} else {
+		e.Spec.NodeID = targetEngineNodeID
+	}
 	e.Spec.ReplicaAddressMap = replicaAddressMap
 	e.Spec.DesireState = longhorn.InstanceStateRunning
 	// The volume may be activated
@@ -2222,10 +2368,82 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	e.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
 	e.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
 
+	// For v2 data engine, update EngineFrontend to start after Engine is running.
+	// Skip the target update when an engine switchover is in progress, because
+	// processEngineSwitchover manages the EF target during switchover.
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
+			ef.Spec.VolumeSize = v.Spec.Size
+			// Only set EngineFrontend to running when Engine is actually running
+			// so we have the TargetIP available
+			if e.Status.CurrentState == longhorn.InstanceStateRunning && e.Status.IP != "" {
+				ef.Spec.NodeID = v.Spec.NodeID
+				ef.Spec.Frontend = v.Spec.Frontend
+				ef.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+				ef.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+				ef.Spec.DisableFrontend = v.Status.FrontendDisabled
+				ef.Spec.DesireState = longhorn.InstanceStateRunning
+				// During an engine switchover, processEngineSwitchover drives
+				// the EF target (IP/Port/EngineName) so that the EF controller
+				// performs suspend → switchover → resume in the correct order.
+				if !switchoverInProgress {
+					ef.Spec.TargetIP = e.Status.IP
+					ef.Spec.TargetPort = e.Status.Port
+					ef.Spec.EngineName = e.Name
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
-func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func isV2EngineSwitchoverInProgress(v *longhorn.Volume, e *longhorn.Engine, targetEngineNodeID string) bool {
+	if v == nil || !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false
+	}
+	if targetEngineNodeID == "" {
+		targetEngineNodeID = v.Spec.EngineNodeID
+	}
+	if targetEngineNodeID == "" {
+		targetEngineNodeID = v.Spec.NodeID
+	}
+	if targetEngineNodeID == "" || v.Status.CurrentEngineNodeID == "" || v.Status.CurrentNodeID == "" {
+		return false
+	}
+
+	if targetEngineNodeID != v.Status.CurrentEngineNodeID {
+		return true
+	}
+
+	// Transition window: CurrentEngineNodeID is switched already, but the active engine object
+	// picked by ReconcileVolumeState can still be on the old node until the next cleanup round.
+	if e != nil && e.Spec.NodeID != "" && e.Spec.NodeID != targetEngineNodeID {
+		return true
+	}
+
+	return false
+}
+
+func shouldRejectEngineNodeMismatch(v *longhorn.Volume, e *longhorn.Engine, switchoverInProgress bool) bool {
+	if v == nil || e == nil {
+		return false
+	}
+	targetEngineNodeID := v.Spec.NodeID
+	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.EngineNodeID != "" {
+		targetEngineNodeID = v.Spec.EngineNodeID
+	}
+	if e.Spec.NodeID == "" || e.Spec.NodeID == targetEngineNodeID {
+		return false
+	}
+	return !switchoverInProgress
+}
+
+func (c *VolumeController) areVolumeDependentResourcesOpened(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {
@@ -2234,10 +2452,31 @@ func (c *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine,
 			break
 		}
 	}
-	return hasRunningReplica && e.Status.CurrentState == longhorn.InstanceStateRunning
+
+	if !hasRunningReplica || e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false
+	}
+
+	// For v2 data engine, also check EngineFrontend is running
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil || ef == nil {
+			return false
+		}
+		if ef.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false
+		}
+		if !ef.Spec.DisableFrontend &&
+			ef.Spec.Frontend != longhorn.VolumeFrontendEmpty &&
+			ef.Status.Endpoint == "" {
+			return false
+		}
+	}
+
+	return true
 }
 
-func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) {
+func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) {
 	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 
@@ -2247,6 +2486,29 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		if v.Status.RestoreRequired || v.Status.IsStandby {
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonRestoreFailure, "All replica restore failed and the volume became Faulted")
+		}
+	}
+
+	// For v2 data engine, stop EngineFrontend first before stopping Engine
+	// Detach order: EngineFrontend -> Engine -> Replicas
+	//
+	// We iterate ALL EFs rather than using pickCurrentEngineFrontend
+	// because the volume's NodeID/CurrentNodeID may both be empty during
+	// detach-while-attaching scenarios, which makes the "current EF"
+	// lookup fail. During detach, every EF should be stopped.
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		for _, ef := range efs {
+			// Do NOT skip deleting EFs: a deleting-but-running EF still has
+			// an active NVMe initiator/device. We must ensure it is stopped
+			// before tearing down the engine to avoid I/O errors.
+			if ef.Spec.DesireState != longhorn.InstanceStateStopped {
+				ef.Spec.DesireState = longhorn.InstanceStateStopped
+				ef.Spec.NodeID = ""
+			}
+			// Wait for EngineFrontend to stop before stopping Engine
+			if ef.Status.CurrentState != longhorn.InstanceStateStopped {
+				return
+			}
 		}
 	}
 
@@ -2286,6 +2548,39 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 				r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 			}
 		}
+	}
+
+	// For v2 data engine, a fast SPDK rebuild may have completed just
+	// before the engine crashed, leaving more healthy replicas than
+	// numberOfReplicas.  Keep the replicas with the oldest HealthyAt
+	// (they are the proven originals) and mark the rest as failed.
+	// HealthyAt is set exactly once when a replica first becomes RW,
+	// so comparing timestamps reliably identifies originals vs rebuilds
+	// regardless of how much wall-clock time has elapsed.
+	if types.IsDataEngineV2(v.Spec.DataEngine) && dataExists {
+		var healthyReplicas []*longhorn.Replica
+		for _, r := range rs {
+			if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+				healthyReplicas = append(healthyReplicas, r)
+			}
+		}
+		if len(healthyReplicas) > v.Spec.NumberOfReplicas {
+			// Sort by HealthyAt ascending — oldest (most trusted) first.
+			sort.Slice(healthyReplicas, func(i, j int) bool {
+				ti, _ := time.Parse(time.RFC3339, healthyReplicas[i].Spec.HealthyAt)
+				tj, _ := time.Parse(time.RFC3339, healthyReplicas[j].Spec.HealthyAt)
+				return ti.Before(tj)
+			})
+			for i := v.Spec.NumberOfReplicas; i < len(healthyReplicas); i++ {
+				setReplicaFailedAt(healthyReplicas[i], c.nowHandler())
+				// Ensure the replica is cleaned up by shouldCleanUpFailedReplica
+				// even when staleReplicaTimeout is 0.
+				healthyReplicas[i].Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+			}
+		}
+	}
+
+	for _, r := range rs {
 		if r.Spec.DesireState != longhorn.InstanceStateStopped {
 			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				r.Spec.LogRequested = true
@@ -2296,7 +2591,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	}
 }
 
-func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (c *VolumeController) verifyVolumeDependentResourcesClosed(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) bool {
 	allReplicasStopped := func() bool {
 		for _, r := range rs {
 			if r.Status.CurrentState != longhorn.InstanceStateStopped {
@@ -2305,10 +2600,33 @@ func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engi
 		}
 		return true
 	}
+
+	allEngineFrontendsStopped := func() bool {
+		for _, ef := range efs {
+			// Do NOT skip deleting EFs: a deleting-but-running EF still has
+			// an active NVMe initiator/device. The EF controller will stop it
+			// as part of finalizer processing; we wait for that here.
+			if ef.Status.CurrentState != longhorn.InstanceStateStopped {
+				return false
+			}
+		}
+		return true
+	}
+
+	// For v2 data engine, every EngineFrontend (including those being deleted)
+	// must be stopped. Detach drives all EFs to Stopped, so checking only the
+	// current EF can incorrectly mark the volume detached while an extra EF
+	// still has an initiator/device open during migration or switchover cleanup.
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		if !allEngineFrontendsStopped() {
+			return false
+		}
+	}
+
 	return e.Status.CurrentState == longhorn.InstanceStateStopped && allReplicasStopped()
 }
 
-func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
+func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) error {
 	log := getLoggerForVolume(c.logger, v)
 
 	if e.Status.SnapshotsError == "" {
@@ -2332,7 +2650,12 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	}
 
 	// The expansion is canceled or hasn't been started
-	if e.Status.CurrentSize == v.Spec.Size {
+	expansionCanceledOrNotStarted := e.Status.CurrentSize == v.Spec.Size
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		expansionCanceledOrNotStarted = expansionCanceledOrNotStarted &&
+			!e.Status.IsExpanding && e.Status.LastExpansionError == ""
+	}
+	if expansionCanceledOrNotStarted {
 		v.Status.ExpansionRequired = false
 		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonCanceledExpansion,
 			"Canceled expanding the volume %v, will automatically detach it", v.Name)
@@ -2354,6 +2677,16 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	e.Spec.VolumeSize = v.Spec.Size
 	for _, r := range rs {
 		r.Spec.VolumeSize = v.Spec.Size
+	}
+
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		ef, err := pickCurrentEngineFrontend(v, efs)
+		if err != nil {
+			return err
+		}
+		if ef != nil {
+			ef.Spec.VolumeSize = v.Spec.Size
+		}
 	}
 
 	return nil
@@ -3927,13 +4260,24 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 		return err
 	}
 
+	sourceEngineFrontend, err := c.ds.GetVolumeCurrentEngineFrontend(sourceVolName)
+	if err != nil {
+		return err
+	}
+
 	if snapshotName == "" {
 		// Use a deterministic UUID for snapshotName in case this reconciliation fails and we hit this code block again
 		// in the next reconciliation. We don't want to generate multiple snapshots. Create the UUID by hashing the UIDs
 		// of the source and destination volume to avoid problems with reused volume names.
 		snapshotName = util.DeterministicUUID(string(sourceVol.GetUID()) + string(v.GetUID()))
 		labels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForCloningVolume): v.Name}
-		snapshot, err := c.createSnapshot(snapshotName, labels, sourceVol, sourceEngine)
+
+		var sourceObj interface{} = sourceEngine
+		if types.IsDataEngineV2(sourceVol.Spec.DataEngine) {
+			sourceObj = sourceEngineFrontend
+		}
+
+		snapshot, err := c.createSnapshot(snapshotName, labels, sourceVol, sourceObj)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
@@ -4015,6 +4359,88 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	return c.ds.CreateEngine(engine)
+}
+
+func pickCurrentEngineFrontend(v *longhorn.Volume, efs map[string]*longhorn.EngineFrontend) (*longhorn.EngineFrontend, error) {
+	if len(efs) == 0 {
+		return nil, nil
+	}
+
+	ef, _, err := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+	return ef, err
+}
+
+func getEngineFrontendForNode(efs map[string]*longhorn.EngineFrontend, nodeID string) (*longhorn.EngineFrontend, error) {
+	if len(efs) == 0 || nodeID == "" {
+		return nil, nil
+	}
+
+	var efForNode *longhorn.EngineFrontend
+	for _, ef := range efs {
+		if ef.DeletionTimestamp != nil || ef.Spec.NodeID != nodeID {
+			continue
+		}
+		if efForNode != nil {
+			return nil, fmt.Errorf("BUG: found the second engine frontend %v besides %v for node %v", ef.Name, efForNode.Name, nodeID)
+		}
+		efForNode = ef
+	}
+
+	return efForNode, nil
+}
+
+func isEngineFrontendReadyForNode(efs map[string]*longhorn.EngineFrontend, nodeID string) bool {
+	ef, err := getEngineFrontendForNode(efs, nodeID)
+	if err != nil || ef == nil {
+		return false
+	}
+
+	if ef.Spec.DesireState != longhorn.InstanceStateRunning || ef.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false
+	}
+
+	if ef.Spec.DisableFrontend || ef.Spec.Frontend == longhorn.VolumeFrontendEmpty {
+		return true
+	}
+
+	return ef.Status.Endpoint != ""
+}
+
+// createEngineFrontend creates an EngineFrontend CR for v2 data engine
+// The EngineFrontend is created in stopped state and will be started when
+// the Engine is running
+func (c *VolumeController) createEngineFrontend(v *longhorn.Volume, currentEngineFrontendName, engineName, nodeID string) (*longhorn.EngineFrontend, error) {
+	log := getLoggerForVolume(c.logger, v)
+
+	ef := &longhorn.EngineFrontend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateEngineFrontendNameForVolume(v.Name, currentEngineFrontendName),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+		},
+		Spec: longhorn.EngineFrontendSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
+				NodeID:      nodeID,
+				Image:       v.Status.CurrentImage,
+				DataEngine:  v.Spec.DataEngine,
+				DesireState: longhorn.InstanceStateStopped,
+			},
+			Frontend:          v.Spec.Frontend,
+			UblkQueueDepth:    v.Spec.UblkQueueDepth,
+			UblkNumberOfQueue: v.Spec.UblkNumberOfQueue,
+			EngineName:        engineName,
+			DisableFrontend:   v.Status.FrontendDisabled,
+		},
+	}
+
+	if currentEngineFrontendName == "" {
+		ef.Spec.Active = true
+	}
+
+	log.WithField("engineFrontend", ef.Name).Info("Creating EngineFrontend CR for v2 data engine")
+
+	return c.ds.CreateEngineFrontend(ef)
 }
 
 func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, string, string, error) {
@@ -4535,7 +4961,7 @@ func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
 	}
 }
 
-func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to process migration for %v", v.Name)
 	}()
@@ -4558,7 +4984,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 		// The only time there should be more then one engines is when we are migrating. If there are more then one and
 		// we no longer have a MigrationNodeID set we can cleanup the extra engine.
-		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
+		if len(es) < 2 && len(efs) < 2 && v.Status.CurrentMigrationNodeID == "" {
 			return nil // There is nothing to do.
 		}
 
@@ -4574,6 +5000,12 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		if v.Spec.NodeID != "" && v.Status.CurrentNodeID != v.Spec.NodeID {
 			log.Infof("Volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
+			// For v2, also update CurrentEngineNodeID so that
+			// GetNewCurrentEngineAndExtras does not match both old and new
+			// engines (old matches CurrentEngineNodeID, new matches NodeID).
+			if types.IsDataEngineV2(v.Spec.DataEngine) {
+				v.Status.CurrentEngineNodeID = v.Spec.NodeID
+			}
 		}
 
 		// The latest current engine is based on the multiple node related fields of the volume and the NodeID of all
@@ -4597,6 +5029,30 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		}
 
 		currentEngine.Spec.Active = true
+
+		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
+			// Use node-based detection (not Active-flag based) because the
+			// Active flag of the migration EF is still false at this point.
+			// v.Status.CurrentNodeID was already switched to the migration
+			// node above, so GetNewCurrentEngineFrontendAndExtras correctly
+			// picks the migration EF on the new node as the current one.
+			currentEngineFrontend, extraEngineFrontends, err := datastore.GetNewCurrentEngineFrontendAndExtras(v, efs)
+			if err != nil {
+				log.WithError(err).Warn("Failed to finalize the migration engine frontend state")
+			} else {
+				for i := range extraEngineFrontends {
+					ef := extraEngineFrontends[i]
+					if ef.DeletionTimestamp == nil {
+						ef.Spec.Active = false
+						if err := c.deleteEngineFrontend(ef, efs); err != nil {
+							return err
+						}
+						log.Infof("Removing extra engine frontend %v after switching the current engine frontend to %v", ef.Name, currentEngineFrontend.Name)
+					}
+				}
+				currentEngineFrontend.Spec.Active = true
+			}
+		}
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		if types.IsDataEngineV1(v.Spec.DataEngine) {
@@ -4660,6 +5116,25 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 				r.Spec.MigrationEngineName = ""
 			}
 		}
+
+		if types.IsDataEngineV2(v.Spec.DataEngine) && len(efs) > 0 {
+			currentEF, extraEngineFrontends, err2 := datastore.GetCurrentEngineFrontendAndExtras(v, efs)
+			if err2 != nil {
+				err = errors.Wrapf(err, "failed to get current engine frontend during the migration revert: %v", err2)
+				return
+			}
+			currentEF.Spec.Active = true
+			for _, ef := range extraEngineFrontends {
+				if ef.DeletionTimestamp != nil {
+					continue
+				}
+				ef.Spec.Active = false
+				if err2 := c.deleteEngineFrontend(ef, efs); err2 != nil {
+					err = errors.Wrapf(err, "failed to delete the migration engine frontend %v during the migration revert: %v", ef.Name, err2)
+					return
+				}
+			}
+		}
 	}()
 
 	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
@@ -4711,24 +5186,307 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	log = log.WithField("migrationEngine", migrationEngine.Name)
 
 	ready := false
-	if ready, revertRequired, err = c.prepareReplicasAndEngineForMigration(v, currentEngine, migrationEngine, rs); err != nil {
+	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, v.Spec.MigrationNodeID, currentEngine, migrationEngine, rs); err != nil {
 		return err
 	}
 	if !ready || revertRequired {
 		return nil
 	}
 
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		migrationEngineFrontend, err := getEngineFrontendForNode(efs, v.Spec.MigrationNodeID)
+		if err != nil {
+			return err
+		}
+		if migrationEngineFrontend == nil {
+			currentEngineFrontend, err := pickCurrentEngineFrontend(v, efs)
+			if err != nil {
+				return err
+			}
+			currentEngineFrontendName := ""
+			if currentEngineFrontend != nil {
+				currentEngineFrontendName = currentEngineFrontend.Name
+			}
+			migrationEngineFrontend, err = c.createEngineFrontend(v, currentEngineFrontendName, migrationEngine.Name, v.Spec.MigrationNodeID)
+			if err != nil {
+				return err
+			}
+			efs[migrationEngineFrontend.Name] = migrationEngineFrontend
+		}
+
+		migrationEngineFrontend.Spec.VolumeSize = v.Spec.Size
+		migrationEngineFrontend.Spec.NodeID = v.Spec.MigrationNodeID
+		migrationEngineFrontend.Spec.Frontend = v.Spec.Frontend
+		migrationEngineFrontend.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+		migrationEngineFrontend.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
+		migrationEngineFrontend.Spec.DisableFrontend = v.Status.FrontendDisabled
+		migrationEngineFrontend.Spec.EngineName = migrationEngine.Name
+		if migrationEngine.Status.CurrentState == longhorn.InstanceStateRunning &&
+			migrationEngine.Status.IP != "" && migrationEngine.Status.Port != 0 {
+			migrationEngineFrontend.Spec.TargetIP = migrationEngine.Status.IP
+			migrationEngineFrontend.Spec.TargetPort = migrationEngine.Status.Port
+			migrationEngineFrontend.Spec.DesireState = longhorn.InstanceStateRunning
+		}
+		if migrationEngineFrontend.Spec.DesireState != longhorn.InstanceStateRunning ||
+			migrationEngineFrontend.Status.CurrentState != longhorn.InstanceStateRunning ||
+			migrationEngineFrontend.Status.Endpoint == "" ||
+			migrationEngineFrontend.Status.TargetIP != migrationEngineFrontend.Spec.TargetIP ||
+			migrationEngineFrontend.Status.TargetPort != migrationEngineFrontend.Spec.TargetPort {
+			log.WithField("migrationEngineFrontend", migrationEngineFrontend.Name).
+				Info("Volume migration engine frontend is not ready yet")
+			return nil
+		}
+	}
+
 	log.Info("Volume migration engine is ready")
 	return nil
 }
 
-func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
-	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"migrationNodeID": v.Spec.MigrationNodeID, "migrationEngine": migrationEngine.Name})
+func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to process engine switchover for %v", v.Name)
+	}()
+
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return nil
+	}
+
+	// Skip engine switchover when a migration is in progress.
+	// processMigration manages the extra (migration) engine in that case;
+	// processEngineSwitchover's cleanup branch would incorrectly delete it.
+	if util.IsMigratableVolume(v) && (v.Spec.MigrationNodeID != "" || v.Status.CurrentMigrationNodeID != "") {
+		return nil
+	}
+
+	targetNodeID := v.Spec.EngineNodeID
+	if targetNodeID == "" {
+		targetNodeID = v.Spec.NodeID
+	}
+
+	if targetNodeID == "" || v.Status.CurrentNodeID == "" || len(es) == 0 {
+		return nil
+	}
+
+	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"engineNodeID": targetNodeID, "currentEngineNodeID": v.Status.CurrentEngineNodeID})
+
+	// init the engine switchover
+	if v.Status.CurrentEngineNodeID == "" {
+		v.Status.CurrentEngineNodeID = targetNodeID
+	}
+
+	if targetNodeID == v.Status.CurrentEngineNodeID {
+		// No switchover in progress (or switchover already completed).
+		// Only need to cleanup extra engines from a previous engine switchover.
+		if len(es) <= 1 {
+			return nil
+		}
+
+		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
+		if err != nil {
+			log.WithError(err).Warn("Failed to finalize the engine switchover")
+			return nil
+		}
+		for i := range extras {
+			e := extras[i]
+			if e.DeletionTimestamp == nil {
+				if err := c.deleteEngine(e, es); err != nil {
+					return err
+				}
+				log.Infof("Removing extra engine %v after switching the current engine to %v", e.Name, currentEngine.Name)
+			}
+		}
+
+		currentEngine.Spec.Active = true
+
+		for _, r := range rs {
+			r.Spec.MigrationEngineName = ""
+			r.Spec.EngineName = currentEngine.Name
+		}
+		return nil
+	}
+
+	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		log.Warnf("Skip the engine switchover processing since the volume current robustness is %v", v.Status.Robustness)
+		return nil
+	}
+
+	revertRequired := false
+	defer func() {
+		if !revertRequired {
+			return
+		}
+
+		log.Warnf("Cleaning up the migration engine and all migration replicas to revert engine switchover")
+
+		currentEngine, err2 := c.getCurrentEngineAndCleanupOthers(v, es)
+		if err2 != nil {
+			err = errors.Wrapf(err, "failed to get the current engine and clean up others during the engine switchover revert: %v", err2)
+			return
+		}
+
+		// Restore the EngineFrontend to point back to the current (old) engine
+		// so the EF controller can switch the data path back.
+		// Also clear any in-progress switchover state.
+		ef, err3 := pickCurrentEngineFrontend(v, efs)
+		if err3 == nil && ef != nil {
+			if currentEngine.Status.IP != "" {
+				ef.Spec.TargetIP = currentEngine.Status.IP
+				ef.Spec.TargetPort = currentEngine.Status.Port
+				ef.Spec.EngineName = currentEngine.Name
+			}
+		}
+
+		for _, r := range rs {
+			r.Spec.MigrationEngineName = ""
+			r.Spec.EngineName = currentEngine.Name
+		}
+	}()
+
+	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
+	if err != nil {
+		return err
+	}
+
+	if currentEngine.Status.CurrentState != longhorn.InstanceStateRunning {
+		revertRequired = true
+		log.Warnf("Need to revert the engine switchover since the current engine %v is state %v", currentEngine.Name, currentEngine.Status.CurrentState)
+		return nil
+	}
+
+	var availableEngines int
+	var migrationEngine *longhorn.Engine
+	for _, extra := range extras {
+		if extra.DeletionTimestamp != nil {
+			continue
+		}
+
+		availableEngines++
+		isValidMigrationEngine := extra.Spec.NodeID == "" || extra.Spec.NodeID == targetNodeID
+		if isValidMigrationEngine {
+			migrationEngine = extra
+		}
+	}
+
+	unexpectedEngineCount := availableEngines > 1
+	invalidMigrationEngine := availableEngines > 0 && migrationEngine == nil
+	if unexpectedEngineCount || invalidMigrationEngine {
+		revertRequired = true
+		log.Warnf("Unexpected state for engine switchover, current engine count %v has invalid migration engine %v",
+			len(es), invalidMigrationEngine)
+		return nil
+	}
+
+	// Step 1: Create the new (migration) engine CR and wait for it to be running.
+	if migrationEngine == nil {
+		migrationEngine, err = c.createEngine(v, currentEngine.Name)
+		if err != nil {
+			return err
+		}
+		es[migrationEngine.Name] = migrationEngine
+	}
+
+	log = log.WithField("migrationEngine", migrationEngine.Name)
+
+	migrationEngine.Spec.NodeID = targetNodeID
+
+	ready := false
+	if ready, revertRequired, err = c.prepareReplicasAndEngineForTargetNode(v, targetNodeID, currentEngine, migrationEngine, rs); err != nil {
+		return err
+	}
+	if !ready || revertRequired {
+		log.Infof("processEngineSwitchover: prepareReplicasAndEngine returned ready=%v revertRequired=%v, migrationEngine.Status.State=%v",
+			ready, revertRequired, migrationEngine.Status.CurrentState)
+		return nil
+	}
+
+	// Step 2-4: Update EngineFrontend to point to the migration engine.
+	// The EngineFrontend controller will:
+	//   Phase 1: suspend (CurrentState becomes "suspended" via instance monitor)
+	//   Phase 2: switchover → resume (CurrentState becomes "running")
+	//
+	// The old engine is kept running until Phase 2 succeeds so that a
+	// failed SwitchOverTarget can resume back to the old target without
+	// causing I/O errors. The old engine is stopped in Step 5 after the
+	// switchover is confirmed.
+	if migrationEngine.Status.IP == "" {
+		log.Info("Migration engine is running but IP is not yet available, waiting")
+		return nil
+	}
+
+	ef, err := pickCurrentEngineFrontend(v, efs)
+	if err != nil {
+		return err
+	}
+	if ef == nil {
+		log.Warn("EngineFrontend not found for volume, cannot perform switchover")
+		return nil
+	}
+
+	newTargetIP := migrationEngine.Status.IP
+	newTargetPort := migrationEngine.Status.Port
+
+	log.Infof("processEngineSwitchover EF check: ef.Spec.TargetIP=%v newTargetIP=%v ef.Spec.TargetPort=%v newTargetPort=%v ef.Spec.EngineName=%v migrationEngine=%v ef.Status.CurrentState=%v ef.Status.TargetIP=%v ef.Status.TargetPort=%v",
+		ef.Spec.TargetIP, newTargetIP, ef.Spec.TargetPort, newTargetPort, ef.Spec.EngineName, migrationEngine.Name, ef.Status.CurrentState, ef.Status.TargetIP, ef.Status.TargetPort)
+
+	// Point the EngineFrontend spec to the new engine if not already done.
+	if ef.Spec.TargetIP != newTargetIP || ef.Spec.TargetPort != newTargetPort || ef.Spec.EngineName != migrationEngine.Name {
+		log.Infof("Updating EngineFrontend target to migration engine %v (%v:%v)", migrationEngine.Name, newTargetIP, newTargetPort)
+		ef.Spec.TargetIP = newTargetIP
+		ef.Spec.TargetPort = newTargetPort
+		ef.Spec.EngineName = migrationEngine.Name
+		// Return and wait for the EF controller to suspend the frontend (phase 1).
+		return nil
+	}
+
+	// Step 3: Wait for the EF controller to complete the full switchover.
+	// The old engine is intentionally kept running so that if Phase 2
+	// (SwitchOverTarget) fails, the EF controller can resume I/O back to
+	// the old target without hitting a dead engine.
+	if ef.Status.TargetIP != newTargetIP || ef.Status.TargetPort != newTargetPort {
+		log.Info("Waiting for EngineFrontend controller to complete the switchover to migration engine")
+		return nil
+	}
+
+	// Step 5: Switchover complete. Finalize in-memory state and delete the
+	// old engine immediately to avoid extra reconcile cycles.
+	log.Info("Volume engine switchover completed. EngineFrontend has switched to migration engine.")
+
+	// Now that the EF has confirmed the new target, stop the old engine.
+	if currentEngine.Spec.DesireState != longhorn.InstanceStateStopped {
+		currentEngine.Spec.DesireState = longhorn.InstanceStateStopped
+	}
+	currentEngine.Spec.Active = false
+	migrationEngine.Spec.Active = true
+
+	for _, r := range rs {
+		r.Spec.MigrationEngineName = ""
+		r.Spec.EngineName = migrationEngine.Name
+	}
+
+	v.Status.CurrentEngineNodeID = targetNodeID
+
+	// Delete the old engine immediately. deleteEngine persists the in-memory
+	// spec changes (Active=false, DesireState=Stopped) via UpdateEngine, then
+	// issues DeleteEngine, and removes the entry from the engines map so the
+	// deferred update loop in syncVolume skips it.
+	if currentEngine.DeletionTimestamp == nil {
+		log.Infof("Deleting old engine %v after successful switchover", currentEngine.Name)
+		if err := c.deleteEngine(currentEngine, es); err != nil {
+			// Non-fatal: the cleanup branch will handle it in the next cycle.
+			log.WithError(err).Warn("Failed to delete old engine immediately after switchover, will retry in next cycle")
+		}
+	}
+
+	return nil
+}
+
+func (c *VolumeController) prepareReplicasAndEngineForTargetNode(v *longhorn.Volume, targetNodeID string, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
+	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"migrationNodeID": targetNodeID, "migrationEngine": migrationEngine.Name})
 
 	// Check the migration engine current status
-	if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != v.Spec.MigrationNodeID {
+	if migrationEngine.Spec.NodeID != "" && migrationEngine.Spec.NodeID != targetNodeID {
 		log.Warnf("Migration engine is on node %v but volume is somehow required to be migrated to %v, will do revert then restart the migration",
-			migrationEngine.Spec.NodeID, v.Spec.MigrationNodeID)
+			migrationEngine.Spec.NodeID, targetNodeID)
 		return false, true, nil
 	}
 	if migrationEngine.DeletionTimestamp != nil {
@@ -4847,7 +5605,7 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 		}
 	}
 
-	migrationEngine.Spec.NodeID = v.Spec.MigrationNodeID
+	migrationEngine.Spec.NodeID = targetNodeID
 	migrationEngine.Spec.ReplicaAddressMap = replicaAddressMap
 	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
 
@@ -4977,6 +5735,18 @@ func (c *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*longh
 		return err
 	}
 	delete(es, e.Name)
+	return nil
+}
+
+func (c *VolumeController) deleteEngineFrontend(ef *longhorn.EngineFrontend, efs map[string]*longhorn.EngineFrontend) error {
+	// Must call Update before removal to keep the fields up to date
+	if _, err := c.ds.UpdateEngineFrontend(ef); err != nil {
+		return err
+	}
+	if err := c.ds.DeleteEngineFrontend(ef.Name); err != nil {
+		return err
+	}
+	delete(efs, ef.Name)
 	return nil
 }
 
@@ -5264,7 +6034,7 @@ func (c *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) e
 // TODO: this block of code is duplicated of CreateSnapshot in MANAGER package.
 // Once we have Snapshot CR, we should refactor this
 
-func (c *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume, e *longhorn.Engine) (*longhorn.SnapshotInfo, error) {
+func (c *VolumeController) createSnapshot(snapshotName string, labels map[string]string, volume *longhorn.Volume, dataEngineObj interface{}) (*longhorn.SnapshotInfo, error) {
 	if volume.Name == "" {
 		return nil, fmt.Errorf("volume name required")
 	}
@@ -5277,7 +6047,7 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 		return nil, err
 	}
 
-	freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(e)
+	freezeFilesystem, err := c.ds.GetFreezeFilesystemForSnapshotSetting(volume.Name, volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -5287,7 +6057,7 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 		return nil, err
 	}
 
-	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, c.ds, c.logger, c.proxyConnCounter)
+	engineClientProxy, err := engineapi.GetCompatibleClient(dataEngineObj, engineCliClient, c.ds, c.logger, c.proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}
@@ -5297,7 +6067,7 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 	// TODO: Update longhorn-engine and longhorn-instance-manager so that SnapshotCreate returns an identifiable
 	// error/code when a snapshot exists so that this check isn't necessary.
 	if snapshotName != "" {
-		snap, err := engineClientProxy.SnapshotGet(e, snapshotName)
+		snap, err := engineClientProxy.SnapshotGet(dataEngineObj, snapshotName)
 		if err != nil {
 			return nil, err
 		}
@@ -5306,12 +6076,12 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 		}
 	}
 
-	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels, freezeFilesystem)
+	snapshotName, err = engineClientProxy.SnapshotCreate(dataEngineObj, snapshotName, labels, freezeFilesystem)
 	if err != nil {
 		return nil, err
 	}
 
-	snap, err := engineClientProxy.SnapshotGet(e, snapshotName)
+	snap, err := engineClientProxy.SnapshotGet(dataEngineObj, snapshotName)
 	if err != nil {
 		return nil, err
 	}
