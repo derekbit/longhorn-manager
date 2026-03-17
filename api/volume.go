@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -45,9 +46,12 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 	}
 
 	for _, v := range volumes {
-		engineFrontends, err := s.m.GetEngineFrontendsSorted(v.Name)
-		if err != nil {
-			return nil, err
+		engineFrontends := []*longhorn.EngineFrontend{}
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			engineFrontends, err = s.m.GetEngineFrontendsSorted(v.Name)
+			if err != nil {
+				return nil, err
+			}
 		}
 		controllers, err := s.m.GetEnginesSorted(v.Name)
 		if err != nil {
@@ -100,9 +104,12 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		}
 	}
 
-	engineFrontends, err := s.m.GetEngineFrontendsSorted(id)
-	if err != nil {
-		return err
+	engineFrontends := []*longhorn.EngineFrontend{}
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		engineFrontends, err = s.m.GetEngineFrontendsSorted(v.Name)
+		if err != nil {
+			return err
+		}
 	}
 
 	controllers, err := s.m.GetEnginesSorted(id)
