@@ -627,6 +627,13 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 	e *longhorn.Engine, rs map[string]*longhorn.Replica, healthyCount int) (err error) {
 	log := getLoggerForVolume(c.logger, v)
 
+	// strict-local volumes must keep exactly one local replica. Trying to
+	// replenish a second replica during eviction creates an invalid
+	// intermediate state that later blocks VolumeAttachment updates.
+	if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		return nil
+	}
+
 	hasNewReplica := false
 	healthyNonEvictingCount := healthyCount
 	for _, replica := range rs {

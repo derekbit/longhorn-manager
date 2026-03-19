@@ -1868,6 +1868,33 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
 
+func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForStrictLocalVolume(c *C) {
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		eventRecorder:  record.NewFakeRecorder(10),
+	}
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataLocality = longhorn.DataLocalityStrictLocal
+
+	e := newEngineForVolume(v)
+	replica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	replica.Spec.EvictionRequested = true
+	replica.Spec.HealthyAt = TestTimeNow
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{
+		replica.Name: longhorn.ReplicaModeRW,
+	}
+
+	rs := map[string]*longhorn.Replica{
+		replica.Name: replica,
+	}
+
+	err := vc.EvictReplicas(v, e, rs, 1)
+	c.Assert(err, IsNil)
+	c.Assert(len(rs), Equals, 1)
+	c.Assert(rs[replica.Name], Equals, replica)
+}
+
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {
 	testCases := []struct {
 		name     string
