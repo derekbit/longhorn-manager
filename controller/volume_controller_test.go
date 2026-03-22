@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/backupstore"
@@ -1893,6 +1894,102 @@ func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForStrictLocalVolume(c *C
 	c.Assert(err, IsNil)
 	c.Assert(len(rs), Equals, 1)
 	c.Assert(rs[replica.Name], Equals, replica)
+}
+
+func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensBalance(c *C) {
+	const testNode3 = "test-node-name-3"
+
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = false
+	}()
+
+	volume := newVolume(TestVolumeName, 6)
+	volume.Spec.DataEngine = longhorn.DataEngineTypeV2
+	volume.Spec.ReplicaAutoBalance = longhorn.ReplicaAutoBalanceBestEffort
+	volume.Status.State = longhorn.VolumeStateAttached
+	volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
+
+	engine := newEngineForVolume(volume)
+
+	makeReplica := func(nodeID string) *longhorn.Replica {
+		replica := newReplicaForVolume(volume, engine, nodeID, TestDiskID1)
+		replica.Namespace = TestNamespace
+		replica.Spec.HealthyAt = TestTimeNow
+		replica.Spec.LastHealthyAt = TestTimeNow
+		replica.Status.CurrentState = longhorn.InstanceStateRunning
+		return replica
+	}
+
+	replicas := map[string]*longhorn.Replica{}
+	for _, nodeID := range []string{TestNode1, TestNode1, TestNode2, TestNode2, TestNode2, testNode3, testNode3} {
+		replica := makeReplica(nodeID)
+		replicas[replica.Name] = replica
+	}
+
+	longhornNodes := []*longhorn.Node{
+		newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+		newNode(testNode3, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
+	}
+
+	baseTime := time.Date(2026, time.March, 22, 12, 0, 0, 0, time.UTC)
+	makeKubeNode := func(name string, transition time.Time) *corev1.Node {
+		node := newKubernetesNode(name, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		node.Status.Conditions[0].LastTransitionTime = metav1.NewTime(transition)
+		return node
+	}
+	kubeNodes := []*corev1.Node{
+		makeKubeNode(TestNode1, baseTime.Add(40*time.Minute)),
+		makeKubeNode(TestNode2, baseTime),
+		makeKubeNode(testNode3, baseTime),
+	}
+
+	lhObjects := []runtime.Object{volume, engine}
+	for _, node := range longhornNodes {
+		lhObjects = append(lhObjects, node)
+	}
+	for _, replica := range replicas {
+		lhObjects = append(lhObjects, replica)
+	}
+
+	kubeObjects := make([]runtime.Object, 0, len(kubeNodes))
+	for _, node := range kubeNodes {
+		kubeObjects = append(kubeObjects, node)
+	}
+
+	lhClient := lhfake.NewSimpleClientset(lhObjects...)
+	kubeClient := fake.NewSimpleClientset(kubeObjects...)
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	for _, node := range longhornNodes {
+		c.Assert(informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+	for _, node := range kubeNodes {
+		c.Assert(informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node), IsNil)
+	}
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	vc := &VolumeController{
+		baseController: newBaseController("test-volume", logrus.StandardLogger()),
+		ds:             ds,
+		eventRecorder:  record.NewFakeRecorder(10),
+		nowHandler:     getTestNow,
+	}
+
+	cleaned, err := vc.cleanupAutoBalancedReplicas(volume, engine, replicas)
+	c.Assert(err, IsNil)
+	c.Assert(cleaned, Equals, true)
+
+	counts := map[string]int{}
+	for _, replica := range replicas {
+		counts[replica.Spec.NodeID]++
+	}
+
+	c.Assert(counts[TestNode1], Equals, 2)
+	c.Assert(counts[TestNode2], Equals, 2)
+	c.Assert(counts[testNode3], Equals, 2)
 }
 
 func (s *TestSuite) TestIsV2EngineSwitchoverInProgress(c *C) {

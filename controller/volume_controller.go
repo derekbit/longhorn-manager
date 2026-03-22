@@ -1309,6 +1309,9 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 			chosenReplica = rs[r.Name]
 			break
 		}
+		if r.Status.InstanceManagerName == "" {
+			continue
+		}
 		im, err := c.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 		if err != nil {
 			return false, err
@@ -1330,7 +1333,7 @@ func (c *VolumeController) cleanupReplicaInNotReadyEnv(v *longhorn.Volume, rs ma
 }
 
 // cleanupReplicaInUnstableEnv uses kube node Ready transition time as a heuristic to identify replicas on recently recovered nodes, assuming the disk or node was unstable before recovery.
-func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+func (c *VolumeController) getReplicaCandidateInUnstableEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (*longhorn.Replica, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	// Pick up the replicas on the node that becomes ready most recently.
@@ -1346,7 +1349,7 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 	}
 	nodes, err := c.ds.ListKubeNodesRO()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	for _, node := range nodes {
 		if nodeReplicaMap[node.Name] == nil {
@@ -1390,6 +1393,15 @@ func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs ma
 		chosenReplica = lastReadyReplica
 	}
 
+	return chosenReplica, nil
+}
+
+func (c *VolumeController) cleanupReplicaInUnstableEnv(v *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	chosenReplica, err := c.getReplicaCandidateInUnstableEnv(v, rs)
+	if err != nil {
+		return false, err
+	}
+
 	if chosenReplica != nil {
 		if err := c.deleteReplica(chosenReplica, rs); err != nil {
 			return false, err
@@ -1414,10 +1426,6 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		return cleaned, err
 	}
 
-	if cleaned, err := c.cleanupReplicaInUnstableEnv(v, rs); err != nil || cleaned {
-		return cleaned, err
-	}
-
 	var rNames []string
 	if setting == longhorn.ReplicaAutoBalanceBestEffort {
 		_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceNode)
@@ -1436,6 +1444,21 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		log.Infof("Found replica deletion candidates %v", rNames)
 	} else {
 		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
+	}
+
+	unstableReplica, err := c.getReplicaCandidateInUnstableEnv(v, rs)
+	if err != nil {
+		return false, err
+	}
+	if unstableReplica != nil {
+		if util.Contains(rNames, unstableReplica.Name) {
+			log.Infof("Deleting unstable replica %v", unstableReplica.Name)
+			if err := c.deleteReplica(unstableReplica, rs); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		log.WithField("replica", unstableReplica.Name).Infof("Skipping unstable replica cleanup because preferred deletion candidates are %v", rNames)
 	}
 
 	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
@@ -3126,6 +3149,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 }
 
 func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, error) {
+	if c.scheduler == nil {
+		return nil, nil
+	}
+
 	settingDiskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
 	if err != nil {
 		return nil, err
@@ -3419,7 +3446,9 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 		return nil, err
 	}
 
-	readyNodes = c.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
+	if c.scheduler != nil {
+		readyNodes = c.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
+	}
 
 	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -5723,8 +5752,8 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 
 func (c *VolumeController) deleteReplica(r *longhorn.Replica, rs map[string]*longhorn.Replica) error {
 	// Must call Update before removal to keep the fields up to date
-	if _, err := c.ds.UpdateReplica(r); err != nil {
-		return err
+	if _, err := c.ds.UpdateReplica(r); err != nil && !apierrors.IsConflict(err) {
+		logrus.WithError(err).Warnf("Failed to update replica %v before deletion, proceeding with delete", r.Name)
 	}
 	if err := c.ds.DeleteReplica(r.Name); err != nil {
 		return err
