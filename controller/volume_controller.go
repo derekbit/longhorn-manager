@@ -51,7 +51,8 @@ var (
 	RetryInterval = 100 * time.Millisecond
 	RetryCounts   = 20
 
-	AutoSalvageTimeLimit = 1 * time.Minute
+	AutoSalvageTimeLimit             = 1 * time.Minute
+	RecentHealthyReplicaCleanupDelay = 1 * time.Minute
 
 	UnstableNodeReadyTimeThreshold = 30 * time.Minute
 )
@@ -597,7 +598,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
-	if err := c.cleanupReplicas(volume, engines, replicas); err != nil {
+	if err := c.cleanupReplicas(volume, engines, replicas, engineFrontends); err != nil {
 		return err
 	}
 
@@ -1075,6 +1076,45 @@ func getSafeAsLastReplicaCount(rs map[string]*longhorn.Replica) int {
 	return count
 }
 
+func (c *VolumeController) hasRecentlyHealthyExtraReplica(v *longhorn.Volume, rs map[string]*longhorn.Replica) bool {
+	if !types.IsDataEngineV2(v.Spec.DataEngine) {
+		return false
+	}
+
+	healthyReplicas := make([]*longhorn.Replica, 0, len(rs))
+	for _, r := range rs {
+		if isHealthyAndActiveReplica(r, false) {
+			healthyReplicas = append(healthyReplicas, r)
+		}
+	}
+	if len(healthyReplicas) <= v.Spec.NumberOfReplicas {
+		return false
+	}
+
+	now, err := util.ParseTime(c.nowHandler())
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to parse current time while checking recently healthy extra replicas")
+		return false
+	}
+
+	sort.Slice(healthyReplicas, func(i, j int) bool {
+		ti, errI := util.ParseTime(healthyReplicas[i].Spec.HealthyAt)
+		tj, errJ := util.ParseTime(healthyReplicas[j].Spec.HealthyAt)
+		if errI != nil || errJ != nil {
+			return healthyReplicas[i].Spec.HealthyAt < healthyReplicas[j].Spec.HealthyAt
+		}
+		return ti.Before(tj)
+	})
+
+	for i := v.Spec.NumberOfReplicas; i < len(healthyReplicas); i++ {
+		if util.TimestampWithinLimit(now, healthyReplicas[i].Spec.HealthyAt, RecentHealthyReplicaCleanupDelay) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
@@ -1085,7 +1125,7 @@ func getFailedReplicaCount(rs map[string]*longhorn.Replica) int {
 	return count
 }
 
-func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
+func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica, efs map[string]*longhorn.EngineFrontend) error {
 	// TODO: I don't think it's a good idea to cleanup replicas during a migration or engine image update
 	// 	since the getHealthyReplicaCount function doesn't differentiate between replicas of different engines
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
@@ -1111,6 +1151,22 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 
 	if err := c.cleanupFailedToScheduleReplicas(v, rs); err != nil {
 		return err
+	}
+
+	// Delay extra healthy replica cleanup until the attached volume is fully opened.
+	// During v2 engine switchover/revert, the engine can already report enough healthy
+	// replicas while the frontend is still suspended or missing its endpoint. Cleaning
+	// up at that point can discard the older known-good replica before the new local
+	// replica has actually become the stable serving copy.
+	if v.Status.State == longhorn.VolumeStateAttached && !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
+		return nil
+	}
+
+	// For v2, a newly rebuilt surplus replica can become RW a short time before the
+	// serving path is truly stable. Defer extra healthy cleanup briefly so we do not
+	// immediately discard the older known-good replica if another detach/crash follows.
+	if c.hasRecentlyHealthyExtraReplica(v, rs) {
+		return nil
 	}
 
 	if err := c.cleanupExtraHealthyReplicas(v, e, rs); err != nil {
@@ -1475,6 +1531,13 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 }
 
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+	// Skip data locality cleanup when the engine is not running. If the engine crashed or stopped,
+	// we cannot verify replica data integrity through the engine's mode map, and data locality is
+	// irrelevant for a non-serving volume. Preserving all healthy replicas avoids discarding a
+	// known-good older replica in favor of a recently rebuilt local one whose data may be suspect.
+	if e == nil || e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false, nil
+	}
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
 
