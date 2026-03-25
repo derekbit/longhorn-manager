@@ -1771,6 +1771,60 @@ func (s *TestSuite) TestCleanupReplicasSkipsExtraHealthyCleanupWhenAttachedResou
 	c.Assert(rs[remoteReplica.Name], NotNil)
 }
 
+func (s *TestSuite) TestCleanupReplicasDoesNotSkipExtraHealthyCleanupForV1WhenAttachedResourcesNotOpened(c *C) {
+	datastore.SkipListerCheck = true
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+	rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Spec.DataLocality = longhorn.DataLocalityBestEffort
+	v.Spec.NodeID = TestNode1
+	v.Status.State = longhorn.VolumeStateAttached
+	v.Status.CurrentNodeID = TestNode1
+	v.Status.CurrentImage = TestEngineImage
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Spec.NodeID = TestNode1
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+
+	localReplica := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	localReplica.Spec.Active = true
+	localReplica.Spec.HealthyAt = getTestNow()
+	localReplica.Status.CurrentState = longhorn.InstanceStateRunning
+
+	remoteReplica := newReplicaForVolume(v, e, TestNode2, TestDiskID2)
+	remoteReplica.Spec.Active = true
+	remoteReplica.Spec.HealthyAt = getTestNow()
+	remoteReplica.Status.CurrentState = longhorn.InstanceStateRunning
+
+	rs := map[string]*longhorn.Replica{
+		localReplica.Name:  localReplica,
+		remoteReplica.Name: remoteReplica,
+	}
+
+	for _, replica := range []*longhorn.Replica{localReplica, remoteReplica} {
+		createdReplica, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = rIndexer.Add(createdReplica)
+		c.Assert(err, IsNil)
+	}
+
+	err = vc.cleanupReplicas(v, map[string]*longhorn.Engine{e.Name: e}, rs, nil)
+	c.Assert(err, IsNil)
+	c.Assert(rs, HasLen, 1)
+	c.Assert(rs[localReplica.Name], NotNil)
+	c.Assert(rs[remoteReplica.Name], IsNil)
+}
+
 func (s *TestSuite) TestCleanupReplicasSkipsExtraHealthyCleanupForRecentlyHealthyV2Replica(c *C) {
 	datastore.SkipListerCheck = true
 

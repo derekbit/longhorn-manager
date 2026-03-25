@@ -1154,11 +1154,12 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	}
 
 	// Delay extra healthy replica cleanup until the attached volume is fully opened.
-	// During v2 engine switchover/revert, the engine can already report enough healthy
-	// replicas while the frontend is still suspended or missing its endpoint. Cleaning
-	// up at that point can discard the older known-good replica before the new local
-	// replica has actually become the stable serving copy.
-	if v.Status.State == longhorn.VolumeStateAttached && !c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
+	// This protection is only needed for v2 engine switchover/revert, where the
+	// engine can already report enough healthy replicas while the frontend is still
+	// suspended or missing its endpoint.
+	if types.IsDataEngineV2(v.Spec.DataEngine) &&
+		v.Status.State == longhorn.VolumeStateAttached &&
+		!c.areVolumeDependentResourcesOpened(v, e, rs, efs) {
 		return nil
 	}
 
@@ -1531,12 +1532,14 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 }
 
 func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
-	// Skip data locality cleanup when the engine is not running. If the engine crashed or stopped,
-	// we cannot verify replica data integrity through the engine's mode map, and data locality is
-	// irrelevant for a non-serving volume. Preserving all healthy replicas avoids discarding a
-	// known-good older replica in favor of a recently rebuilt local one whose data may be suspect.
-	if e == nil || e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return false, nil
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		// Skip data locality cleanup when the engine is not running. If the engine crashed or stopped,
+		// we cannot verify replica data integrity through the engine's mode map, and data locality is
+		// irrelevant for a non-serving volume. Preserving all healthy replicas avoids discarding a
+		// known-good older replica in favor of a recently rebuilt local one whose data may be suspect.
+		if e == nil || e.Status.CurrentState != longhorn.InstanceStateRunning {
+			return false, nil
+		}
 	}
 	if !isDataLocalityDisabled(v) &&
 		hasLocalReplicaOnSameNodeAsEngine(e, rs) {
