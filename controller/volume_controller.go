@@ -398,6 +398,35 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
+			// For v2 data engine, the teardown order must be:
+			//   engine frontends (ublk/virtio) → engines (raid bdev) → replicas (replica bdevs)
+			// Each layer must be fully removed before tearing down the next,
+			// to prevent "no such device" errors in spdk_tgt.
+
+			// Step 1: Mark all EngineFrontends for deletion
+			for _, ef := range engineFrontends {
+				if ef.DeletionTimestamp == nil {
+					if err := c.ds.DeleteEngineFrontend(ef.Name); err != nil {
+						return err
+					}
+				}
+			}
+
+			// Step 2: Wait for all EngineFrontends to be fully removed
+			// before deleting engines
+			efs, err := c.ds.ListVolumeEngineFrontendsRO(volume.Name)
+			if err != nil {
+				return err
+			}
+			if len(efs) > 0 {
+				c.logger.Infof("Volume (%s) %v still has engine frontends, so skip deleting its engines until the engine frontends have been deleted",
+					volume.Spec.DataEngine, volume.Name)
+				return nil
+			}
+		}
+
+		// Step 3: Mark all engines for deletion
 		for _, e := range engines {
 			if e.DeletionTimestamp == nil {
 				if err := c.ds.DeleteEngine(e.Name); err != nil {
@@ -406,8 +435,8 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			}
 		}
 		if types.IsDataEngineV2(volume.Spec.DataEngine) {
-			// To prevent from the "no such device" error in spdk_tgt,
-			// remove the raid bdev before tearing down the replicas.
+			// Step 4: Wait for engines (raid bdev) to be fully removed
+			// before tearing down replicas
 			engines, err := c.ds.ListVolumeEnginesRO(volume.Name)
 			if err != nil {
 				return err
@@ -458,7 +487,14 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			return err
 		}
 
-		// now volumeattachment, snapshots, replicas, and engines have been marked for deletion
+		// now volumeattachment, snapshots, replicas, engines, and engine frontends have been marked for deletion
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
+			if efs, err := c.ds.ListVolumeEngineFrontendsRO(volume.Name); err != nil {
+				return err
+			} else if len(efs) > 0 {
+				return nil
+			}
+		}
 		if engines, err := c.ds.ListVolumeEnginesRO(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
@@ -470,7 +506,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			return nil
 		}
 
-		// now snapshots, replicas, and engines are deleted
+		// now snapshots, replicas, engines, and engine frontends are deleted
 		return c.ds.RemoveFinalizerForVolume(volume)
 	}
 
