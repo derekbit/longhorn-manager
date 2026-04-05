@@ -912,7 +912,22 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
 		// ReconcileVolumeState() will deal with the faulted case
 		return nil
-	} else if healthyCount >= v.Spec.NumberOfReplicas {
+	}
+
+	// For v2 data engine, when all replicas crash, they are restarted by
+	// instance-manager within ~1 second and quickly rejoin the engine as RW.
+	// However, the EngineFrontend (NVMe-TCP initiator) loses its connection
+	// and cannot auto-recover, so ReconcileVolumeState marks the volume as
+	// faulted. Without this guard, the healthy replica count from the
+	// recovered replicas would override the faulted robustness here,
+	// preventing the faulted+detached path in ReconcileVolumeState from
+	// ever setting RemountRequestedAt to trigger workload pod deletion
+	// and remount.
+	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return nil
+	}
+
+	if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
 		if oldRobustness == longhorn.VolumeRobustnessDegraded {
 			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonHealthy, "volume %v became healthy", v.Name)
