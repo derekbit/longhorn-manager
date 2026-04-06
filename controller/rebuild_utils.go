@@ -95,28 +95,31 @@ func waitForV2EngineRebuild(ds *datastore.DataStore, engine *longhorn.Engine, re
 				}
 				continue
 			}
-			if e.Spec.ReplicaAddressMap[replicaName] == "" {
-				return fmt.Errorf("unknown replica %v for engine", replicaName)
-			}
 
 			r, err := ds.GetReplicaRO(replicaName)
 			if err != nil {
 				return err
 			}
+			if e.Spec.ReplicaAddressMap[replicaName] == "" {
+				return fmt.Errorf("unknown replica %v for engine", replicaName)
+			}
 			if r.Status.CurrentState != longhorn.InstanceStateRunning {
 				return fmt.Errorf("replica %v is state %s, which is invalid for rebuilding", replicaName, r.Status.CurrentState)
 			}
+
+			rebuildingStatus := e.Status.RebuildStatus[engineapi.GetBackendReplicaURL(e.Status.CurrentReplicaAddressMap[replicaName])]
 			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeRW {
 				return nil
 			}
 			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeERR {
+				if rebuildingStatus != nil && (rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "") {
+					return fmt.Errorf("failed to wait for v2 replica %s rebuild, rebuilding state %s, error: %v", replicaName, rebuildingStatus.State, rebuildingStatus.Error)
+				}
 				return fmt.Errorf("replica %v is in ERR mode, which is invalid for rebuilding", replicaName)
 			}
 			if e.Status.ReplicaModeMap[replicaName] == "" {
 				continue
 			}
-
-			rebuildingStatus := e.Status.RebuildStatus[engineapi.GetBackendReplicaURL(e.Status.CurrentReplicaAddressMap[replicaName])]
 			if rebuildingStatus == nil {
 				continue
 			}
