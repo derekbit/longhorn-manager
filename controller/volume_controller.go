@@ -667,7 +667,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 	// strict-local volumes must keep exactly one local replica. Trying to
 	// replenish a second replica during eviction creates an invalid
 	// intermediate state that later blocks VolumeAttachment updates.
-	if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 		return nil
 	}
 
@@ -923,7 +923,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	// preventing the faulted+detached path in ReconcileVolumeState from
 	// ever setting RemountRequestedAt to trigger workload pod deletion
 	// and remount.
-	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+	if types.IsDataEngineV2(v.Spec.DataEngine) && v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return nil
 	}
 

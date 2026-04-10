@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -2116,13 +2117,16 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
 
-func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForStrictLocalVolume(c *C) {
+func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForV2StrictLocalVolume(c *C) {
 	vc := &VolumeController{
 		baseController: newBaseController("test-volume", logrus.StandardLogger()),
 		eventRecorder:  record.NewFakeRecorder(10),
+		backoff:        flowcontrol.NewBackOff(time.Minute, time.Minute*3),
+		nowHandler:     getTestNow,
 	}
 
 	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV2
 	v.Spec.DataLocality = longhorn.DataLocalityStrictLocal
 
 	e := newEngineForVolume(v)
@@ -2141,6 +2145,38 @@ func (s *TestSuite) TestEvictReplicasSkipsReplenishmentForStrictLocalVolume(c *C
 	c.Assert(err, IsNil)
 	c.Assert(len(rs), Equals, 1)
 	c.Assert(rs[replica.Name], Equals, replica)
+}
+
+func (s *TestSuite) TestReconcileEngineReplicaStateV1CanRecoverFromFaultedRobustness(c *C) {
+	kubeClient := fake.NewSimpleClientset()                    // nolint: staticcheck
+	lhClient := lhfake.NewSimpleClientset()                    // nolint: staticcheck
+	extensionsClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+	c.Assert(err, IsNil)
+
+	v := newVolume(TestVolumeName, 1)
+	v.Spec.DataEngine = longhorn.DataEngineTypeV1
+	v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+
+	e := newEngineForVolume(v)
+	e.Spec.DataEngine = longhorn.DataEngineTypeV1
+	e.Status.CurrentState = longhorn.InstanceStateRunning
+	e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
+	e.Status.ReplicaTransitionTimeMap = map[string]string{}
+
+	r := newReplicaForVolume(v, e, TestNode1, TestDiskID1)
+	r.Spec.HealthyAt = TestTimeNow
+	e.Status.ReplicaModeMap[r.Name] = longhorn.ReplicaModeRW
+	e.Status.ReplicaTransitionTimeMap[r.Name] = TestTimeNow
+
+	es := map[string]*longhorn.Engine{e.Name: e}
+	rs := map[string]*longhorn.Replica{r.Name: r}
+
+	err = vc.ReconcileEngineReplicaState(v, es, rs)
+	c.Assert(err, IsNil)
+	c.Assert(v.Status.Robustness, Equals, longhorn.VolumeRobustnessHealthy)
 }
 
 func (s *TestSuite) TestCleanupAutoBalancedReplicasSkipsUnstableNodeIfItWorsensBalance(c *C) {

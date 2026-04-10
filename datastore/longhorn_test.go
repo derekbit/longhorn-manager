@@ -209,7 +209,7 @@ func TestCreateReplica(t *testing.T) {
 	}
 }
 
-func TestGetVolumeCurrentEngineFrontendReturnsNilWhenMissing(t *testing.T) {
+func TestGetVolumeCurrentEngineFrontendReturnsErrorWhenMissing(t *testing.T) {
 	const (
 		testNamespace  = "longhorn-system"
 		testVolumeName = "test-volume"
@@ -236,6 +236,7 @@ func TestGetVolumeCurrentEngineFrontendReturnsNilWhenMissing(t *testing.T) {
 	))
 
 	ef, err := ds.GetVolumeCurrentEngineFrontend(testVolumeName)
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.Nil(t, ef)
+	assert.Contains(t, err.Error(), "cannot find the current engine frontend")
 }
