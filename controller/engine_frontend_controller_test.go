@@ -325,64 +325,25 @@ func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 
 	testCases := []struct {
 		name                 string
-		suspendErr           error
 		switchErr            error
-		resumeErr            error
 		expectedFailureType  switchoverFailureType
 		expectedErrorPattern string
 		expectedCallOrder    []string
-		expectedSuspendCalls int
 		expectedSwitchCalls  int
-		expectedResumeCalls  int
 	}{
 		{
 			name:                 "success",
 			expectedFailureType:  switchoverFailureType(""),
-			expectedCallOrder:    []string{"suspend", "switch", "resume"},
-			expectedSuspendCalls: 1,
+			expectedCallOrder:    []string{"switch"},
 			expectedSwitchCalls:  1,
-			expectedResumeCalls:  1,
 		},
 		{
-			name:                 "switch failure with recovery resume",
+			name:                 "switch failure",
 			switchErr:            errors.New("switch failed"),
 			expectedFailureType:  switchoverFailureSwitch,
 			expectedErrorPattern: ".*failed to switch over target for engine frontend ef-1.*",
-			expectedCallOrder:    []string{"suspend", "switch", "resume"},
-			expectedSuspendCalls: 1,
+			expectedCallOrder:    []string{"switch"},
 			expectedSwitchCalls:  1,
-			expectedResumeCalls:  1,
-		},
-		{
-			name:                 "suspend failure",
-			suspendErr:           errors.New("suspend failed"),
-			expectedFailureType:  switchoverFailureSuspend,
-			expectedErrorPattern: ".*failed to suspend engine frontend ef-1 before switchover.*",
-			expectedCallOrder:    []string{"suspend"},
-			expectedSuspendCalls: 1,
-			expectedSwitchCalls:  0,
-			expectedResumeCalls:  0,
-		},
-		{
-			name:                 "switch and resume failure",
-			switchErr:            errors.New("switch failed"),
-			resumeErr:            errors.New("resume failed"),
-			expectedFailureType:  switchoverFailureSwitchAndResume,
-			expectedErrorPattern: ".*failed to switch over target for engine frontend ef-1, then failed to resume:.*",
-			expectedCallOrder:    []string{"suspend", "switch", "resume"},
-			expectedSuspendCalls: 1,
-			expectedSwitchCalls:  1,
-			expectedResumeCalls:  1,
-		},
-		{
-			name:                 "resume failure after successful switch",
-			resumeErr:            errors.New("resume failed"),
-			expectedFailureType:  switchoverFailureResume,
-			expectedErrorPattern: ".*failed to resume engine frontend ef-1 after switchover.*",
-			expectedCallOrder:    []string{"suspend", "switch", "resume"},
-			expectedSuspendCalls: 1,
-			expectedSwitchCalls:  1,
-			expectedResumeCalls:  1,
 		},
 	}
 
@@ -392,9 +353,7 @@ func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 		ef.Spec.DataEngine = longhorn.DataEngineTypeV2
 
 		client := &fakeEngineFrontendSwitchoverClient{
-			suspendErr: tc.suspendErr,
 			switchErr:  tc.switchErr,
-			resumeErr:  tc.resumeErr,
 		}
 
 		failureType, err := switchEngineFrontendTarget(client, ef, targetAddress)
@@ -409,9 +368,7 @@ func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 
 		c.Assert(failureType, Equals, tc.expectedFailureType, caseInfo)
 		c.Assert(client.callOrder, DeepEquals, tc.expectedCallOrder, caseInfo)
-		c.Assert(client.suspendCallCount, Equals, tc.expectedSuspendCalls, caseInfo)
 		c.Assert(client.switchCallCount, Equals, tc.expectedSwitchCalls, caseInfo)
-		c.Assert(client.resumeCallCount, Equals, tc.expectedResumeCalls, caseInfo)
 
 		if tc.expectedSwitchCalls > 0 {
 			c.Assert(client.switchDataEngine, Equals, longhorn.DataEngineTypeV2, caseInfo)
@@ -431,21 +388,6 @@ func (s *TestSuite) TestGetEngineFrontendSwitchoverFailureEventMessage(c *C) {
 		failureType     switchoverFailureType
 		expectedPattern string
 	}{
-		{
-			name:            "suspend failure message",
-			failureType:     switchoverFailureSuspend,
-			expectedPattern: ".*Failed to suspend engine frontend before switchover to 10\\.1\\.2\\.3:9502: rpc failed.*",
-		},
-		{
-			name:            "switch and resume failure message",
-			failureType:     switchoverFailureSwitchAndResume,
-			expectedPattern: ".*Failed to switch over target to 10\\.1\\.2\\.3:9502 and failed to resume engine frontend: rpc failed.*",
-		},
-		{
-			name:            "resume failure message",
-			failureType:     switchoverFailureResume,
-			expectedPattern: ".*Switched over target to 10\\.1\\.2\\.3:9502 but failed to resume engine frontend: rpc failed.*",
-		},
 		{
 			name:            "default switch failure message",
 			failureType:     switchoverFailureSwitch,
@@ -470,21 +412,6 @@ func (s *TestSuite) TestRecordEngineFrontendSwitchoverFailureEvent(c *C) {
 		failureType     switchoverFailureType
 		expectedMessage string
 	}{
-		{
-			name:            "suspend failure event",
-			failureType:     switchoverFailureSuspend,
-			expectedMessage: "Failed to suspend engine frontend before switchover to 10.1.2.3:9502: rpc failed",
-		},
-		{
-			name:            "switch and resume failure event",
-			failureType:     switchoverFailureSwitchAndResume,
-			expectedMessage: "Failed to switch over target to 10.1.2.3:9502 and failed to resume engine frontend: rpc failed",
-		},
-		{
-			name:            "resume failure event",
-			failureType:     switchoverFailureResume,
-			expectedMessage: "Switched over target to 10.1.2.3:9502 but failed to resume engine frontend: rpc failed",
-		},
 		{
 			name:            "default switch failure event",
 			failureType:     switchoverFailureSwitch,

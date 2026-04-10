@@ -5554,14 +5554,10 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	}
 
 	// Step 2-4: Update EngineFrontend to point to the migration engine.
-	// The EngineFrontend controller will:
-	//   Phase 1: suspend (CurrentState becomes "suspended" via instance monitor)
-	//   Phase 2: switchover → resume (CurrentState becomes "running")
-	//
-	// The old engine is kept running until Phase 2 succeeds so that a
-	// failed SwitchOverTarget can resume back to the old target without
-	// causing I/O errors. The old engine is stopped in Step 5 after the
-	// switchover is confirmed.
+	// The EngineFrontend controller performs the actual NVMe/TCP multipath
+	// switchover and waits for ANA state convergence before reporting success.
+	// Keep the old engine running until the EngineFrontend status confirms the
+	// new target so I/O can continue on the existing path if the switch fails.
 	if migrationEngine.Status.IP == "" {
 		log.Info("Migration engine is running but IP is not yet available, waiting")
 		return nil
@@ -5588,14 +5584,13 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		ef.Spec.TargetIP = newTargetIP
 		ef.Spec.TargetPort = newTargetPort
 		ef.Spec.EngineName = migrationEngine.Name
-		// Return and wait for the EF controller to suspend the frontend (phase 1).
+		// Return and wait for the EF controller to complete the direct switchover.
 		return nil
 	}
 
-	// Step 3: Wait for the EF controller to complete the full switchover.
-	// The old engine is intentionally kept running so that if Phase 2
-	// (SwitchOverTarget) fails, the EF controller can resume I/O back to
-	// the old target without hitting a dead engine.
+	// Step 3: Wait for the EF controller to finish the multipath/ANA switchover.
+	// The old engine is intentionally kept running until the EngineFrontend
+	// status moves to the new target.
 	if ef.Status.TargetIP != newTargetIP || ef.Status.TargetPort != newTargetPort {
 		log.Info("Waiting for EngineFrontend controller to complete the switchover to migration engine")
 		return nil

@@ -388,10 +388,9 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 	}
 
 	// Handle switchover if TargetIP changes.
-	// CurrentState == Running: normal case, may need to initiate Phase 1 (suspend).
-	// CurrentState == Suspended: mid-switchover, instance monitor reported
-	// "suspended" after Phase 1, proceed to Phase 2 (switchover + resume).
-	if ef.Status.CurrentState == longhorn.InstanceStateRunning || ef.Status.CurrentState == longhorn.InstanceStateSuspended {
+	// Switchover for the NVMe/TCP multipath frontend is handled directly by
+	// EngineFrontendSwitchOverTarget without suspending/resuming frontend I/O.
+	if ef.Status.CurrentState == longhorn.InstanceStateRunning {
 		statusTargetInitialized := isEngineFrontendTargetInitialized(ef.Status.TargetIP, ef.Status.TargetPort)
 		specTargetInitialized := isEngineFrontendTargetInitialized(ef.Spec.TargetIP, ef.Spec.TargetPort)
 		if !statusTargetInitialized && specTargetInitialized {
@@ -400,9 +399,8 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 			ef.Status.TargetPort = ef.Spec.TargetPort
 		} else if specTargetInitialized {
 			targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
-			targetReverted := !targetChanged
 
-			if targetChanged || ef.Status.CurrentState == longhorn.InstanceStateSuspended {
+			if targetChanged {
 				im, err := efc.ds.GetInstanceManager(ef.Status.InstanceManagerName)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager %v for target switchover", ef.Status.InstanceManagerName)
@@ -419,59 +417,16 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 				}()
 
 				targetAddress := util.BuildTargetAddress(ef.Spec.TargetIP, ef.Spec.TargetPort)
+				log.Infof("Switching over engine frontend %v target from %v:%v to %v:%v without suspend/resume",
+					ef.Name, ef.Status.TargetIP, ef.Status.TargetPort, ef.Spec.TargetIP, ef.Spec.TargetPort)
 
-				if ef.Status.CurrentState == longhorn.InstanceStateRunning && targetChanged {
-					// Phase 1: Suspend the frontend. The instance monitor will
-					// report CurrentState=suspended, which is visible via
-					// kubectl and used by the volume controller to stop the old
-					// engine while I/O is paused.
-					log.Infof("Target IP/Port changed from %v:%v to %v:%v, suspending frontend for switchover",
-						ef.Status.TargetIP, ef.Status.TargetPort, ef.Spec.TargetIP, ef.Spec.TargetPort)
-
-					if err := c.EngineFrontendSuspend(ef.Spec.DataEngine, ef.Name); err != nil {
-						efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSuspend, targetAddress, err)
-						return errors.Wrapf(err, "failed to suspend engine frontend %v before switchover", ef.Name)
-					}
-
-					log.Infof("Engine frontend %v suspended, waiting for instance monitor to report suspended state", ef.Name)
-					// Return — the instance monitor will update CurrentState to
-					// "suspended" and trigger the next reconcile for Phase 2.
-
-				} else if ef.Status.CurrentState == longhorn.InstanceStateSuspended && targetReverted {
-					// Switchover was reverted (spec target changed back to
-					// match status). Just resume without switchover.
-					log.Infof("Switchover reverted for engine frontend %v, resuming without switchover", ef.Name)
-					if err := c.EngineFrontendResume(ef.Spec.DataEngine, ef.Name); err != nil {
-						return errors.Wrapf(err, "failed to resume engine frontend %v after switchover revert", ef.Name)
-					}
-					log.Infof("Engine frontend %v resumed after switchover revert", ef.Name)
-
-				} else if ef.Status.CurrentState == longhorn.InstanceStateSuspended && targetChanged {
-					// Phase 2: Perform the actual target switchover and resume.
-					log.Infof("Switching over target for suspended engine frontend %v to %v", ef.Name, targetAddress)
-
-					if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName); err != nil {
-						efc.logger.WithError(err).Warnf("Failed to switch over target for engine frontend %v, trying to resume it back", ef.Name)
-						resumeErr := c.EngineFrontendResume(ef.Spec.DataEngine, ef.Name)
-						if resumeErr != nil {
-							efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitchAndResume, targetAddress, err)
-							return errors.Wrapf(err, "failed to switch over target for engine frontend %v, then failed to resume: %v", ef.Name, resumeErr)
-						}
-						efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitch, targetAddress, err)
-						return errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
-					}
-
-					log.Infof("Resuming engine frontend %v after target switchover to %v", ef.Name, targetAddress)
-					if err := c.EngineFrontendResume(ef.Spec.DataEngine, ef.Name); err != nil {
-						efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureResume, targetAddress, err)
-						return errors.Wrapf(err, "failed to resume engine frontend %v after switchover", ef.Name)
-					}
-
-					log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
-					efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
-					ef.Status.TargetIP = ef.Spec.TargetIP
-					ef.Status.TargetPort = ef.Spec.TargetPort
+				if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName); err != nil {
+					efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitch, targetAddress, err)
+					return errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
 				}
+
+				log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
+				efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
 			}
 		}
 	}
@@ -492,25 +447,11 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 	return nil
 }
 
-// switchEngineFrontendTarget performs the full suspend → switchover → resume
-// sequence in a single call. It is no longer used by the phased switchover
-// logic in syncEngineFrontend but is kept for unit tests that validate the
-// error-handling paths.
+// switchEngineFrontendTarget performs a direct multipath target switchover.
+// Switchover no longer suspends/resumes frontend I/O.
 func switchEngineFrontendTarget(c engineFrontendSwitchoverClient, ef *longhorn.EngineFrontend, targetAddress string) (switchoverFailureType, error) {
-	if err := c.EngineFrontendSuspend(ef.Spec.DataEngine, ef.Name); err != nil {
-		return switchoverFailureSuspend, errors.Wrapf(err, "failed to suspend engine frontend %v before switchover", ef.Name)
-	}
-
 	if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName); err != nil {
-		resumeErr := c.EngineFrontendResume(ef.Spec.DataEngine, ef.Name)
-		if resumeErr != nil {
-			return switchoverFailureSwitchAndResume, errors.Wrapf(err, "failed to switch over target for engine frontend %v, then failed to resume: %v", ef.Name, resumeErr)
-		}
 		return switchoverFailureSwitch, errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
-	}
-
-	if err := c.EngineFrontendResume(ef.Spec.DataEngine, ef.Name); err != nil {
-		return switchoverFailureResume, errors.Wrapf(err, "failed to resume engine frontend %v after switchover", ef.Name)
 	}
 
 	return "", nil
@@ -518,12 +459,6 @@ func switchEngineFrontendTarget(c engineFrontendSwitchoverClient, ef *longhorn.E
 
 func getEngineFrontendSwitchoverFailureEventMessage(failureType switchoverFailureType, targetAddress string, err error) string {
 	switch failureType {
-	case switchoverFailureSuspend:
-		return fmt.Sprintf("Failed to suspend engine frontend before switchover to %v: %v", targetAddress, err)
-	case switchoverFailureSwitchAndResume:
-		return fmt.Sprintf("Failed to switch over target to %v and failed to resume engine frontend: %v", targetAddress, err)
-	case switchoverFailureResume:
-		return fmt.Sprintf("Switched over target to %v but failed to resume engine frontend: %v", targetAddress, err)
 	default:
 		return fmt.Sprintf("Failed to switch over target to %v: %v", targetAddress, err)
 	}

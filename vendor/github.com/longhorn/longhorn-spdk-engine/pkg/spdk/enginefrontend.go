@@ -86,6 +86,8 @@ type EngineFrontend struct {
 	loadInitiatorEndpointFn func(dmDeviceIsBusy bool) error
 	// Test hook for endpoint retrieval after switchover.
 	getInitiatorEndpointFn func() string
+	// Test hook for remote target ANA state synchronization during switchover.
+	syncRemoteEngineTargetANAStatesFn func(oldEngineIP, oldEngineName, newEngineIP, newEngineName string) error
 
 	// metadataDir is the base path for persisting engine frontend records.
 	// If empty, persistence is disabled.
@@ -290,7 +292,7 @@ func (ef *EngineFrontend) promoteNVMeTCPPathLocked(address string) bool {
 			continue
 		}
 		if existingPath.ANAState == NvmeTCPANAStateOptimized {
-			existingPath.ANAState = NvmeTCPANAStateNonOptimized
+			existingPath.ANAState = NvmeTCPANAStateInaccessible
 		}
 	}
 
@@ -382,7 +384,7 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldEngineIP, oldEngine
 		syncErr = multierr.Append(syncErr, err)
 	}
 	if oldEngineName != newEngineName || oldEngineIP != newEngineIP {
-		if err := ef.setRemoteEngineTargetANAState(oldEngineIP, oldEngineName, NvmeTCPANAStateNonOptimized); err != nil {
+		if err := ef.setRemoteEngineTargetANAState(oldEngineIP, oldEngineName, NvmeTCPANAStateInaccessible); err != nil {
 			syncErr = multierr.Append(syncErr, err)
 		}
 	}
@@ -390,19 +392,49 @@ func (ef *EngineFrontend) syncRemoteEngineTargetANAStates(oldEngineIP, oldEngine
 	return syncErr
 }
 
-func (ef *EngineFrontend) syncRemoteEngineTargetANAStatesAsync(oldEngineIP, oldEngineName, newEngineIP, newEngineName string, oldTargetIP string, oldTargetPort int32, targetIP string, targetPort int32) {
-	go func() {
-		if err := ef.syncRemoteEngineTargetANAStates(oldEngineIP, oldEngineName, newEngineIP, newEngineName); err != nil {
-			ef.log.WithError(err).WithFields(logrus.Fields{
-				"oldEngineName": oldEngineName,
-				"engineName":    newEngineName,
-				"oldTargetIP":   oldTargetIP,
-				"oldTargetPort": oldTargetPort,
-				"targetIP":      targetIP,
-				"targetPort":    targetPort,
-			}).Warn("Switchover completed but failed to sync remote target ANA state")
+func (ef *EngineFrontend) syncRemoteEngineTargetANAStatesWithRetry(oldEngineIP, oldEngineName, newEngineIP, newEngineName string, oldTargetIP string, oldTargetPort int32, targetIP string, targetPort int32) error {
+	syncFn := ef.syncRemoteEngineTargetANAStates
+	if ef.syncRemoteEngineTargetANAStatesFn != nil {
+		syncFn = ef.syncRemoteEngineTargetANAStatesFn
+	}
+
+	const maxAttempts = 5
+	const retryInterval = 200 * time.Millisecond
+
+	var syncErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		syncErr = syncFn(oldEngineIP, oldEngineName, newEngineIP, newEngineName)
+		if syncErr == nil {
+			return nil
 		}
-	}()
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		ef.log.WithError(syncErr).WithFields(logrus.Fields{
+			"attempt":       attempt,
+			"maxAttempts":   maxAttempts,
+			"oldEngineName": oldEngineName,
+			"engineName":    newEngineName,
+			"oldTargetIP":   oldTargetIP,
+			"oldTargetPort": oldTargetPort,
+			"targetIP":      targetIP,
+			"targetPort":    targetPort,
+		}).Warn("Failed to sync remote target ANA state during switchover, retrying")
+
+		select {
+		case <-time.After(retryInterval):
+		case <-ef.stopCh:
+			return syncErr
+		}
+	}
+
+	return syncErr
+}
+
+func isNVMeTCPPathAlreadyConnectedError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already connected")
 }
 
 // Create creates the engine frontend. On failure, it sets the frontend state
@@ -1323,6 +1355,17 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 
 	switch frontend {
 	case types.FrontendSPDKTCPNvmf:
+		if err := ef.syncRemoteEngineTargetANAStatesWithRetry(oldEngineIP, oldEngineName, targetIP, resolvedEngineName, oldTargetIP, oldTargetPort, targetIP, targetPort); err != nil {
+			switchErr := errors.Wrapf(ErrSwitchOverTargetInternal,
+				"failed to sync remote target ANA state for engine frontend %s switchover to %s: %v",
+				ef.Name, targetAddress, err)
+			ef.Lock()
+			ef.ErrorMsg = switchErr.Error()
+			ef.Unlock()
+			updateRequired = true
+			return switchErr
+		}
+
 		ef.Lock()
 		ef.EngineIP = targetIP
 		ef.EngineName = resolvedEngineName
@@ -1354,8 +1397,6 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 		}
 		ef.RUnlock()
 
-		ef.syncRemoteEngineTargetANAStatesAsync(oldEngineIP, oldEngineName, targetIP, resolvedEngineName, oldTargetIP, oldTargetPort, targetIP, targetPort)
-
 		return nil
 
 	case types.FrontendSPDKTCPBlockdev:
@@ -1372,8 +1413,49 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 			ef.Unlock()
 		}
 
-		if switchErr := ef.connectNvmeTCPPath(targetIP, targetPort); switchErr != nil {
+		switchErr := ef.connectNvmeTCPPath(targetIP, targetPort)
+		if switchErr != nil && isNVMeTCPPathAlreadyConnectedError(switchErr) {
+			ef.log.WithError(switchErr).WithFields(logrus.Fields{
+				"engineName": resolvedEngineName,
+				"targetIP":   targetIP,
+				"targetPort": targetPort,
+			}).Warn("NVMe/TCP multipath path already connected during switchover, reloading initiator state")
+
+			transportServiceID := strconv.Itoa(int(targetPort))
+			if reloadErr := ef.loadInitiatorNVMeDeviceInfo(targetIP, transportServiceID, newNQN); reloadErr != nil {
+				switchErr = errors.Wrapf(ErrSwitchOverTargetInternal,
+					"failed to reload engine frontend %s NVMe device info for already connected multipath target %s: %v",
+					ef.Name, targetAddress, reloadErr)
+			} else if endpointErr := ef.loadInitiatorEndpoint(oldDMDeviceIsBusy); endpointErr != nil {
+				switchErr = errors.Wrapf(ErrSwitchOverTargetInternal,
+					"failed to reload engine frontend %s endpoint for already connected multipath target %s: %v",
+					ef.Name, targetAddress, endpointErr)
+			} else {
+				switchErr = nil
+			}
+		}
+
+		if switchErr != nil {
 			switchErr = errors.Wrapf(ErrSwitchOverTargetInternal, "failed to connect engine frontend %s multipath target %s: %v", ef.Name, targetAddress, switchErr)
+			ef.Lock()
+			ef.EngineIP = oldEngineIP
+			ef.EngineName = oldEngineName
+			ef.NvmeTcpFrontend.TargetIP = oldTargetIP
+			ef.NvmeTcpFrontend.TargetPort = oldTargetPort
+			ef.NvmeTcpFrontend.Nqn = oldNQN
+			ef.NvmeTcpFrontend.Nguid = oldNGUID
+			ef.Endpoint = oldEndpoint
+			ef.dmDeviceIsBusy = oldDMDeviceIsBusy
+			ef.ErrorMsg = switchErr.Error()
+			ef.Unlock()
+			updateRequired = true
+			return switchErr
+		}
+
+		if err := ef.syncRemoteEngineTargetANAStatesWithRetry(oldEngineIP, oldEngineName, targetIP, resolvedEngineName, oldTargetIP, oldTargetPort, targetIP, targetPort); err != nil {
+			switchErr = errors.Wrapf(ErrSwitchOverTargetInternal,
+				"failed to sync remote target ANA state for engine frontend %s switchover to %s: %v",
+				ef.Name, targetAddress, err)
 			ef.Lock()
 			ef.EngineIP = oldEngineIP
 			ef.EngineName = oldEngineName
@@ -1420,8 +1502,6 @@ func (ef *EngineFrontend) SwitchOverTarget(spdkClient *spdkclient.Client, newEng
 			ef.log.WithError(err).Warn("Failed to persist engine frontend record after switchover")
 		}
 		ef.RUnlock()
-
-		ef.syncRemoteEngineTargetANAStatesAsync(oldEngineIP, oldEngineName, targetIP, resolvedEngineName, oldTargetIP, oldTargetPort, targetIP, targetPort)
 
 		return nil
 

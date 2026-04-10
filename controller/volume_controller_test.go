@@ -2054,16 +2054,16 @@ func setupSwitchoverTestInfra(c *C) (
 	return
 }
 
-// TestProcessEngineSwitchoverKeepsOldEngineRunningDuringSuspend verifies that
-// when the EF is suspended mid-switchover, the old engine is NOT stopped.
-// This allows a failed Phase 2 (SwitchOverTarget) to resume back to the old
-// target without hitting a dead engine.
-func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningDuringSuspend(c *C) {
+// TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetStatusMoves verifies that
+// the old engine is kept running until the EngineFrontend status reports the
+// migration target as active.
+func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetStatusMoves(c *C) {
 	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
-	// EF is Suspended (Phase 1 complete). Status still shows old target
-	// because Phase 2 hasn't completed yet.
-	ef.Status.CurrentState = longhorn.InstanceStateSuspended
+	// EngineFrontend spec already points at the migration target, but status
+	// still shows the old target because the direct multipath/ANA switchover
+	// has not completed yet.
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
 	ef.Status.TargetIP = currentEngine.Status.IP
 	ef.Status.TargetPort = currentEngine.Status.Port
 
@@ -2082,8 +2082,8 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningDuringSuspen
 }
 
 // TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete verifies
-// that the old engine is stopped only after the EF controller confirms the
-// switchover (ef.Status.TargetIP matches the new target).
+// that the old engine is stopped only after the EngineFrontend status
+// confirms the migration target is active.
 func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete(c *C) {
 	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
