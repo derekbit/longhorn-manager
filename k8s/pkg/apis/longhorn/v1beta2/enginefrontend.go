@@ -28,6 +28,23 @@ type EngineFrontendSpec struct {
 	Active bool `json:"active"`
 }
 
+type EngineFrontendNvmeTCPPath struct {
+	// +optional
+	Address string `json:"address,omitempty"`
+	// +optional
+	TargetIP string `json:"targetIP,omitempty"`
+	// +optional
+	TargetPort int `json:"targetPort,omitempty"`
+	// +optional
+	EngineName string `json:"engineName,omitempty"`
+	// +optional
+	NQN string `json:"nqn,omitempty"`
+	// +optional
+	NGUID string `json:"nguid,omitempty"`
+	// +optional
+	ANAState string `json:"anaState,omitempty"`
+}
+
 // EngineFrontendStatus defines the observed state of the Longhorn engine frontend
 type EngineFrontendStatus struct {
 	InstanceStatus `json:""`
@@ -40,6 +57,15 @@ type EngineFrontendStatus struct {
 	// TargetPort is the currently connected port of the v2 engine target
 	// +optional
 	TargetPort int `json:"targetPort"`
+	// ActivePath is the currently active frontend path address.
+	// +optional
+	ActivePath string `json:"activePath,omitempty"`
+	// PreferredPath is the preferred frontend path address.
+	// +optional
+	PreferredPath string `json:"preferredPath,omitempty"`
+	// Paths describes the currently known frontend multipath state.
+	// +optional
+	Paths []EngineFrontendNvmeTCPPath `json:"paths,omitempty"`
 }
 
 // +genclient

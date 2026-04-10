@@ -62,6 +62,45 @@ func (s *TestSuite) TestIsEngineFrontendTargetInitialized(c *C) {
 	c.Assert(isEngineFrontendTargetInitialized("10.0.0.1", 9502), Equals, true)
 }
 
+func (s *TestSuite) TestSyncEngineFrontendPathStatus(c *C) {
+	ef := &longhorn.EngineFrontend{}
+	instance := &longhorn.InstanceProcess{
+		Status: longhorn.InstanceProcessStatus{
+			ActivePath:      "10.0.0.2:9502",
+			PreferredPath:   "10.0.0.1:9502",
+			TargetPortStart: 9502,
+			Paths: []longhorn.EngineFrontendNvmeTCPPath{
+				{
+					Address:    "10.0.0.1:9502",
+					TargetIP:   "10.0.0.1",
+					TargetPort: 9502,
+					EngineName: "engine-a",
+					ANAState:   "non-optimized",
+				},
+				{
+					Address:    "10.0.0.2:9502",
+					TargetIP:   "10.0.0.2",
+					TargetPort: 9502,
+					EngineName: "engine-b",
+					ANAState:   "optimized",
+				},
+			},
+		},
+	}
+
+	syncEngineFrontendPathStatus(ef, instance)
+
+	c.Assert(ef.Status.ActivePath, Equals, "10.0.0.2:9502")
+	c.Assert(ef.Status.PreferredPath, Equals, "10.0.0.1:9502")
+	c.Assert(ef.Status.TargetIP, Equals, "10.0.0.2")
+	c.Assert(ef.Status.TargetPort, Equals, 9502)
+	c.Assert(len(ef.Status.Paths), Equals, 2)
+	c.Assert(ef.Status.Paths[1].ANAState, Equals, "optimized")
+
+	instance.Status.Paths[1].TargetIP = "mutated"
+	c.Assert(ef.Status.Paths[1].TargetIP, Equals, "10.0.0.2")
+}
+
 func newTestEngineFrontendController(
 	lhClient *lhfake.Clientset,
 	kubeClient *fake.Clientset,

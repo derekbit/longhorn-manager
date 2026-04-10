@@ -2054,6 +2054,9 @@ func (s *DataStore) ResetMonitoringEngineFrontendStatus(ef *longhorn.EngineFront
 	ef.Status.Endpoint = ""
 	ef.Status.TargetIP = ""
 	ef.Status.TargetPort = 0
+	ef.Status.ActivePath = ""
+	ef.Status.PreferredPath = ""
+	ef.Status.Paths = nil
 	ret, err := s.UpdateEngineFrontendStatus(ef)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to reset engine frontend status for %v", ef.Name)

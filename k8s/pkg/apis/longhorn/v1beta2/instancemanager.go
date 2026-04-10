@@ -143,6 +143,12 @@ type InstanceProcessStatus struct {
 	// +optional
 	Frontend string `json:"frontend"`
 	// +optional
+	ActivePath string `json:"activePath,omitempty"`
+	// +optional
+	PreferredPath string `json:"preferredPath,omitempty"`
+	// +optional
+	Paths []EngineFrontendNvmeTCPPath `json:"paths,omitempty"`
+	// +optional
 	ErrorMsg string `json:"errorMsg"`
 	//+optional
 	//+nullable

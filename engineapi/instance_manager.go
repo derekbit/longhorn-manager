@@ -278,6 +278,19 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 		return nil
 	}
 
+	paths := make([]longhorn.EngineFrontendNvmeTCPPath, 0, len(p.InstanceStatus.Paths))
+	for _, path := range p.InstanceStatus.Paths {
+		paths = append(paths, longhorn.EngineFrontendNvmeTCPPath{
+			Address:    path.Address,
+			TargetIP:   path.TargetIP,
+			TargetPort: int(path.TargetPort),
+			EngineName: path.EngineName,
+			NQN:        path.NQN,
+			NGUID:      path.NGUID,
+			ANAState:   path.ANAState,
+		})
+	}
+
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:       p.Name,
@@ -288,6 +301,9 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			State:           longhorn.InstanceState(p.InstanceStatus.State),
 			ErrorMsg:        p.InstanceStatus.ErrorMsg,
 			Conditions:      p.InstanceStatus.Conditions,
+			ActivePath:      p.InstanceStatus.ActivePath,
+			PreferredPath:   p.InstanceStatus.PreferredPath,
+			Paths:           paths,
 			PortStart:       p.InstanceStatus.PortStart,
 			PortEnd:         p.InstanceStatus.PortEnd,
 			TargetPortStart: p.InstanceStatus.TargetPortStart,

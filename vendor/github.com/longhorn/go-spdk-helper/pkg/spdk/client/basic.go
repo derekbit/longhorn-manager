@@ -1154,6 +1154,7 @@ func (c *Client) NvmfCreateSubsystem(nqn string) (created bool, err error) {
 	req := spdktypes.NvmfCreateSubsystemRequest{
 		Nqn:          nqn,
 		AllowAnyHost: true,
+		AnaReporting: true,
 	}
 
 	cmdOutput, err := c.jsonCli.SendCommand("nvmf_create_subsystem", req)
@@ -1341,6 +1342,43 @@ func (c *Client) NvmfSubsystemRemoveListener(nqn, traddr, trsvcid string, trtype
 	}
 
 	return deleted, json.Unmarshal(cmdOutput, &deleted)
+}
+
+// NvmfSubsystemListenerSetANAState sets the ANA state of a subsystem listener.
+//
+//	"nqn": Required. Subsystem NQN.
+//
+//	"traddr": Required. NVMe-oF target address: an ip or BDF.
+//
+//	"trsvcid": Required. NVMe-oF target trsvcid: a port number.
+//
+//	"trtype": Required. NVMe-oF target trtype.
+//
+//	"adrfam": Required. Address family.
+//
+//	"anaState": Required. Listener ANA state.
+//
+//	"anaGrpid": Optional. ANA group ID.
+func (c *Client) NvmfSubsystemListenerSetANAState(nqn, traddr, trsvcid string, trtype spdktypes.NvmeTransportType,
+	adrfam spdktypes.NvmeAddressFamily, anaState spdktypes.NvmfSubsystemListenerAnaState, anaGrpid uint32) (result bool, err error) {
+	req := spdktypes.NvmfSubsystemListenerSetANAStateRequest{
+		Nqn: nqn,
+		ListenAddress: spdktypes.NvmfSubsystemListenAddress{
+			Traddr:  traddr,
+			Trsvcid: trsvcid,
+			Trtype:  trtype,
+			Adrfam:  adrfam,
+		},
+		AnaState: anaState,
+		AnaGrpid: anaGrpid,
+	}
+
+	cmdOutput, err := c.jsonCli.SendCommand("nvmf_subsystem_listener_set_ana_state", req)
+	if err != nil {
+		return false, err
+	}
+
+	return result, json.Unmarshal(cmdOutput, &result)
 }
 
 // NvmfSubsystemGetListeners lists all listeners for the specified NVMe-oF target subsystem.

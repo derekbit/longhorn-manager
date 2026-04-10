@@ -233,3 +233,5 @@ replace github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-ma
 replace github.com/longhorn/types => ../longhorn-types
 
 replace github.com/longhorn/longhorn-spdk-engine => ../longhorn-spdk-engine
+
+replace github.com/longhorn/go-spdk-helper => ../go-spdk-helper

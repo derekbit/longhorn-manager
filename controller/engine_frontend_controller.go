@@ -1285,10 +1285,7 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) error {
 		return err
 	}
 	ef.Status.Endpoint = endpoint
-
-	// Update target connection info when running
-	// ef.Status.TargetIP = instance.Status.TargetIP
-	// ef.Status.TargetPort = instance.Status.TargetPort
+	syncEngineFrontendPathStatus(ef, instance)
 
 	volume, err := m.ds.GetVolumeRO(ef.Spec.VolumeName)
 	if err != nil {
@@ -1360,6 +1357,59 @@ func shouldExpandEngineFrontend(ef *longhorn.EngineFrontend, v *longhorn.Volume,
 		return false
 	}
 	return e.Status.CurrentSize < ef.Spec.VolumeSize
+}
+
+func syncEngineFrontendPathStatus(ef *longhorn.EngineFrontend, instance *longhorn.InstanceProcess) {
+	if ef == nil || instance == nil {
+		return
+	}
+
+	ef.Status.ActivePath = instance.Status.ActivePath
+	ef.Status.PreferredPath = instance.Status.PreferredPath
+	ef.Status.Paths = copyEngineFrontendNvmeTCPPaths(instance.Status.Paths)
+
+	targetIP, targetPort, ok := getEngineFrontendTargetFromPaths(instance.Status.ActivePath, instance.Status.TargetPortStart, ef.Status.Paths)
+	if !ok {
+		ef.Status.TargetIP = ""
+		ef.Status.TargetPort = 0
+		return
+	}
+
+	ef.Status.TargetIP = targetIP
+	ef.Status.TargetPort = targetPort
+}
+
+func copyEngineFrontendNvmeTCPPaths(paths []longhorn.EngineFrontendNvmeTCPPath) []longhorn.EngineFrontendNvmeTCPPath {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	res := make([]longhorn.EngineFrontendNvmeTCPPath, 0, len(paths))
+	for _, path := range paths {
+		res = append(res, path)
+	}
+
+	return res
+}
+
+func getEngineFrontendTargetFromPaths(activePath string, targetPort int32, paths []longhorn.EngineFrontendNvmeTCPPath) (string, int, bool) {
+	for _, path := range paths {
+		if path.Address == activePath && path.TargetIP != "" && path.TargetPort != 0 {
+			return path.TargetIP, path.TargetPort, true
+		}
+	}
+
+	if len(paths) == 1 && paths[0].TargetIP != "" && paths[0].TargetPort != 0 {
+		return paths[0].TargetIP, paths[0].TargetPort, true
+	}
+
+	for _, path := range paths {
+		if path.TargetPort == int(targetPort) && path.TargetIP != "" && path.TargetPort != 0 {
+			return path.TargetIP, path.TargetPort, true
+		}
+	}
+
+	return "", 0, false
 }
 
 func isEngineFrontendTargetInitialized(targetIP string, targetPort int) bool {
