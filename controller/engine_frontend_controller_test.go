@@ -289,6 +289,7 @@ type fakeEngineFrontendSwitchoverClient struct {
 	switchName          string
 	switchTargetAddress string
 	switchEngineName    string
+	switchEngineIP      string
 
 	resumeDataEngine longhorn.DataEngineType
 	resumeName       string
@@ -302,13 +303,14 @@ func (f *fakeEngineFrontendSwitchoverClient) EngineFrontendSuspend(dataEngine lo
 	return f.suspendErr
 }
 
-func (f *fakeEngineFrontendSwitchoverClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName string) error {
+func (f *fakeEngineFrontendSwitchoverClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName, engineIP string) error {
 	f.callOrder = append(f.callOrder, "switch")
 	f.switchCallCount++
 	f.switchDataEngine = dataEngine
 	f.switchName = name
 	f.switchTargetAddress = targetAddress
 	f.switchEngineName = engineName
+	f.switchEngineIP = engineIP
 	return f.switchErr
 }
 
@@ -322,6 +324,7 @@ func (f *fakeEngineFrontendSwitchoverClient) EngineFrontendResume(dataEngine lon
 
 func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 	targetAddress := "tcp://10.0.0.1:10000"
+	engineIP := "10.0.0.9"
 
 	testCases := []struct {
 		name                 string
@@ -356,7 +359,7 @@ func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 			switchErr:  tc.switchErr,
 		}
 
-		failureType, err := switchEngineFrontendTarget(client, ef, targetAddress)
+		failureType, err := switchEngineFrontendTarget(client, ef, targetAddress, engineIP)
 		caseInfo := Commentf("case=%s", tc.name)
 
 		if tc.expectedErrorPattern == "" {
@@ -375,6 +378,7 @@ func (s *TestSuite) TestSwitchEngineFrontendTarget(c *C) {
 			c.Assert(client.switchName, Equals, "ef-1", caseInfo)
 			c.Assert(client.switchTargetAddress, Equals, targetAddress, caseInfo)
 			c.Assert(client.switchEngineName, Equals, "", caseInfo)
+			c.Assert(client.switchEngineIP, Equals, engineIP, caseInfo)
 		}
 	}
 }

@@ -133,7 +133,7 @@ type EngineFrontendClient interface {
 	// EngineFrontendGet retrieves the current state of the engine frontend instance
 	EngineFrontendGet(ef *longhorn.EngineFrontend) (*longhorn.InstanceProcess, error)
 	// EngineFrontendSwitchOverTarget switches the initiator to a new engine target
-	EngineFrontendSwitchOverTarget(ef *longhorn.EngineFrontend, targetAddress string) error
+	EngineFrontendSwitchOverTarget(ef *longhorn.EngineFrontend, targetAddress, engineIP string) error
 	// EngineFrontendSuspend suspends the engine frontend instance
 	EngineFrontendSuspend(ef *longhorn.EngineFrontend) error
 	// EngineFrontendResume resumes the engine frontend instance

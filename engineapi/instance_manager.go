@@ -573,6 +573,7 @@ type EngineFrontendInstanceCreateRequest struct {
 	TargetIP          string
 	TargetPort        int
 	EngineName        string
+	EngineIP          string
 }
 
 // EngineFrontendInstanceCreate creates a new engine frontend (initiator) instance for v2 data engine
@@ -609,6 +610,7 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 			UblkNumberOfQueue: req.UblkNumberOfQueue,
 			TargetAddress:     targetAddress,
 			EngineName:        req.EngineName,
+			EngineIP:          req.EngineIP,
 		},
 	})
 
@@ -619,11 +621,11 @@ func (c *InstanceManagerClient) EngineFrontendInstanceCreate(req *EngineFrontend
 }
 
 // EngineFrontendSwitchOverTarget switches over the target for an engine frontend instance
-func (c *InstanceManagerClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName string) error {
+func (c *InstanceManagerClient) EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName, engineIP string) error {
 	if c.GetAPIVersion() < 4 {
 		return fmt.Errorf("engine frontend switch over target requires instance manager API version >= 4")
 	}
-	return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend), targetAddress, engineName)
+	return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(dataEngine), name, string(longhorn.InstanceTypeEngineFrontend), targetAddress, engineName, engineIP)
 }
 
 // EngineFrontendSuspend suspends the engine frontend instance

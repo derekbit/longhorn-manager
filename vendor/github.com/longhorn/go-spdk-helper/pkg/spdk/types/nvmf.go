@@ -8,6 +8,8 @@ import (
 
 type NvmfANAGroupID string
 
+const DefaultNvmfANAGroupID uint32 = 1
+
 func (groupID *NvmfANAGroupID) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		*groupID = ""
@@ -100,13 +102,13 @@ type NvmfSubsystemListenAddress struct {
 }
 
 type NvmfSubsystemNamespace struct {
-	Nsid     uint32         `json:"nsid,omitempty"`
-	BdevName string         `json:"bdev_name"`
-	Nguid    string         `json:"nguid,omitempty"`
-	Eui64    string         `json:"eui64,omitempty"`
-	UUID     string         `json:"uuid,omitempty"`
+	Nsid     uint32 `json:"nsid,omitempty"`
+	BdevName string `json:"bdev_name"`
+	Nguid    string `json:"nguid,omitempty"`
+	Eui64    string `json:"eui64,omitempty"`
+	UUID     string `json:"uuid,omitempty"`
 	Anagrpid NvmfANAGroupID `json:"anagrpid,omitempty"`
-	PtplFile string         `json:"ptpl_file,omitempty"`
+	PtplFile string `json:"ptpl_file,omitempty"`
 }
 
 type NvmfSubsystemHost struct {

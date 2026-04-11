@@ -54,8 +54,8 @@ func (p *EngineFrontendProxy) EngineFrontendGet(ef *longhorn.EngineFrontend) (*l
 }
 
 // EngineFrontendSwitchOverTarget switches the initiator to a new engine target
-func (p *EngineFrontendProxy) EngineFrontendSwitchOverTarget(ef *longhorn.EngineFrontend, targetAddress string) error {
-	return p.imClient.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName)
+func (p *EngineFrontendProxy) EngineFrontendSwitchOverTarget(ef *longhorn.EngineFrontend, targetAddress, engineIP string) error {
+	return p.imClient.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName, engineIP)
 }
 
 // EngineFrontendSuspend suspends the engine frontend instance

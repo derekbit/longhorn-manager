@@ -1361,6 +1361,10 @@ func (c *Client) NvmfSubsystemRemoveListener(nqn, traddr, trsvcid string, trtype
 //	"anaGrpid": Optional. ANA group ID.
 func (c *Client) NvmfSubsystemListenerSetANAState(nqn, traddr, trsvcid string, trtype spdktypes.NvmeTransportType,
 	adrfam spdktypes.NvmeAddressFamily, anaState spdktypes.NvmfSubsystemListenerAnaState, anaGrpid uint32) (result bool, err error) {
+	if anaGrpid == 0 {
+		anaGrpid = spdktypes.DefaultNvmfANAGroupID
+	}
+
 	req := spdktypes.NvmfSubsystemListenerSetANAStateRequest{
 		Nqn: nqn,
 		ListenAddress: spdktypes.NvmfSubsystemListenAddress{

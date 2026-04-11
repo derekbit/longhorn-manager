@@ -65,7 +65,7 @@ type EngineFrontendController struct {
 
 type engineFrontendSwitchoverClient interface {
 	EngineFrontendSuspend(dataEngine longhorn.DataEngineType, name string) error
-	EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName string) error
+	EngineFrontendSwitchOverTarget(dataEngine longhorn.DataEngineType, name, targetAddress, engineName, engineIP string) error
 	EngineFrontendResume(dataEngine longhorn.DataEngineType, name string) error
 }
 
@@ -387,47 +387,53 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 		return err
 	}
 
+	statusTargetInitialized := isEngineFrontendTargetInitialized(ef.Status.TargetIP, ef.Status.TargetPort)
+	specTargetInitialized := isEngineFrontendTargetInitialized(ef.Spec.TargetIP, ef.Spec.TargetPort)
+	if !statusTargetInitialized && specTargetInitialized {
+		// Initialize target status after successful creation when it is still incomplete.
+		ef.Status.TargetIP = ef.Spec.TargetIP
+		ef.Status.TargetPort = ef.Spec.TargetPort
+		statusTargetInitialized = true
+	}
+
 	// Handle switchover if TargetIP changes.
 	// Switchover for the NVMe/TCP multipath frontend is handled directly by
 	// EngineFrontendSwitchOverTarget without suspending/resuming frontend I/O.
-	if ef.Status.CurrentState == longhorn.InstanceStateRunning {
-		statusTargetInitialized := isEngineFrontendTargetInitialized(ef.Status.TargetIP, ef.Status.TargetPort)
-		specTargetInitialized := isEngineFrontendTargetInitialized(ef.Spec.TargetIP, ef.Spec.TargetPort)
-		if !statusTargetInitialized && specTargetInitialized {
-			// Initialize target status after successful creation when it is still incomplete.
-			ef.Status.TargetIP = ef.Spec.TargetIP
-			ef.Status.TargetPort = ef.Spec.TargetPort
-		} else if specTargetInitialized {
-			targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
+	if ef.Status.CurrentState == longhorn.InstanceStateRunning && statusTargetInitialized && specTargetInitialized {
+		targetChanged := ef.Status.TargetIP != ef.Spec.TargetIP || ef.Status.TargetPort != ef.Spec.TargetPort
 
-			if targetChanged {
-				im, err := efc.ds.GetInstanceManager(ef.Status.InstanceManagerName)
-				if err != nil {
-					return errors.Wrapf(err, "failed to get instance manager %v for target switchover", ef.Status.InstanceManagerName)
-				}
-
-				c, err := engineapi.NewInstanceManagerClient(im, false)
-				if err != nil {
-					return err
-				}
-				defer func() {
-					if closeErr := c.Close(); closeErr != nil {
-						efc.logger.WithError(closeErr).Warn("Failed to close instance manager client after switchover")
-					}
-				}()
-
-				targetAddress := util.BuildTargetAddress(ef.Spec.TargetIP, ef.Spec.TargetPort)
-				log.Infof("Switching over engine frontend %v target from %v:%v to %v:%v without suspend/resume",
-					ef.Name, ef.Status.TargetIP, ef.Status.TargetPort, ef.Spec.TargetIP, ef.Spec.TargetPort)
-
-				if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName); err != nil {
-					efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitch, targetAddress, err)
-					return errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
-				}
-
-				log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
-				efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
+		if targetChanged {
+			im, err := efc.ds.GetInstanceManager(ef.Status.InstanceManagerName)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get instance manager %v for target switchover", ef.Status.InstanceManagerName)
 			}
+
+			c, err := engineapi.NewInstanceManagerClient(im, false)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if closeErr := c.Close(); closeErr != nil {
+					efc.logger.WithError(closeErr).Warn("Failed to close instance manager client after switchover")
+				}
+			}()
+
+			targetAddress := util.BuildTargetAddress(ef.Spec.TargetIP, ef.Spec.TargetPort)
+			log.Infof("Switching over engine frontend %v target from %v:%v to %v:%v without suspend/resume",
+				ef.Name, ef.Status.TargetIP, ef.Status.TargetPort, ef.Spec.TargetIP, ef.Spec.TargetPort)
+
+			engine, err := efc.ds.GetEngineRO(ef.Spec.EngineName)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get engine %v for target switchover", ef.Spec.EngineName)
+			}
+
+			if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName, engine.Status.IP); err != nil {
+				efc.recordEngineFrontendSwitchoverFailureEvent(ef, switchoverFailureSwitch, targetAddress, err)
+				return errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
+			}
+
+			log.Infof("Successfully switched over target for engine frontend %v to %v", ef.Name, targetAddress)
+			efc.eventRecorder.Eventf(ef, corev1.EventTypeNormal, constant.EventReasonSwitchover, "Successfully switched over target to %v", targetAddress)
 		}
 	}
 
@@ -449,8 +455,8 @@ func (efc *EngineFrontendController) syncEngineFrontend(key string) (err error) 
 
 // switchEngineFrontendTarget performs a direct multipath target switchover.
 // Switchover no longer suspends/resumes frontend I/O.
-func switchEngineFrontendTarget(c engineFrontendSwitchoverClient, ef *longhorn.EngineFrontend, targetAddress string) (switchoverFailureType, error) {
-	if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName); err != nil {
+func switchEngineFrontendTarget(c engineFrontendSwitchoverClient, ef *longhorn.EngineFrontend, targetAddress, engineIP string) (switchoverFailureType, error) {
+	if err := c.EngineFrontendSwitchOverTarget(ef.Spec.DataEngine, ef.Name, targetAddress, ef.Spec.EngineName, engineIP); err != nil {
 		return switchoverFailureSwitch, errors.Wrapf(err, "failed to switch over target for engine frontend %v", ef.Name)
 	}
 
@@ -942,6 +948,11 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 
 	// Create initiator instance via Instance Manager
 	// Note: This requires Instance Manager to have EngineFrontendInstanceCreate method
+	engine, err := efc.ds.GetEngineRO(ef.Spec.EngineName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get engine %v for engine frontend create", ef.Spec.EngineName)
+	}
+
 	return c.EngineFrontendInstanceCreate(&engineapi.EngineFrontendInstanceCreateRequest{
 		EngineFrontend:    ef,
 		VolumeFrontend:    frontend,
@@ -950,6 +961,7 @@ func (efc *EngineFrontendController) CreateInstance(obj interface{}) (*longhorn.
 		TargetIP:          ef.Spec.TargetIP,
 		TargetPort:        ef.Spec.TargetPort,
 		EngineName:        ef.Spec.EngineName,
+		EngineIP:          engine.Status.IP,
 	})
 }
 

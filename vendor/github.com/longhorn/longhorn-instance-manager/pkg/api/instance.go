@@ -90,6 +90,7 @@ type EngineFrontendNvmeTCPPath struct {
 	NQN        string `json:"nqn"`
 	NGUID      string `json:"nguid"`
 	ANAState   string `json:"anaState"`
+	EngineIP   string `json:"engine_ip"`
 }
 
 func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
@@ -106,6 +107,7 @@ func RPCToInstanceStatus(obj *rpc.InstanceStatus) InstanceStatus {
 			NQN:        path.Nqn,
 			NGUID:      path.Nguid,
 			ANAState:   path.AnaState,
+			EngineIP:   path.EngineIp,
 		})
 	}
 

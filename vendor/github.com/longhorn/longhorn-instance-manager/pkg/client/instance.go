@@ -104,6 +104,7 @@ type EngineFrontendCreateRequest struct {
 	UblkNumberOfQueue int
 	TargetAddress     string
 	EngineName        string
+	EngineIP          string
 }
 
 type ReplicaCreateRequest struct {
@@ -211,6 +212,12 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 			EngineName: func() string {
 				if req.InstanceType == types.InstanceTypeEngineFrontend {
 					return req.EngineFrontend.EngineName
+				}
+				return ""
+			}(),
+			EngineIp: func() string {
+				if req.InstanceType == types.InstanceTypeEngineFrontend {
+					return req.EngineFrontend.EngineIP
 				}
 				return ""
 			}(),
@@ -426,7 +433,7 @@ func (c *InstanceServiceClient) InstanceResume(dataEngine, name, instanceType st
 }
 
 // InstanceSwitchOverTarget switches over the target for an instance.
-func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, instanceType, targetAddress, engineName string) error {
+func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, instanceType, targetAddress, engineName, engineIP string) error {
 	if name == "" {
 		return fmt.Errorf("failed to switch over target for instance: missing required parameter name")
 	}
@@ -450,6 +457,7 @@ func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, insta
 		DataEngine:    rpc.DataEngine(driver),
 		TargetAddress: targetAddress,
 		EngineName:    engineName,
+		EngineIp:      engineIP,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to switch over target for instance %v", name)
