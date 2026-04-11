@@ -1201,6 +1201,9 @@ spec:
             description: EngineFrontendStatus defines the observed state of the Longhorn
               engine frontend
             properties:
+              activePath:
+                description: ActivePath is the currently active frontend path address.
+                type: string
               conditions:
                 items:
                   properties:
@@ -1245,8 +1248,32 @@ spec:
                 type: boolean
               ownerID:
                 type: string
+              paths:
+                description: Paths describes the currently known frontend multipath
+                  state.
+                items:
+                  properties:
+                    address:
+                      type: string
+                    anaState:
+                      type: string
+                    engineName:
+                      type: string
+                    nguid:
+                      type: string
+                    nqn:
+                      type: string
+                    targetIP:
+                      type: string
+                    targetPort:
+                      type: integer
+                  type: object
+                type: array
               port:
                 type: integer
+              preferredPath:
+                description: PreferredPath is the preferred frontend path address.
+                type: string
               salvageExecuted:
                 type: boolean
               started:
@@ -1979,6 +2006,8 @@ spec:
                       type: object
                     status:
                       properties:
+                        activePath:
+                          type: string
                         conditions:
                           additionalProperties:
                             type: boolean
@@ -1992,12 +2021,33 @@ spec:
                           type: string
                         listen:
                           type: string
+                        paths:
+                          items:
+                            properties:
+                              address:
+                                type: string
+                              anaState:
+                                type: string
+                              engineName:
+                                type: string
+                              nguid:
+                                type: string
+                              nqn:
+                                type: string
+                              targetIP:
+                                type: string
+                              targetPort:
+                                type: integer
+                            type: object
+                          type: array
                         portEnd:
                           format: int32
                           type: integer
                         portStart:
                           format: int32
                           type: integer
+                        preferredPath:
+                          type: string
                         resourceVersion:
                           format: int64
                           type: integer

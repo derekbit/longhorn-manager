@@ -5425,7 +5425,19 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 
 	// init the engine switchover
 	if v.Status.CurrentEngineNodeID == "" {
-		v.Status.CurrentEngineNodeID = targetNodeID
+		// Initialize from the node where the active engine is actually
+		// running rather than from the target. If engineNodeID was already
+		// set before the first reconcile, using targetNodeID would make
+		// the controller think no switchover is needed.
+		for _, e := range es {
+			if e.Spec.Active && e.Spec.NodeID != "" {
+				v.Status.CurrentEngineNodeID = e.Spec.NodeID
+				break
+			}
+		}
+		if v.Status.CurrentEngineNodeID == "" {
+			v.Status.CurrentEngineNodeID = targetNodeID
+		}
 	}
 
 	if targetNodeID == v.Status.CurrentEngineNodeID {
@@ -5435,7 +5447,7 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 			return nil
 		}
 
-		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
+		currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 		if err != nil {
 			log.WithError(err).Warn("Failed to finalize the engine switchover")
 			return nil
@@ -5593,6 +5605,17 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 	// status moves to the new target.
 	if ef.Status.TargetIP != newTargetIP || ef.Status.TargetPort != newTargetPort {
 		log.Info("Waiting for EngineFrontend controller to complete the switchover to migration engine")
+		return nil
+	}
+
+	// The EF target address matches, but if the EF is not running (e.g. in
+	// error state because the data-plane switchover failed), we must NOT
+	// finalize. Killing the old engine while the new path is broken would
+	// cause a total data-path loss. Revert so the old engine stays alive.
+	if ef.Status.CurrentState != longhorn.InstanceStateRunning {
+		log.Warnf("EngineFrontend target matches migration engine but state is %v, reverting switchover to preserve data path",
+			ef.Status.CurrentState)
+		revertRequired = true
 		return nil
 	}
 

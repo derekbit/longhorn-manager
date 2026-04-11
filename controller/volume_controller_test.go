@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
@@ -1976,6 +1977,8 @@ func (s *TestSuite) TestCleanupReplicasAllowsExtraHealthyCleanupAfterRecentHealt
 // points to the migration target.
 func setupSwitchoverTestInfra(c *C) (
 	vc *VolumeController,
+	lhClient *lhfake.Clientset,
+	engineIndexer cache.Indexer,
 	v *longhorn.Volume,
 	currentEngine, migrationEngine *longhorn.Engine,
 	replica *longhorn.Replica,
@@ -1984,9 +1987,10 @@ func setupSwitchoverTestInfra(c *C) (
 	datastore.SkipListerCheck = true
 
 	kubeClient := fake.NewSimpleClientset()
-	lhClient := lhfake.NewSimpleClientset() // nolint: staticcheck
+	lhClient = lhfake.NewSimpleClientset() // nolint: staticcheck
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+	engineIndexer = informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 
 	vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
 	c.Assert(err, IsNil)
@@ -2058,7 +2062,7 @@ func setupSwitchoverTestInfra(c *C) (
 // the old engine is kept running until the EngineFrontend status reports the
 // migration target as active.
 func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetStatusMoves(c *C) {
-	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+	vc, _, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// EngineFrontend spec already points at the migration target, but status
 	// still shows the old target because the direct multipath/ANA switchover
@@ -2085,7 +2089,7 @@ func (s *TestSuite) TestProcessEngineSwitchoverKeepsOldEngineRunningUntilTargetS
 // that the old engine is stopped only after the EngineFrontend status
 // confirms the migration target is active.
 func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComplete(c *C) {
-	vc, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+	vc, _, _, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
 
 	// EF switchover is complete: both Spec and Status show the new target.
 	ef.Status.CurrentState = longhorn.InstanceStateRunning
@@ -2113,6 +2117,72 @@ func (s *TestSuite) TestProcessEngineSwitchoverStopsOldEngineAfterSwitchoverComp
 	c.Assert(v.Status.CurrentEngineNodeID, Equals, TestNode2)
 
 	// Replica should be reassigned to the migration engine.
+	c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
+	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
+}
+
+// TestProcessEngineSwitchoverCleanupUsesActiveEngine verifies that once
+// switchover is already completed, the cleanup branch uses the Active flag to
+// choose the current engine even if multiple engines temporarily share the same
+// node. This covers reverse-switchover recovery where a remount/reattach can
+// leave both engines on the target node.
+func (s *TestSuite) TestProcessEngineSwitchoverCleanupUsesActiveEngine(c *C) {
+	vc, lhClient, engineIndexer, v, currentEngine, migrationEngine, replica, ef := setupSwitchoverTestInfra(c)
+
+	// Switchover is already complete from the volume's perspective.
+	v.Spec.EngineNodeID = TestNode2
+	v.Status.CurrentEngineNodeID = TestNode2
+	v.Spec.NodeID = TestNode1
+	v.Status.CurrentNodeID = TestNode1
+
+	// Both engines are temporarily on the target engine node after a reverse
+	// switchover/remount cycle, but only the new current engine is Active.
+	currentEngine.Spec.Active = false
+	currentEngine.Spec.NodeID = TestNode2
+	currentEngine.Spec.DesireState = longhorn.InstanceStateRunning
+
+	migrationEngine.Spec.Active = true
+	migrationEngine.Spec.NodeID = TestNode2
+	migrationEngine.Spec.DesireState = longhorn.InstanceStateRunning
+
+	// The cleanup branch does not consult EF state, but keep the object valid.
+	ef.Spec.TargetIP = migrationEngine.Status.IP
+	ef.Spec.TargetPort = migrationEngine.Status.Port
+	ef.Spec.EngineName = migrationEngine.Name
+	ef.Status.CurrentState = longhorn.InstanceStateRunning
+	ef.Status.TargetIP = migrationEngine.Status.IP
+	ef.Status.TargetPort = migrationEngine.Status.Port
+
+	// Persist the engine objects in the fake datastore so cleanup can update and
+	// delete the inactive extra engine.
+	createdCurrentEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), currentEngine, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineIndexer.Add(createdCurrentEngine)
+	c.Assert(err, IsNil)
+	currentEngine = createdCurrentEngine
+
+	createdMigrationEngine, err := lhClient.LonghornV1beta2().Engines(TestNamespace).Create(context.TODO(), migrationEngine, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = engineIndexer.Add(createdMigrationEngine)
+	c.Assert(err, IsNil)
+	migrationEngine = createdMigrationEngine
+
+	es := map[string]*longhorn.Engine{
+		currentEngine.Name:   currentEngine,
+		migrationEngine.Name: migrationEngine,
+	}
+	rs := map[string]*longhorn.Replica{replica.Name: replica}
+	efs := map[string]*longhorn.EngineFrontend{ef.Name: ef}
+
+	err = vc.processEngineSwitchover(v, es, rs, efs)
+	c.Assert(err, IsNil)
+
+	// The inactive extra engine should be cleaned up instead of being treated as
+	// a second current engine just because it shares the same NodeID.
+	c.Assert(len(es), Equals, 1)
+	c.Assert(es[migrationEngine.Name], NotNil)
+	c.Assert(es[currentEngine.Name], IsNil)
+	c.Assert(migrationEngine.Spec.Active, Equals, true)
 	c.Assert(replica.Spec.EngineName, Equals, migrationEngine.Name)
 	c.Assert(replica.Spec.MigrationEngineName, Equals, "")
 }
