@@ -5421,24 +5421,25 @@ func (c *VolumeController) processEngineSwitchover(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"engineNodeID": targetNodeID, "currentEngineNodeID": v.Status.CurrentEngineNodeID})
-
-	// init the engine switchover
-	if v.Status.CurrentEngineNodeID == "" {
-		// Initialize from the node where the active engine is actually
-		// running rather than from the target. If engineNodeID was already
-		// set before the first reconcile, using targetNodeID would make
-		// the controller think no switchover is needed.
-		for _, e := range es {
-			if e.Spec.Active && e.Spec.NodeID != "" {
-				v.Status.CurrentEngineNodeID = e.Spec.NodeID
-				break
-			}
-		}
-		if v.Status.CurrentEngineNodeID == "" {
-			v.Status.CurrentEngineNodeID = targetNodeID
+	// Always re-sync CurrentEngineNodeID from the active engine's actual
+	// node. The deferred update loop in syncVolume persists engine changes
+	// before volume status changes. If a previous reconcile completed a
+	// switchover (setting migrationEngine.Active=true and
+	// CurrentEngineNodeID in memory), the engine update may trigger a
+	// re-queue before the volume status is persisted. Without this
+	// re-sync the new reconcile would see a stale CurrentEngineNodeID and
+	// incorrectly create a duplicate migration engine.
+	for _, e := range es {
+		if e.Spec.Active && e.Spec.NodeID != "" {
+			v.Status.CurrentEngineNodeID = e.Spec.NodeID
+			break
 		}
 	}
+	if v.Status.CurrentEngineNodeID == "" {
+		v.Status.CurrentEngineNodeID = targetNodeID
+	}
+
+	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{"engineNodeID": targetNodeID, "currentEngineNodeID": v.Status.CurrentEngineNodeID})
 
 	if targetNodeID == v.Status.CurrentEngineNodeID {
 		// No switchover in progress (or switchover already completed).
