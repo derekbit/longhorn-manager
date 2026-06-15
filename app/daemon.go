@@ -400,7 +400,7 @@ func startManager(c *cli.Context) error {
 
 		// Watch the aggregation Secret in the pod namespace. When Rancher
 		// populates it, longhorn-manager connects via WebSocket tunnel.
-		if err := steve.StartAggregation(ctx, steveRESTConfig, podNamespace, steve.AggregationSecretName(), steveServer.AggregationHandler()); err != nil {
+			if err := steve.StartAggregation(ctx, steveRESTConfig, podNamespace, steve.AggregationSecretName(), steveServer.Handler()); err != nil {
 			logger.WithError(err).Warn("Failed to start Steve aggregation watcher")
 		}
 	} else {
