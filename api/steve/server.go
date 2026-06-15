@@ -62,13 +62,6 @@ func New(ctx context.Context, restConfig *rest.Config, opts *Options) (*Server, 
 	return &Server{Server: steve}, nil
 }
 
-// Handler returns the HTTP handler for the Steve server.
-// This handler serves Steve API at its root (e.g., /v1/...).
-// Use http.StripPrefix to mount it at a subpath like /apis/.
-func (s *Server) Handler() http.Handler {
-	return s.Server
-}
-
 // AggregationHandler returns the Steve handler used to serve requests forwarded
 // through Rancher's aggregation tunnel. It wraps the full Steve handler with
 // listRevisionRewriter so that collection responses carry a resourceVersion the

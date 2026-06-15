@@ -37,3 +37,6 @@ validate.done
 # editors
 .idea
 
+
+# node
+node_modules/

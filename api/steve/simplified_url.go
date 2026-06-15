@@ -149,14 +149,14 @@ func SimplifiedPathMiddleware(namespace string, next http.Handler) http.Handler 
 		// Skip response wrapping for WebSocket upgrade requests
 		// WebSocket connections need direct access to the underlying connection
 		if isWebSocketUpgrade(r) {
-			logrus.Infof("[SimplifiedPathMiddleware] WebSocket upgrade detected (Upgrade=%q, Connection=%q), skipping URL rewriting",
+			logrus.Debugf("[SimplifiedPathMiddleware] WebSocket upgrade detected (Upgrade=%q, Connection=%q), skipping URL rewriting",
 				r.Header.Get("Upgrade"), r.Header.Get("Connection"))
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		// Debug: log final path being sent to Steve
-		logrus.Infof("[SimplifiedPathMiddleware] Sending to Steve: Method=%s Path=%s", r.Method, r.URL.Path)
+		logrus.Debugf("[SimplifiedPathMiddleware] Sending to Steve: Method=%s Path=%s", r.Method, r.URL.Path)
 
 		// Use a response wrapper to rewrite URLs in ALL responses
 		// The wrapper buffers the response and rewrites URLs when flushed
@@ -251,9 +251,9 @@ func (w *urlRewritingResponseWriter) flushBuffer() {
 
 	// Debug log to verify rewriting is happening
 	if content != originalContent {
-		logrus.Infof("[urlRewritingResponseWriter] URLs rewritten successfully")
+		logrus.Debugf("[urlRewritingResponseWriter] URLs rewritten successfully")
 	} else {
-		logrus.Warnf("[urlRewritingResponseWriter] No URLs were rewritten")
+		logrus.Debugf("[urlRewritingResponseWriter] No URLs were rewritten")
 	}
 
 	// Now write the modified content

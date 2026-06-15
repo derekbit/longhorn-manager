@@ -17,18 +17,10 @@ func registerSchemaTemplates(steve *steveserver.Server) {
 	registerVolumeSchema(steve)
 	registerNodeSchema(steve)
 	registerBackingImageSchema(steve)
-	registerEngineImageSchema(steve)
-	registerBackupSchema(steve)
 	registerBackupVolumeSchema(steve)
 	registerBackupTargetSchema(steve)
 	registerBackupBackingImageSchema(steve)
-	registerRecurringJobSchema(steve)
-	registerSnapshotSchema(steve)
-	registerOrphanSchema(steve)
-	registerSystemBackupSchema(steve)
-	registerSystemRestoreSchema(steve)
 	registerSupportBundleSchema(steve)
-	registerSettingSchema(steve)
 	logrus.Info("Finished registering Longhorn Steve schema templates")
 }
 
@@ -266,7 +258,6 @@ func registerNodeSchema(steve *steveserver.Server) {
 		Kind:      "Node",
 		Formatter: nodeFormatter,
 		Customize: func(apiSchema *types.APISchema) {
-			logrus.Infof("Customizing Node schema: %s", apiSchema.ID)
 			apiSchema.ActionHandlers = bridgeMap("nodes", "name", "diskUpdate")
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"diskUpdate": {
@@ -297,24 +288,6 @@ func registerBackingImageSchema(steve *steveserver.Server) {
 					Input: "updateMinNumberOfCopiesInput",
 				},
 			}
-		},
-	})
-}
-
-func registerEngineImageSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.engineimage",
-		Customize: func(apiSchema *types.APISchema) {
-			// Engine images use standard CRUD, no custom actions
-		},
-	})
-}
-
-func registerBackupSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.backup",
-		Customize: func(apiSchema *types.APISchema) {
-			// Backup uses standard CRUD operations
 		},
 	})
 }
@@ -373,51 +346,6 @@ func registerBackupBackingImageSchema(steve *steveserver.Server) {
 	})
 }
 
-func registerRecurringJobSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.recurringjob",
-		Customize: func(apiSchema *types.APISchema) {
-			// Recurring jobs use standard CRUD operations
-		},
-	})
-}
-
-func registerSnapshotSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.snapshot",
-		Customize: func(apiSchema *types.APISchema) {
-			// Snapshots are managed via volume actions
-		},
-	})
-}
-
-func registerOrphanSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.orphan",
-		Customize: func(apiSchema *types.APISchema) {
-			// Orphans use standard CRUD (DELETE) operations
-		},
-	})
-}
-
-func registerSystemBackupSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.systembackup",
-		Customize: func(apiSchema *types.APISchema) {
-			// System backups use standard CRUD operations
-		},
-	})
-}
-
-func registerSystemRestoreSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.systemrestore",
-		Customize: func(apiSchema *types.APISchema) {
-			// System restores use standard CRUD operations
-		},
-	})
-}
-
 func registerSupportBundleSchema(steve *steveserver.Server) {
 	steve.SchemaFactory.AddTemplate(schema.Template{
 		ID:        "longhorn.io.supportbundle",
@@ -426,15 +354,6 @@ func registerSupportBundleSchema(steve *steveserver.Server) {
 			apiSchema.ResourceActions = map[string]schemas.Action{
 				"download": {},
 			}
-		},
-	})
-}
-
-func registerSettingSchema(steve *steveserver.Server) {
-	steve.SchemaFactory.AddTemplate(schema.Template{
-		ID: "longhorn.io.setting",
-		Customize: func(apiSchema *types.APISchema) {
-			// Settings use standard CRUD operations
 		},
 	})
 }
