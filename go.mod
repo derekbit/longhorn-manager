@@ -19,7 +19,6 @@ go 1.26.0
 
 replace (
 	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
-	github.com/rancher/steve => /root/go/src/github.com/longhorn/steve
 	k8s.io/api => k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.36.1

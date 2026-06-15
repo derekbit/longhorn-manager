@@ -579,7 +579,7 @@ github.com/rancher/norman/types/convert
 ## explicit; go 1.24.0
 github.com/rancher/remotedialer
 github.com/rancher/remotedialer/metrics
-# github.com/rancher/steve v0.9.16 => /root/go/src/github.com/longhorn/steve
+# github.com/rancher/steve v0.9.16
 ## explicit; go 1.26.0
 github.com/rancher/steve/pkg/accesscontrol
 github.com/rancher/steve/pkg/aggregation
@@ -1997,7 +1997,6 @@ sigs.k8s.io/structured-merge-diff/v6/value
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/kyaml
 # github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20260114090315-332709c32c7d
-# github.com/rancher/steve => /root/go/src/github.com/longhorn/steve
 # k8s.io/api => k8s.io/api v0.36.1
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.1
 # k8s.io/apimachinery => k8s.io/apimachinery v0.36.1

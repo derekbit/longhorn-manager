@@ -34,17 +34,8 @@ func ListenAndServe(ctx context.Context, url string, caCert []byte, token string
 		if _, err := http.Get(url); err != nil {
 			pool := x509.NewCertPool()
 			pool.AppendCertsFromPEM(caCert)
-			// The aggregation Secret URL written by Rancher targets the
-			// cattle-cluster-agent ClusterIP (https://<ClusterIP>/v3/connect).
-			// In a downstream cluster that IP is usually absent from the
-			// serving certificate's SANs, so the default TLS verification fails
-			// with "x509: ... doesn't contain any IP SANs". We still verify the
-			// certificate chain against the provided CA (signature + validity),
-			// but skip the hostname/IP SAN check because the connection target
-			// is an in-cluster ClusterIP we trust via the CA.
 			dialer.TLSClientConfig = &tls.Config{
-				InsecureSkipVerify:    true,
-				VerifyPeerCertificate: verifyChainSkipHostname(pool),
+				RootCAs: pool,
 			}
 		}
 	}
@@ -108,39 +99,4 @@ func serve(ctx context.Context, dialer websocket.Dialer, url string, headers htt
 
 func allowAll(_, _ string) bool {
 	return true
-}
-
-// verifyChainSkipHostname returns a tls.Config.VerifyPeerCertificate callback
-// that verifies the presented certificate chain against roots (signature,
-// validity and chain of trust) while deliberately skipping the DNS/IP SAN
-// check. It is used for the Steve aggregation tunnel, whose target is an
-// in-cluster ClusterIP that is trusted via the CA but typically not present in
-// the certificate's SAN list.
-func verifyChainSkipHostname(roots *x509.CertPool) func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-		if len(rawCerts) == 0 {
-			return fmt.Errorf("no server certificate presented")
-		}
-
-		certs := make([]*x509.Certificate, 0, len(rawCerts))
-		for _, raw := range rawCerts {
-			cert, err := x509.ParseCertificate(raw)
-			if err != nil {
-				return fmt.Errorf("failed to parse server certificate: %w", err)
-			}
-			certs = append(certs, cert)
-		}
-
-		intermediates := x509.NewCertPool()
-		for _, cert := range certs[1:] {
-			intermediates.AddCert(cert)
-		}
-
-		// DNSName is intentionally left empty to skip hostname/IP SAN matching.
-		_, err := certs[0].Verify(x509.VerifyOptions{
-			Roots:         roots,
-			Intermediates: intermediates,
-		})
-		return err
-	}
 }
