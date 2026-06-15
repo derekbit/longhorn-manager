@@ -69,9 +69,26 @@ func (s *Server) Handler() http.Handler {
 	return s.Server
 }
 
+// AggregationHandler returns the Steve handler used to serve requests forwarded
+// through Rancher's aggregation tunnel. It wraps the full Steve handler with
+// listRevisionRewriter so that collection responses carry a resourceVersion the
+// downstream cluster-agent watch cache can resume from, preventing the
+// "resourceversion too old" error that otherwise leaves the UI list empty.
+func (s *Server) AggregationHandler() http.Handler {
+	return listRevisionRewriter(s.Server)
+}
+
 // SimplifiedHandler returns the HTTP handler with simplified URL support.
 // It rewrites paths like /v1/volumes/{name} to /v1/longhorn.io.volumes/longhorn-system/{name}
 // and rewrites response URLs back to the simplified format.
 func (s *Server) SimplifiedHandler(namespace string) http.Handler {
 	return SimplifiedPathMiddleware(namespace, s.Server)
+}
+
+// SetLegacyHandler registers Longhorn's legacy HTTP router so that Steve
+// action handlers (POST ?action=*) can forward into the existing
+// /v1/{resource}/{name}?action=... endpoints that hold the real action logic.
+// Must be called after the legacy router has been constructed.
+func (s *Server) SetLegacyHandler(h http.Handler) {
+	SetLegacyHandler(h)
 }
