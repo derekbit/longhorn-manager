@@ -1089,6 +1089,61 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	return timeUntilNext
 }
 
+// isReplicaReachableForRebuild reports whether a rebuild of this failed replica can still reach its node.
+//
+// Every other check in isFailedReplicaReusable (node listed as schedulable, disk ready and schedulable,
+// instance manager running) reads control-plane status, which lags reality: a powered-off node keeps
+// reporting Ready until the node controller marks it down. Reusing a replica on such a node starts a
+// rebuild that immediately fails with a connectivity error, and because that failure is excluded from
+// RebuildRetryCount by datastore.IsReplicaRebuildingFailed, nothing bounds the retries.
+//
+// The replica's own RebuildFailed condition distinguishes the cases, because
+// EngineController.getReplicaRebuildFailedReason already rewrites the reason to the node's Ready reason
+// (ManagerPodDown, KubernetesNodeGone, KubernetesNodeNotReady) once the node is known to be down:
+//
+//	reason                     meaning                                     bounded by
+//	<node reason>              connectivity lost, node confirmed down      ListSchedulableNodes excludes it
+//	General                    the rebuild itself failed                   RebuildRetryCount
+//	Disconnection              connectivity lost while node stayed Ready   this function
+//	"" / status != True        no recorded rebuild failure                 n/a
+//
+// So a surviving Disconnection reason is the evidence that the status trusted above is stale.
+//
+// Whether that evidence is still current is decided by comparing Spec.FailedAt with the LastTransitionTime
+// of the node's Ready condition, rather than by counting attempts:
+//   - failed before the node last became Ready: the outage that broke the rebuild is over, keep the replica
+//     reusable so it can be rebuilt from its existing data.
+//   - failed after the node last became Ready: the node has been Ready the whole time yet the data path
+//     still broke, so stop reusing it and let the caller place a replacement, possibly on another node.
+//
+// Timestamps that cannot be parsed (missing conditions, empty LastTransitionTime) fail open and keep the
+// replica reusable, so an unreadable condition never costs a delta rebuild.
+//
+// A node that flaps keeps its Ready transition ahead of Spec.FailedAt and stays reusable here; the reuse
+// backoff in the volume controller throttles it and cleanupReplicaInUnstableEnv handles it.
+// https://github.com/longhorn/longhorn/issues/13705
+func (rcs *ReplicaScheduler) isReplicaReachableForRebuild(r *longhorn.Replica, node *longhorn.Node) bool {
+	rebuildFailedCondition := types.GetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeRebuildFailed)
+	if rebuildFailedCondition.Status != longhorn.ConditionStatusTrue ||
+		rebuildFailedCondition.Reason != longhorn.ReplicaConditionReasonRebuildFailedDisconnection {
+		return true
+	}
+
+	nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	failedAfterNodeReady, err := util.TimestampAfterTimestamp(r.Spec.FailedAt, nodeReadyCondition.LastTransitionTime)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to check if replica %v failed after node %v became ready, will keep it reusable",
+			r.Name, node.Name)
+		return true
+	}
+	if failedAfterNodeReady {
+		logrus.Warnf("Skipping the reuse of replica %v since its rebuild lost connectivity at %v while node %v stayed ready since %v",
+			r.Name, r.Spec.FailedAt, node.Name, nodeReadyCondition.LastTransitionTime)
+		return false
+	}
+	return true
+}
+
 func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *longhorn.Volume, nodeInfo map[string]*longhorn.Node, hardNodeAffinity string) (bool, error) {
 	// All failedReusableReplicas are also potentiallyFailedReusableReplicas.
 	if !IsPotentiallyReusableReplica(r) {
@@ -1112,6 +1167,11 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	if !exists {
 		return false, nil
 	}
+
+	if !rcs.isReplicaReachableForRebuild(r, node) {
+		return false, nil
+	}
+
 	diskFound := false
 	for diskName, diskStatus := range node.Status.DiskStatus {
 		diskSpec, ok := node.Spec.Disks[diskName]

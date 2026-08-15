@@ -3741,6 +3741,10 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
+			// Wait out the backoff instead of consulting RequireNewReplica, which would replace this still
+			// reusable replica with a new one scheduled back to its same not-yet-down node and disk.
+			// https://github.com/longhorn/longhorn/issues/13705
+			continue
 		}
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := newReplicaCR(v, e, hardNodeAffinity)
