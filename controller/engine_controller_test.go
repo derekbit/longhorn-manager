@@ -295,6 +295,7 @@ func TestVerifyCompletedRebuild(t *testing.T) {
 func TestHandleRestoreError(t *testing.T) {
 	const replicaAddress = "tcp://10.0.0.1:10000"
 	const lockConflictMessage = "failed to restore backup data cifs://backup-target?backup=backup-1&volume=volume-1: rpc error: code = Unknown desc = error starting backup restore: error initiating incremental backup restore: failed to acquire lock backupstore/volumes/aa/bb/volume-1/locks/lock-1234.lck when performing backup create/restore, please try again later"
+	const v2LockConflictMessage = "failed to start full backup restore: failed to acquire lock backupstore/volumes/aa/bb/volume-1/locks/lock-1234.lck when performing backup create/restore, please try again later"
 	const terminalMessage = "failed to restore backup data: checksum mismatch"
 
 	tests := map[string]struct {
@@ -309,6 +310,11 @@ func TestHandleRestoreError(t *testing.T) {
 			expectError:     "",
 			expectInBackoff: true,
 		},
+		"v2 backupstore lock conflict is retried": {
+			message:         v2LockConflictMessage,
+			expectError:     "",
+			expectInBackoff: true,
+		},
 		"terminal restore error is recorded": {
 			message:         terminalMessage,
 			expectError:     replicaAddress + ": " + terminalMessage,
@@ -317,23 +323,29 @@ func TestHandleRestoreError(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			assert := require.New(t)
+		// v2 engines report CLI API version 0 and go through the compatible-engine handler.
+		for handlerName, handler := range map[string]func(logrus.FieldLogger, *longhorn.Engine, map[string]*longhorn.RestoreStatus, *flowcontrol.Backoff, error) error{
+			"handleRestoreError":                    handleRestoreError,
+			"handleRestoreErrorForCompatibleEngine": handleRestoreErrorForCompatibleEngine,
+		} {
+			t.Run(handlerName+"/"+name, func(t *testing.T) {
+				assert := require.New(t)
 
-			logger := logrus.New()
-			logger.Out = io.Discard
-			engine := &longhorn.Engine{}
-			engine.Name = "engine"
-			backoff := flowcontrol.NewBackOff(time.Second, time.Minute)
-			rsMap := map[string]*longhorn.RestoreStatus{replicaAddress: {}}
+				logger := logrus.New()
+				logger.Out = io.Discard
+				engine := &longhorn.Engine{}
+				engine.Name = "engine"
+				backoff := flowcontrol.NewBackOff(time.Second, time.Minute)
+				rsMap := map[string]*longhorn.RestoreStatus{replicaAddress: {}}
 
-			err := imclient.TaskError{ReplicaErrors: []imclient.ReplicaError{
-				{Address: replicaAddress, Message: tc.message},
-			}}
+				err := imclient.TaskError{ReplicaErrors: []imclient.ReplicaError{
+					{Address: replicaAddress, Message: tc.message},
+				}}
 
-			assert.NoError(handleRestoreError(logger, engine, rsMap, backoff, err))
-			assert.Equal(tc.expectError, rsMap[replicaAddress].Error, "restore status error")
-			assert.Equal(tc.expectInBackoff, backoff.IsInBackOffSinceUpdate(engine.Name, time.Now()), "restore backoff")
-		})
+				assert.NoError(handler(logger, engine, rsMap, backoff, err))
+				assert.Equal(tc.expectError, rsMap[replicaAddress].Error, "restore status error")
+				assert.Equal(tc.expectInBackoff, backoff.IsInBackOffSinceUpdate(engine.Name, time.Now()), "restore backoff")
+			})
+		}
 	}
 }
