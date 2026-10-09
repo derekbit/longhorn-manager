@@ -147,6 +147,16 @@ func NewSettingController(
 	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isInstanceManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			UpdateFunc: sc.enqueueSettingForInstanceManagerPodResize,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.PodInformer.HasSynced)
+
 	return sc, nil
 }
 
@@ -381,10 +391,13 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 					"It will be eventually applied", settingName)
 			}
 		case types.SettingNameGuaranteedInstanceManagerCPU:
+			// Keep updating the other data engine while one is waiting for its pods.
+			errs := []error{}
 			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
-				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
-					return err
-				}
+				errs = append(errs, sc.updateInstanceManagerCPURequest(dataEngine))
+			}
+			if err := preferNonInvalidStateError(errs...); err != nil {
+				return err
 			}
 		}
 	}
@@ -1407,7 +1420,46 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 }
 
-// updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
+// enqueueSettingForInstanceManagerPodResize requeues the CPU setting when an in-place resize of an
+// instance manager pod is requested or completed, so the setting status does not wait for a resync.
+func (sc *SettingController) enqueueSettingForInstanceManagerPodResize(old, cur interface{}) {
+	oldPod, ok := old.(*corev1.Pod)
+	if !ok {
+		return
+	}
+	curPod, ok := cur.(*corev1.Pod)
+	if !ok {
+		return
+	}
+	if getPendingCPUResizeReason(oldPod) == getPendingCPUResizeReason(curPod) {
+		return
+	}
+
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
+}
+
+// preferNonInvalidStateError returns the first error that is not ErrorInvalidState, so that a real
+// failure is not hidden behind a pending state. Otherwise it returns the first ErrorInvalidState.
+func preferNonInvalidStateError(errs ...error) error {
+	var invalidStateErr error
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		if !types.ErrorIsInvalidState(err) {
+			return err
+		}
+		if invalidStateErr == nil {
+			invalidStateErr = err
+		}
+	}
+	return invalidStateErr
+}
+
+// updateInstanceManagerCPURequest applies the updated CPU request to the instance manager pods.
+// The pods are resized in place when possible. The remaining pods are deleted once all engine
+// instances of the data engine are stopped. It returns ErrorInvalidState until every in-place
+// resize is completed by the kubelet.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
@@ -1418,6 +1470,8 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		return err
 	}
 	notUpdatedPods := []*corev1.Pod{}
+	desiredResourceReqs := map[string]*corev1.ResourceRequirements{}
+	pendingResizes := []string{}
 
 	for _, imPod := range imPodList {
 		if _, exists := imMap[imPod.Name]; !exists {
@@ -1437,16 +1491,37 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		}
 		podResourceReq := imPod.Spec.Containers[0].Resources
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
+			if reason := getPendingCPUResizeReason(imPod); reason != "" {
+				pendingResizes = append(pendingResizes, fmt.Sprintf("%v (%v)", imPod.Name, reason))
+			}
 			continue
 		}
 
 		notUpdatedPods = append(notUpdatedPods, imPod)
+		desiredResourceReqs[imPod.Name] = resourceReq
 	}
 
-	if len(notUpdatedPods) == 0 {
-		return nil
+	if len(notUpdatedPods) > 0 {
+		podsRequiringRestart, resizingPods := sc.resizeInstanceManagerPodsInPlace(notUpdatedPods, desiredResourceReqs)
+		pendingResizes = append(pendingResizes, resizingPods...)
+
+		if len(podsRequiringRestart) > 0 {
+			if err := sc.restartInstanceManagerPodsForCPURequest(dataEngine, podsRequiringRestart); err != nil {
+				return err
+			}
+		}
 	}
 
+	if len(pendingResizes) > 0 {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("waiting for the in-place CPU request resize of instance manager pods %v to apply %v setting for data engine %v", strings.Join(pendingResizes, ", "), types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
+	}
+
+	return nil
+}
+
+// restartInstanceManagerPodsForCPURequest deletes the instance manager pods to apply the CPU request
+// once all engine instances of the data engine are stopped.
+func (sc *SettingController) restartInstanceManagerPodsForCPURequest(dataEngine longhorn.DataEngineType, pods []*corev1.Pod) error {
 	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
 	if err != nil {
 		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
@@ -1455,7 +1530,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
 	}
 
-	for _, pod := range notUpdatedPods {
+	for _, pod := range pods {
 		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
@@ -1463,6 +1538,103 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 	}
 
 	return nil
+}
+
+// resizeInstanceManagerPodsInPlace resizes the CPU request of the instance manager pods without restarting them.
+// It returns the pods that still need to be restarted to apply the CPU request, and the descriptions of the
+// pods whose in-place resize is not completed yet.
+func (sc *SettingController) resizeInstanceManagerPodsInPlace(pods []*corev1.Pod, desiredResourceReqs map[string]*corev1.ResourceRequirements) ([]*corev1.Pod, []string) {
+	podsRequiringRestart := []*corev1.Pod{}
+	resizingPods := []string{}
+	for _, pod := range pods {
+		cpuRequest, resizable, reason := getInPlaceResizableCPURequest(pod, desiredResourceReqs[pod.Name])
+		if !resizable {
+			sc.logger.Warnf("Cannot resize CPU request of instance manager pod %v in place because %v, falling back to restarting the pod", pod.Name, reason)
+			podsRequiringRestart = append(podsRequiringRestart, pod)
+			continue
+		}
+		// Each manager only resizes the pods on its own node to avoid duplicate resize requests.
+		if pod.Spec.NodeName != sc.controllerID {
+			resizingPods = append(resizingPods, fmt.Sprintf("%v (waiting for the manager on node %v)", pod.Name, pod.Spec.NodeName))
+			continue
+		}
+		if _, err := sc.ds.ResizePodCPURequest(pod.Name, pod.Spec.Containers[0].Name, cpuRequest); err != nil {
+			sc.logger.WithError(err).Warnf("Failed to resize CPU request of instance manager pod %v in place, falling back to restarting the pod", pod.Name)
+			podsRequiringRestart = append(podsRequiringRestart, pod)
+			continue
+		}
+		sc.logger.Infof("Requested in-place resize of CPU request of instance manager pod %v to %v", pod.Name, cpuRequest.String())
+		resizingPods = append(resizingPods, fmt.Sprintf("%v (resize requested)", pod.Name))
+	}
+
+	return podsRequiringRestart, resizingPods
+}
+
+// getPendingCPUResizeReason returns why the CPU request in the pod spec is not applied to the running
+// container yet, or an empty string if it is applied.
+func getPendingCPUResizeReason(pod *corev1.Pod) string {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type != corev1.PodResizePending && condition.Type != corev1.PodResizeInProgress {
+			continue
+		}
+		if condition.Status != corev1.ConditionTrue {
+			continue
+		}
+		if condition.Message != "" {
+			return fmt.Sprintf("%v %v: %v", condition.Type, condition.Reason, condition.Message)
+		}
+		return fmt.Sprintf("%v %v", condition.Type, condition.Reason)
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		return ""
+	}
+	container := pod.Spec.Containers[0]
+	desiredCPU := container.Resources.Requests[corev1.ResourceCPU]
+	if desiredCPU.IsZero() {
+		return ""
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name != container.Name {
+			continue
+		}
+		// The kubelet reports these fields only when in-place pod resize is supported.
+		if allocatedCPU, exists := status.AllocatedResources[corev1.ResourceCPU]; exists && allocatedCPU.Cmp(desiredCPU) != 0 {
+			return fmt.Sprintf("allocated CPU request %v, desired %v", allocatedCPU.String(), desiredCPU.String())
+		}
+		if status.Resources == nil {
+			continue
+		}
+		actualCPU := status.Resources.Requests[corev1.ResourceCPU]
+		if actualCPU.Cmp(desiredCPU) != 0 {
+			return fmt.Sprintf("actual CPU request %v, desired %v", actualCPU.String(), desiredCPU.String())
+		}
+	}
+	return ""
+}
+
+// getInPlaceResizableCPURequest returns the desired CPU request if the pod can be resized in place.
+// Changing a CPU request from or to zero changes the pod QoS class, which in-place resize does not allow.
+func getInPlaceResizableCPURequest(pod *corev1.Pod, desired *corev1.ResourceRequirements) (resource.Quantity, bool, string) {
+	if desired == nil {
+		return resource.Quantity{}, false, "the desired CPU request is missing"
+	}
+	if len(pod.Spec.Containers) == 0 {
+		return resource.Quantity{}, false, "the pod has no containers"
+	}
+	// Only V2 dynamic CPU pinning sets a CPU limit, and its SPDK reactors stay on the CPUs allocated at pod startup.
+	if _, exists := pod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]; exists {
+		return resource.Quantity{}, false, "the container has a CPU limit"
+	}
+	desiredCPU := desired.Requests[corev1.ResourceCPU]
+	currentCPU := pod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+	if desiredCPU.IsZero() {
+		return resource.Quantity{}, false, "the desired CPU request is zero"
+	}
+	if currentCPU.IsZero() {
+		return resource.Quantity{}, false, "the current CPU request is zero"
+	}
+	return desiredCPU, true, ""
 }
 
 func (sc *SettingController) cleanupFailedSupportBundles() error {

@@ -260,6 +260,29 @@ func (s *DataStore) PatchPod(name string, patch []byte) (*corev1.Pod, error) {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Patch(context.TODO(), name, patchtypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 }
 
+// ResizePodCPURequest updates the CPU request of the container through the pod resize subresource,
+// which resizes the running pod in place without restarting it.
+func (s *DataStore) ResizePodCPURequest(podName, containerName string, cpuRequest resource.Quantity) (*corev1.Pod, error) {
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"containers": []map[string]any{
+				{
+					"name": containerName,
+					"resources": map[string]any{
+						"requests": map[string]string{
+							string(corev1.ResourceCPU): cpuRequest.String(),
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to marshal resize patch for pod %v", podName)
+	}
+	return s.kubeClient.CoreV1().Pods(s.namespace).Patch(context.TODO(), podName, patchtypes.StrategicMergePatchType, patch, metav1.PatchOptions{}, "resize")
+}
+
 // CreateLease creates a Lease resource for the given CreateLease object
 func (s *DataStore) CreateLease(lease *coordinationv1.Lease) (*coordinationv1.Lease, error) {
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Create(context.TODO(), lease, metav1.CreateOptions{})

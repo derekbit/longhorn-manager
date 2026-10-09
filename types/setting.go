@@ -1309,7 +1309,11 @@ var (
 			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
-			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. \n\n" +
+			"  - After this setting is changed, instance manager pods with running instances are resized in place without restarting, " +
+			"while instance manager pods without running instances may be recreated. " +
+			"However, if the CPU request is changed from or to 0, or if the instance manager pod has a CPU limit, which is set when the pod is created with the V2 Data Engine Number of CPU Cores setting, " +
+			"the instance manager pod is restarted only when no instances are running on it. " +
+			"The setting is considered applied only after the kubelet completes the resize. \n\n" +
 			"  - For the V2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. " +
 			"It is necessary that the effective instance manager pod CPU request reserve at least as many CPU cores as configured by the V2 Data Engine CPU Mask based on the node's allocatable CPU capacity. " +
 			"For example, reserving 2 CPU cores on a node with 8 allocatable CPUs requires an effective CPU request of at least 25% or 2 CPU cores. " +

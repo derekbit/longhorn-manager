@@ -2,17 +2,22 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -313,5 +318,313 @@ func TestUpdateEngineImagePodLivenessProbesUsesDefaultValuesOnSettingError(t *te
 	}
 	if livenessProbe.FailureThreshold != datastore.PodLivenessProbeFailureThreshold {
 		t.Fatalf("unexpected failureThreshold: got %d, want %d", livenessProbe.FailureThreshold, datastore.PodLivenessProbeFailureThreshold)
+	}
+}
+
+func TestUpdateInstanceManagerCPURequestInPlaceResize(t *testing.T) {
+	originalSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = originalSkipListerCheck
+	}()
+
+	tests := []struct {
+		name               string
+		controllerID       string
+		dataEngine         longhorn.DataEngineType
+		guaranteedCPU      string
+		currentCPURequest  string
+		currentCPULimit    string
+		statusCPURequest   string
+		allocatedCPU       string
+		podConditions      []corev1.PodCondition
+		failResize         bool
+		expectErrContains  string
+		expectedCPURequest string
+	}{
+		{
+			name:               "resize in place",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "480m",
+			expectErrContains:  "resize requested",
+			expectedCPURequest: "800m",
+		},
+		{
+			name:               "require restart when the current CPU request is zero",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "",
+			expectErrContains:  "running engine instances",
+			expectedCPURequest: "",
+		},
+		{
+			name:               "require restart when the desired CPU request is zero",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			guaranteedCPU:      "{\"v1\":\"0\",\"v2\":\"0\"}",
+			currentCPURequest:  "480m",
+			expectErrContains:  "running engine instances",
+			expectedCPURequest: "480m",
+		},
+		{
+			name:               "fall back to restart when the resize request fails",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "480m",
+			failResize:         true,
+			expectErrContains:  "running engine instances",
+			expectedCPURequest: "480m",
+		},
+		{
+			name:               "wait for the manager of another node to resize its pod",
+			controllerID:       TestNode2,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "480m",
+			expectErrContains:  "waiting for the manager on node " + TestNode1,
+			expectedCPURequest: "480m",
+		},
+		{
+			name:               "applied after the kubelet completes the resize",
+			controllerID:       TestNode2,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "800m",
+			statusCPURequest:   "800m",
+			expectedCPURequest: "800m",
+		},
+		{
+			name:              "wait while the kubelet defers the resize",
+			controllerID:      TestNode1,
+			dataEngine:        longhorn.DataEngineTypeV1,
+			currentCPURequest: "800m",
+			statusCPURequest:  "480m",
+			podConditions: []corev1.PodCondition{
+				{Type: corev1.PodResizePending, Status: corev1.ConditionTrue, Reason: corev1.PodReasonDeferred},
+			},
+			expectErrContains:  string(corev1.PodResizePending),
+			expectedCPURequest: "800m",
+		},
+		{
+			name:               "wait until the actual CPU request is updated",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "800m",
+			statusCPURequest:   "480m",
+			expectErrContains:  "actual CPU request 480m",
+			expectedCPURequest: "800m",
+		},
+		{
+			name:               "wait until the kubelet allocates the CPU request",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV1,
+			currentCPURequest:  "800m",
+			allocatedCPU:       "480m",
+			expectErrContains:  "allocated CPU request 480m",
+			expectedCPURequest: "800m",
+		},
+		{
+			name:               "resize v2 in place without dynamic CPU pinning",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV2,
+			currentCPURequest:  "480m",
+			expectErrContains:  "resize requested",
+			expectedCPURequest: "800m",
+		},
+		{
+			name:               "require restart for a v2 pod created with dynamic CPU pinning",
+			controllerID:       TestNode1,
+			dataEngine:         longhorn.DataEngineTypeV2,
+			currentCPURequest:  "1",
+			currentCPULimit:    "1",
+			expectErrContains:  "running engine instances",
+			expectedCPURequest: "1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kubeClient := fake.NewSimpleClientset()                   // nolint: staticcheck
+			lhClient := lhfake.NewSimpleClientset()                   // nolint: staticcheck
+			extensionClient := apiextensionsfake.NewSimpleClientset() // nolint: staticcheck
+			if tt.failResize {
+				kubeClient.PrependReactor("patch", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+					if action.GetSubresource() != "resize" {
+						return false, nil, nil
+					}
+					return true, nil, fmt.Errorf("resize is not supported")
+				})
+			}
+
+			informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+			settingIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+			lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+			imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+			kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+			podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+			ds := datastore.NewDataStoreForGlobal(TestNamespace, lhClient, kubeClient, extensionClient, informerFactories)
+			sc := &SettingController{
+				baseController: newBaseController("longhorn-setting", logrus.StandardLogger()),
+				controllerID:   tt.controllerID,
+				kubeClient:     kubeClient,
+				ds:             ds,
+			}
+
+			guaranteedCPU := tt.guaranteedCPU
+			if guaranteedCPU == "" {
+				guaranteedCPU = "{\"v1\":\"20\",\"v2\":\"20\"}"
+			}
+			setting := newSetting(string(types.SettingNameGuaranteedInstanceManagerCPU), guaranteedCPU)
+			if err := settingIndexer.Add(setting); err != nil {
+				t.Fatalf("failed to index setting: %v", err)
+			}
+
+			kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			kubeNode.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4")}
+			if err := kubeNodeIndexer.Add(kubeNode); err != nil {
+				t.Fatalf("failed to index kubernetes node: %v", err)
+			}
+			if err := lhNodeIndexer.Add(newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")); err != nil {
+				t.Fatalf("failed to index node: %v", err)
+			}
+
+			im := newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerStateRunning, TestNode1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{
+					TestEngineName: {Status: longhorn.InstanceProcessStatus{State: longhorn.InstanceStateRunning}},
+				},
+				nil, nil, tt.dataEngine, TestInstanceManagerImage, false)
+			if err := imIndexer.Add(im); err != nil {
+				t.Fatalf("failed to index instance manager: %v", err)
+			}
+
+			pod := newPod(&corev1.PodStatus{Phase: corev1.PodRunning}, im.Name, TestNamespace, TestNode1)
+			pod.Labels = types.GetInstanceManagerLabels(TestNode1, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, tt.dataEngine)
+			container := corev1.Container{Name: "instance-manager"}
+			if tt.currentCPURequest != "" {
+				container.Resources.Requests = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(tt.currentCPURequest)}
+			}
+			if tt.currentCPULimit != "" {
+				container.Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(tt.currentCPULimit)}
+			}
+			pod.Spec.Containers = []corev1.Container{container}
+			pod.Status.Conditions = tt.podConditions
+			if tt.statusCPURequest != "" || tt.allocatedCPU != "" {
+				status := corev1.ContainerStatus{Name: container.Name}
+				if tt.statusCPURequest != "" {
+					status.Resources = &corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(tt.statusCPURequest)},
+					}
+				}
+				if tt.allocatedCPU != "" {
+					status.AllocatedResources = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(tt.allocatedCPU)}
+				}
+				pod.Status.ContainerStatuses = []corev1.ContainerStatus{status}
+			}
+			pod, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("failed to create pod: %v", err)
+			}
+			if err := podIndexer.Add(pod); err != nil {
+				t.Fatalf("failed to index pod: %v", err)
+			}
+
+			err = sc.updateInstanceManagerCPURequest(tt.dataEngine)
+			if tt.expectErrContains == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if !types.ErrorIsInvalidState(err) {
+					t.Fatalf("expected an invalid state error, got %v", err)
+				}
+				if !strings.Contains(err.Error(), tt.expectErrContains) {
+					t.Fatalf("expected error to contain %q, got %v", tt.expectErrContains, err)
+				}
+			}
+
+			updatedPod, err := kubeClient.CoreV1().Pods(TestNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("failed to get pod: %v", err)
+			}
+			gotCPURequest := updatedPod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU]
+			wantCPURequest := resource.Quantity{}
+			if tt.expectedCPURequest != "" {
+				wantCPURequest = resource.MustParse(tt.expectedCPURequest)
+			}
+			if gotCPURequest.Cmp(wantCPURequest) != 0 {
+				t.Fatalf("unexpected CPU request: got %v, want %v", gotCPURequest.String(), wantCPURequest.String())
+			}
+		})
+	}
+}
+
+func TestPreferNonInvalidStateError(t *testing.T) {
+	pending := &types.ErrorInvalidState{Reason: "pending"}
+	otherPending := &types.ErrorInvalidState{Reason: "other pending"}
+	failure := fmt.Errorf("failed to list pods")
+
+	tests := []struct {
+		name string
+		errs []error
+		want error
+	}{
+		{name: "no error", errs: []error{nil, nil}, want: nil},
+		{name: "real failure after a pending state", errs: []error{pending, failure}, want: failure},
+		{name: "real failure before a pending state", errs: []error{failure, pending}, want: failure},
+		{name: "only pending states", errs: []error{nil, pending, otherPending}, want: pending},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := preferNonInvalidStateError(tt.errs...); got != tt.want {
+				t.Fatalf("unexpected error: got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnqueueSettingForInstanceManagerPodResize(t *testing.T) {
+	newIMPod := func(specCPU, statusCPU string, conditions ...corev1.PodCondition) *corev1.Pod {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				Name:      "instance-manager",
+				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(specCPU)}},
+			}}},
+			Status: corev1.PodStatus{Conditions: conditions},
+		}
+		if statusCPU != "" {
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name:      "instance-manager",
+				Resources: &corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(statusCPU)}},
+			}}
+		}
+		return pod
+	}
+	resizePending := corev1.PodCondition{Type: corev1.PodResizePending, Status: corev1.ConditionTrue, Reason: corev1.PodReasonDeferred}
+
+	tests := []struct {
+		name          string
+		old, cur      *corev1.Pod
+		expectEnqueue bool
+	}{
+		{name: "resize requested", old: newIMPod("480m", "480m"), cur: newIMPod("800m", "480m"), expectEnqueue: true},
+		{name: "kubelet defers the resize", old: newIMPod("800m", "480m"), cur: newIMPod("800m", "480m", resizePending), expectEnqueue: true},
+		{name: "resize completed", old: newIMPod("800m", "480m"), cur: newIMPod("800m", "800m"), expectEnqueue: true},
+		{name: "unrelated pod update", old: newIMPod("800m", "800m"), cur: newIMPod("800m", "800m"), expectEnqueue: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := &SettingController{
+				baseController: newBaseController("longhorn-setting", logrus.StandardLogger()),
+				namespace:      TestNamespace,
+			}
+			defer sc.queue.ShutDown()
+
+			sc.enqueueSettingForInstanceManagerPodResize(tt.old, tt.cur)
+			if got := sc.queue.Len() == 1; got != tt.expectEnqueue {
+				t.Fatalf("unexpected enqueue: got %v, want %v", got, tt.expectEnqueue)
+			}
+		})
 	}
 }
